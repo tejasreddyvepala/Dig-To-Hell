@@ -29,7 +29,7 @@ export function initSim() {
 export function strike(idx: number, x: number, y: number, power: number, crit: boolean, crew: CrewId | null): HitResult {
   const c = face.chunks[idx];
   const dmg = crit ? Math.max(power, c.stageHp) * CFG.critStages : power;
-  const r = damageChunk(c, dmg, x, y);
+  const r = damageChunk(c, dmg, x, y, crew ? CFG.crewFxScale : crit ? 1.6 : 1);
   let cash = hitCash(power, S.depth) * (crit ? CFG.critCashMult : 1);
   let meters = 0;
   if (r.broke) {
@@ -55,14 +55,22 @@ export function playerStrike(idx: number, x: number, y: number): HitResult {
 export interface Worker { id: CrewId; x: number; dir: 1 | -1; timer: number; period: number; since: number }
 export const workers: Worker[] = [];
 
+/** Rebuild the visible worker set. Phases are randomized so crews never swing in lockstep. */
 export function syncWorkers() {
+  const hasExc = S.crew.exc > 0;
+  const digSlots = hasExc ? CFG.crewSlotsWithExc : CFG.crewSlots.dig;
+  const digCap = hasExc ? CFG.crewVisibleWithExc : CFG.crewVisibleMax;
+  workers.length = 0;
   for (const c of CREW) {
     if (!c.dps) continue;
-    const want = Math.min(S.crew[c.id], CFG.crewVisibleMax, CFG.crewSlots[c.id].length);
-    const have = workers.filter((w) => w.id === c.id);
-    for (let k = have.length; k < want; k++) {
-      const x = CFG.crewSlots[c.id][k];
-      workers.push({ id: c.id, x, dir: x < CFG.face.logicalW / 2 ? 1 : -1, timer: rnd(0.2, c.swingSecs), period: c.swingSecs, since: 1 });
+    const slots = c.id === 'dig' ? digSlots : CFG.crewSlots[c.id];
+    const want = Math.min(S.crew[c.id], c.id === 'dig' ? digCap : 1, slots.length);
+    for (let k = 0; k < want; k++) {
+      const x = slots[k];
+      workers.push({
+        id: c.id, x, dir: x < CFG.face.logicalW / 2 ? 1 : -1,
+        timer: rnd(0.25, 1) * c.swingSecs, period: c.swingSecs * rnd(0.9, 1.1), since: 1,
+      });
     }
   }
 }

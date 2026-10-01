@@ -122,12 +122,13 @@ export const CFG = {
     edgeJitter: 4, // irregular top edge / seams
     seamJitter: 0.12, // fraction of chunk width seams may wander
     hitYMin: 3, hitYMax: 12, // where on the chunk the pick lands (logical px below surface)
-    flinchPx: 2.2, // per-hit local push
-    flinchDecay: 22, // 1/s spring damping
-    flashSecs: 0.07,
-    tintJitter: 0.07, // per-chunk brightness variation so chunks read as separate pieces
-    revealSecs: 0.35, // fresh material tint fade after a break
-    dentPx: 3.2, // clay deformation per stage
+    pulseSecs: 0.12, // local impact highlight at the hit point
+    pulseRadius: 13,
+    revealSecs: 0.45, // fresh material tint fade after a break
+    breakDip: 9, // logical px crater left by a break (bowl-shaped, settles back)
+    dipSettle: 5, // 1/s
+    craterDepth: 22, // logical px of dark inner earth that craters reveal
+    dentPx: 4.5, // clay deformation per stage
     redFleckDepth: 292,
   },
 
@@ -142,28 +143,41 @@ export const CFG = {
     chainGapMs: 55, // min gap between queued impacts when clicking very fast
     keyboardSpread: 70, // keyboard dig picks a chunk within this logical px of the miner
   },
-  crewVisibleMax: 5,
-  crewScale: 0.88, // crew figures are drawn slightly smaller than the player's miner
+  crewVisibleMax: 3, // animated diggers on the face; the rest still dig at full DPS, shown as a helmet row
+  crewVisibleWithExc: 2, // the excavator takes one digger's space
+  crewSlots: { dig: [22, 198, 62], cart: [], exc: [196] } as Record<CrewId, number[]>,
+  crewSlotsWithExc: [22, 62],
+  reserveHelmetsMax: 8,
+  playerScale: 1.12, // player miner is drawn larger + rim + lamp beam so it reads first
+  crewScale: 0.85,
+  crewFxScale: 0.6, // crew impact intensity relative to the player's (chips, dust, pulse)
+  crewPopupSecs: 3, // crew cash is aggregated into one quiet popup this often
   excavatorReach: 34,
-  crewSlots: { dig: [24, 52, 136, 80, 108], cart: [], exc: [196] } as Record<CrewId, number[]>,
 
   // ---- camera / juice hierarchy ----
-  impulse: { hit: 0.6, break: 1.4, crit: 2.2, spring: 340, damping: 26 },
+  impulse: { hit: 0.3, break: 1.4, crit: 2.1, spring: 340, damping: 26 },
   hitStopMs: 42, // crit freeze
   cameraFollow: 9, // 1/s ease of the view toward true depth (breaks visibly extend the shaft)
   gravity: 900,
   maxParticles: 700,
-  text: { life: 0.9, rise: 46, hitSize: 15, breakSize: 19, critSize: 30, max: 10 },
-  critFx: { starSecs: 0.16, starSize: 34, ringSecs: 0.24, ringSize: 70, debrisMult: 2 },
+  text: {
+    max: 6, rise: 46,
+    hit: { size: 12, life: 0.5, alpha: 0.7 }, // small, quick, quiet
+    brk: { size: 18, life: 0.85, alpha: 1 }, // one combined "+$ / ▼ m" label
+    crit: { size: 32, life: 1.15, alpha: 1 },
+    crew: { size: 11, life: 1.2, alpha: 0.45 },
+  },
+  critFx: { starSecs: 0.1, starSize: 30, ringSecs: 0.22, ringSize: 64, debrisMult: 2 },
   bannerSecs: 3,
 
   // ---- view ----
   ppm: 12, // pixels per meter
-  faceYFrac: 0.62,
-  shaftMaxW: 320,
-  shaftWFrac: 0.42,
+  faceYFrac: 0.71, // working face sits at ~71% of the viewport during active digging
+  shaftMaxW: 400,
+  shaftWFrac: 0.46,
   shaftMinW: 260, // narrow screens: shaft takes at least this (bounded by shaftNarrowFrac)
   shaftNarrowFrac: 0.84,
+  light: { fadeSpan: 0.75, shaftDark: 0.45, radius: 0.75, glow: 0.14 }, // shaft vignette + warm work light
   scrollSpeed: 0.6,
   scrollExtraM: 40,
   scrollIdleSecs: 3,
@@ -177,14 +191,14 @@ export const AUDIO = {
   master: 0.55,
   pitchJitter: 0.05, // ±5% on repeated impacts
   maxVoices: 40,
-  crewVolume: 0.28, // crew strikes are quieter than the player's
+  crewVolume: 0.2, // crew strikes are clearly subordinate to the player's
   swing: { secs: 0.12, hp: 1800, bp: [2400, 5200] as Range, gain: 0.09 },
   dirt: { freq: [90, 130] as Range, decay: 0.07, noiseLp: 900, noiseSecs: 0.06, gain: 0.75, noiseGain: 0.45 },
   clay: { freq: [70, 100] as Range, lp: 420, attack: 0.012, decay: 0.1, gain: 0.85, thumpGain: 0.4 },
   stone: { freq: [180, 350] as Range, decay: 0.045, hp: 3200, noiseSecs: 0.04, gain: 0.5, noiseGain: 0.4 },
   cave: { echoDelay: [0.08, 0.12] as Range, echoGain: 0.28, echoFeedback: 0.3, echoLp: 1600 },
   brk: {
-    secs: [0.2, 0.35] as Range, bursts: [4, 7] as Range, gain: 0.55,
+    secs: [0.2, 0.35] as Range, bursts: [4, 7] as Range, gain: 0.55, thump: 55, thumpGain: 1.1, thumpDecay: 0.2,
     bp: { dirt: [200, 900], clay: [120, 500], stone: [800, 4000], cave: [500, 3000] } as Record<MaterialId, Range>,
   },
   crit: { low: 70, lowDecay: 0.18, crack: [1200, 2500] as Range, crackDecay: 0.05, noiseHp: 1500, noiseSecs: 0.09, gain: 0.9 },

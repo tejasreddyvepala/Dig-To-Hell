@@ -39,6 +39,37 @@ Build the 0–300 m vertical slice exactly as described in SPEC.md (beat sheet, 
 5. Interruptions (Gold Vein, Cave-In, Critical Pocket, Gas Pocket).
 6. Layer transitions, ambience, the Red Door ending.
 
+## Status log
+- Step 1 (port to TS + Vite): `e4d758d`
+- Step 2 (destructible face, juice, Web Audio, economy retune): `fc51a70`
+- Step 2.5 (polish the click loop): `STEP25_HASH`
+
+### Step 2.5 — what changed
+- Face reads as one mass of earth: no chunk outlines, a shared face-space gradient that fades into the surrounding ground, shared seam tops (continuous lit lip), dark inner earth revealed only by craters. Breaks leave a bowl-shaped crater + soft dark reveal that settles. Whole-chunk flash/flinch/squash removed (they exposed the tile grid) and replaced with a local impact pulse at the hit point.
+- Popup hierarchy: hit = small/faint/short; break = one combined `+$X / ▼ m` label; crit = large gold with pop. Crew cash aggregated into one faint popup every 3 s. Max 6 popups on screen.
+- Crew: max 3 animated diggers (2 when an excavator is present); extras dig at full DPS and show as a helmet row "+N crew". Randomized phases/periods, no lockstep. Crew FX ~60% of player's, crew audio 0.2 volume.
+- Player miner: 1.12× scale, brighter helmet, lamp beam, dark rim. Pick reach scales with size so the tip lands on the hit point on the impact frame.
+- Camera: face at 71% of viewport, shaft wider (max 400 px), shaft darkens upward, warm work light pools on the face. Continuous shaft kept.
+- Audio: heavier 55 Hz thump on breaks, extra hard transient on crits.
+- Files: config.ts, digface.ts, render.ts, sim.ts, miner.ts, fx.ts, juice.ts, audio.ts, main.ts, panel.ts.
+- Tuning changes (config.ts): faceYFrac 0.62→0.71, shaftMaxW 320→400, shaftWFrac 0.42→0.46, crewVisibleMax 5→3, crewScale 0.88→0.85, playerScale 1.12, crewFxScale 0.6, AUDIO.crewVolume 0.28→0.2, impulse.hit 0.6→0.3, impulse.crit 2.2→2.1, critFx.starSecs 0.16→0.1, dentPx 3.2→4.5. Economy untouched.
+
+### Measurements (Step 2.5, headless Chrome on the dev machine)
+- Pacing at 4 clicks/s, real-time browser bot: 12 m 27.5 s, 20 m 46.4 s, 45 m 86.4 s (unchanged from Step 2). Headless sim: 300 m ≈ 6:15.
+- Frame work at the 700-particle cap (8 diggers, every hit a crit): p99 2.6 ms desktop, 8.6 ms at 4× CPU throttle, 16.1 ms at 6×. Isolated single-frame spikes up to ~100 ms seen under throttling (suspected GC, not investigated).
+
+### Compromises / known visual problems
+- Hits land ~72 ms after the click (windup + downswing) to keep animation and sim in sync.
+- Shaft above the face is still mostly empty dark space; it is meant to fill with finds/equipment history in later steps.
+- Mobile: figures and face are small (stage is only 56% of the screen height); "Something is down here…" find tease is off-screen on narrow widths.
+- Excavator can overlap the player miner when the player digs on the right side.
+- Cracks are clipped per chunk, so a crack can stop at an invisible chunk boundary.
+- Finds still use the placeholder modal (pauses digging). Offline progress can skip most of the slice (4 diggers × 1 h ≈ 244 m) — needs a cap at the next find/layer before Step 3 ships.
+- Sounds verified only as error-free, not by ear.
+
+### Recommended next step
+Step 3: turn the 12 m Rusty Coin and 45 m Buried Car into real animated discoveries (and cap offline progress at the next find).
+
 ## How to work with me
 - Be opinionated. Tell me when an idea is weak.
 - Make focused changes, run the game, check for console errors, verify behavior before saying done.

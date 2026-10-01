@@ -16,7 +16,7 @@ export interface Part {
   bounce: number;
   shape?: number[]; // frag polygon (unit radius)
 }
-export interface Popup { x: number; y: number; s: string; col: string; size: number; t: number; life: number; pop: number }
+export interface Popup { x: number; y: number; s: string; col: string; size: number; t: number; life: number; pop: number; alpha: number; rise: number; sub?: string }
 export interface Ring { x: number; y: number; t: number }
 export interface Star { x: number; y: number; t: number; size: number }
 export interface Banner { s: string; sub: string; t: number }
@@ -62,9 +62,10 @@ export function addPart(p: Omit<Part, 'rot' | 'vr' | 'bounced' | 'max' | 'shape'
   });
 }
 
-export function popup(x: number, y: number, s: string, col: string, size: number, life = CFG.text.life, pop = 0) {
+export interface PopupOpts { life?: number; pop?: number; alpha?: number; rise?: number; sub?: string }
+export function popup(x: number, y: number, s: string, col: string, size: number, o: PopupOpts = {}) {
   if (FX.popups.length >= CFG.text.max) FX.popups.shift(); // never let rapid clicks pile into an unreadable stack
-  FX.popups.push({ x, y, s, col, size, t: 0, life, pop });
+  FX.popups.push({ x, y, s, col, size, t: 0, life: o.life ?? 0.9, pop: o.pop ?? 0, alpha: o.alpha ?? 1, rise: o.rise ?? 1, sub: o.sub });
 }
 
 export function updateFx(dt: number) {
@@ -94,7 +95,7 @@ export function updateFx(dt: number) {
   }
   for (let i = FX.popups.length - 1; i >= 0; i--) {
     const q = FX.popups[i];
-    q.t += dt; q.y -= CFG.text.rise * dt * (q.t < 0.15 ? 2.2 : 0.7);
+    q.t += dt; q.y -= CFG.text.rise * q.rise * dt * (q.t < 0.15 ? 2.2 : 0.7);
     if (q.t > q.life) FX.popups.splice(i, 1);
   }
   for (let i = FX.rings.length - 1; i >= 0; i--) if ((FX.rings[i].t += dt) > CFG.critFx.ringSecs) FX.rings.splice(i, 1);
@@ -157,11 +158,17 @@ export function drawPopups(ctx: CanvasRenderingContext2D) {
   for (const q of FX.popups) {
     const fade = q.t > q.life * 0.6 ? 1 - (q.t - q.life * 0.6) / (q.life * 0.4) : 1;
     const scale = q.pop && q.t < 0.12 ? 1 + q.pop * (1 - q.t / 0.12) : 1;
-    ctx.globalAlpha = Math.max(0, fade);
+    ctx.globalAlpha = Math.max(0, fade) * q.alpha;
     ctx.font = `${Math.round(q.size * scale)}px ${FONT_DISPLAY}`;
-    ctx.lineWidth = Math.max(3, q.size * 0.2); ctx.strokeStyle = 'rgba(20,12,6,.75)'; ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2.5, q.size * 0.2); ctx.strokeStyle = 'rgba(20,12,6,.75)'; ctx.lineJoin = 'round';
     ctx.strokeText(q.s, q.x, q.y);
     ctx.fillStyle = q.col; ctx.fillText(q.s, q.x, q.y);
+    if (q.sub) {
+      const ss = Math.round(q.size * 0.55);
+      ctx.font = `${ss}px ${FONT_DISPLAY}`; ctx.lineWidth = 2.5;
+      ctx.strokeText(q.sub, q.x, q.y + ss + 3);
+      ctx.fillStyle = 'rgba(200,222,255,.95)'; ctx.fillText(q.sub, q.x, q.y + ss + 3);
+    }
   }
   ctx.globalAlpha = 1;
 }

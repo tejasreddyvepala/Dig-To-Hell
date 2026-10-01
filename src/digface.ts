@@ -22,17 +22,17 @@ export interface Chunk {
   cracks: Crack[];
   marks: Mark[];
   seed: number;
-  flinch: number; // current push (logical px)
-  flinchV: number;
-  flash: number; // secs remaining of hit flash
+  pulse: Pulse | null; // local impact highlight (never moves/flashes the whole chunk: that reads as tiles)
   reveal: number; // secs remaining of fresh-material tint
-  recess: number; // screen px: fresh chunk sits lower until the camera catches up
-  squash: number; // clay compression 0..1 (animated)
+  recess: number; // screen px: fresh chunk dips until the camera catches up (keeps it put in world space)
+  dip: number; // logical px: extra crater depth after a break, settles back over time
 }
 
-export interface Face { chunks: Chunk[]; seams: number[][] }
+export interface Pulse { x: number; y: number; t: number; k: number }
 
-export const face: Face = { chunks: [], seams: [] };
+export interface Face { chunks: Chunk[]; seams: number[][]; seamTop: number[] }
+
+export const face: Face = { chunks: [], seams: [], seamTop: [] };
 
 const chunkW = () => F.logicalW / F.chunks;
 const SEAM_SAMPLES = 4;
@@ -40,7 +40,9 @@ const SEAM_SAMPLES = 4;
 function buildSeams() {
   // Seam k is a wandering vertical polyline (x per sample, top..bottom). Outer seams are the shaft walls.
   face.seams = [];
+  face.seamTop = [];
   for (let k = 0; k <= F.chunks; k++) {
+    face.seamTop.push(rnd(0, F.edgeJitter * 0.5)); // shared by both neighbours so the top edge is continuous
     const base = k * chunkW();
     const xs: number[] = [];
     for (let j = 0; j <= SEAM_SAMPLES; j++) {
@@ -58,7 +60,7 @@ function buildPoly(i: number): { poly: number[]; top: number[] } {
   const n = 4;
   for (let j = 0; j <= n; j++) {
     const x = L[0] + ((R[0] - L[0]) * j) / n;
-    const y = j === 0 || j === n ? rnd(0, F.edgeJitter * 0.5) : rnd(-F.edgeJitter * 0.4, F.edgeJitter);
+    const y = j === 0 ? face.seamTop[i] : j === n ? face.seamTop[i + 1] : rnd(-F.edgeJitter * 0.4, F.edgeJitter);
     top.push(pts.length / 2);
     pts.push(x, y);
   }
@@ -74,7 +76,7 @@ function makeChunk(i: number, mat: Material, hp: number): Chunk {
   return {
     idx: i, mat, poly, top, hp: 0, maxHp: hp, stageHp: hp / mat.stages, stage: 0,
     cracks: [], marks: [], seed: Math.random() * 1000,
-    flinch: 0, flinchV: 0, flash: 0, reveal: 0, recess: 0, squash: 0,
+    pulse: null, reveal: 0, recess: 0, dip: 0,
   };
 }
 
@@ -89,6 +91,7 @@ export function renewChunk(i: number, mat: Material, hp: number, recessPx: numbe
   const c = makeChunk(i, mat, hp);
   c.reveal = F.revealSecs;
   c.recess = recessPx;
+  c.dip = F.breakDip;
   face.chunks[i] = c;
   return c;
 }
@@ -190,7 +193,7 @@ function addStageFeatures(c: Chunk, k: number, x: number, y: number) {
     else if (k === 2) addRadial(c, x, y, 4, W * 0.45, 1.4, 'radial');
     else {
       const count = k === 3 ? 2 : 3;
-      for (let n = 0; n < count; n++) c.cracks.push(crackLine(x, y, downAng(), W * (0.45 + k * 0.08), 4, 0.45, 2 + k * 0.9, 'deep'));
+      for (let n = 0; n < count; n++) c.cracks.push(crackLine(x, y, downAng(), W * (0.45 + k * 0.08), 4, 0.45, 1.4 + k * 0.45, 'deep'));
       c.marks.push({ x, y, r: 3 + k * 2, kind: 'indent' });
     }
   }
@@ -198,8 +201,9 @@ function addStageFeatures(c: Chunk, k: number, x: number, y: number) {
 
 export interface DamageResult { before: number; after: number; broke: boolean }
 
-/** Apply damage at (x,y). Every hit leaves a local mark; stage thresholds add material features. */
-export function damageChunk(c: Chunk, dmg: number, x: number, y: number): DamageResult {
+/** Apply damage at (x,y). Every hit leaves a local mark; stage thresholds add material features.
+ *  `intensity` scales the local impact pulse (crew strikes are subordinate to the player's). */
+export function damageChunk(c: Chunk, dmg: number, x: number, y: number, intensity = 1): DamageResult {
   const before = c.stage;
   c.hp += dmg;
   const after = Math.min(c.mat.stages, Math.floor(c.hp / c.stageHp + 1e-9));
@@ -214,22 +218,16 @@ export function damageChunk(c: Chunk, dmg: number, x: number, y: number): Damage
     }
     c.stage = after;
   }
-  c.flinchV += F.flinchPx * F.flinchDecay;
-  c.flash = F.flashSecs;
-  if (c.mat.id === 'clay') c.squash = 1;
+  c.pulse = { x, y, t: 0, k: intensity };
   return { before, after, broke };
 }
 
 export function updateFace(dt: number, recessDecay: number) {
   for (const c of face.chunks) {
-    // critically-damped-ish spring back to rest
-    c.flinchV -= c.flinch * F.flinchDecay * F.flinchDecay * dt;
-    c.flinchV *= Math.exp(-F.flinchDecay * dt);
-    c.flinch += c.flinchV * dt;
-    c.flash = Math.max(0, c.flash - dt);
+    if (c.pulse && (c.pulse.t += dt) > F.pulseSecs) c.pulse = null;
     c.reveal = Math.max(0, c.reveal - dt);
-    c.squash = Math.max(0, c.squash - dt * 6);
     c.recess *= Math.exp(-recessDecay * dt);
+    c.dip *= Math.exp(-F.dipSettle * dt);
     for (const k of c.cracks) k.grow = Math.min(1, k.grow + dt * 18);
   }
 }

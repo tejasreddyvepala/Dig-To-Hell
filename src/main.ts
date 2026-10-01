@@ -6,7 +6,7 @@ import { materialAt } from './economy';
 import { initSim, offlineAdvance, pendingFinds, updateCrew, workers } from './sim';
 import { updateFace } from './digface';
 import { miner, minerClick, minerKeyStrike, updateMiner } from './miner';
-import { present } from './juice';
+import { present, updateJuice } from './juice';
 import { FX, clearFx, updateFx } from './fx';
 import { audioState, unlockAudio } from './audio';
 import { canvas, toLogical, updateCamera, view } from './view';
@@ -85,6 +85,7 @@ function frame(now: number) {
   updateFace(dt, CFG.cameraFollow);
   updateCamera(dt);
   updateFx(dt);
+  updateJuice(dt);
 
   const mat = materialAt(S.depth);
   if (mat.id !== lastMat) {

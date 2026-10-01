@@ -1,5 +1,5 @@
 // Draws the world, the destructible dig face, miner/crew, FX and HUD overlays. Reads state; never mutates sim.
-import { CFG, FINDS, MATERIALS, MAX_DEPTH, type Find, type RGB } from './config';
+import { CFG, FINDS, MATERIALS, MAX_DEPTH, type Find } from './config';
 import { S } from './state';
 import { materialAt } from './economy';
 import { face, type Chunk, type Crack, type Mark } from './digface';
@@ -49,7 +49,7 @@ function drawCracks(c: Chunk) {
   for (const k of c.cracks) {
     if (k.style === 'deep') {
       ctx.strokeStyle = red ? 'rgba(190,30,20,.28)' : 'rgba(90,110,210,.22)';
-      ctx.lineWidth = k.w * 3.2; strokeCrack(k);
+      ctx.lineWidth = k.w * 2; strokeCrack(k);
       ctx.strokeStyle = 'rgba(2,2,8,.95)'; ctx.lineWidth = k.w; strokeCrack(k);
     } else if (k.style === 'thick') {
       ctx.strokeStyle = 'rgba(30,8,2,.92)'; ctx.lineWidth = k.w; strokeCrack(k);
@@ -102,53 +102,111 @@ function drawTexture(c: Chunk, b: ReturnType<typeof bbox>) {
   }
 }
 
-function drawChunk(c: Chunk, s: number) {
-  const b = bbox(c.poly);
-  ctx.save();
-  ctx.translate(0, c.recess / s + c.flinch);
-  if (c.squash > 0) {
-    const cx = (b.x0 + b.x1) / 2;
-    ctx.translate(cx, 0); ctx.scale(1 + 0.05 * c.squash, 1 - 0.09 * c.squash); ctx.translate(-cx, 0);
+/** Chunk polygon with its top edge dipped into a bowl (break crater + camera-sync recess).
+ *  Seam endpoints never move, so the face stays one continuous surface. */
+function dippedPoly(c: Chunk, s: number): number[] {
+  const d = c.recess / s + c.dip;
+  if (d < 0.05) return c.poly;
+  const p = c.poly.slice(), n = c.top.length - 1;
+  c.top.forEach((v, j) => { p[v * 2 + 1] += d * Math.sin((Math.PI * j) / n); });
+  return p;
+}
+
+const PULSE: Record<string, string> = {
+  dirt: 'rgba(255,226,180,', clay: 'rgba(55,14,0,', stone: 'rgba(255,255,255,', cave: 'rgba(170,190,255,',
+};
+
+/** The working face: a continuous mass of earth whose top band holds the logical damage regions. */
+function drawFace(s: number) {
+  const F = CFG.face, W = F.logicalW, cur = materialAt(S.depth);
+  // dark inner earth just under the surface: only visible where a break leaves a crater
+  const gm = ctx.createLinearGradient(0, F.edgeJitter, 0, F.craterDepth);
+  gm.addColorStop(0, rgb(cur.face, 0.3)); gm.addColorStop(1, rgba(cur.face, 0.45, 0));
+  ctx.fillStyle = gm;
+  ctx.fillRect(0, F.edgeJitter, W, F.craterDepth - F.edgeJitter);
+
+  // chunks share one face-space gradient per material, have no outlines, and differ only by damage
+  const grads = new Map<string, CanvasGradient>();
+  const grad = (c: Chunk) => {
+    let g = grads.get(c.mat.id);
+    if (!g) {
+      // lit lip -> body -> fades out into the surrounding ground, so the face is the top of a mass, not a strip
+      g = ctx.createLinearGradient(0, -4, 0, F.height);
+      g.addColorStop(0, rgb(c.mat.face, 1.16)); g.addColorStop(0.22, rgb(c.mat.face, 1));
+      g.addColorStop(0.6, rgba(c.mat.face, 0.92, 0.85)); g.addColorStop(1, rgba(c.mat.face, 0.85, 0));
+      grads.set(c.mat.id, g);
+    }
+    return g;
+  };
+  const polys = face.chunks.map((c) => dippedPoly(c, s));
+  face.chunks.forEach((c, i) => {
+    const b = bbox(polys[i]);
+    polyPath(polys[i]);
+    ctx.fillStyle = grad(c);
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    drawTexture(c, b);
+    for (const m of c.marks) drawMark(m);
+    drawCracks(c);
+    if (c.reveal > 0) {
+      // freshly exposed rock: a soft dark bowl around the crater, never a rectangle
+      const cx = (b.x0 + b.x1) / 2, r = (b.x1 - b.x0) * 0.75;
+      const g = ctx.createRadialGradient(cx, b.y0 + c.dip, 0, cx, b.y0 + c.dip, r);
+      g.addColorStop(0, `rgba(12,6,0,${((0.6 * c.reveal) / F.revealSecs).toFixed(3)})`); g.addColorStop(1, 'rgba(12,6,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(cx - r, b.y0 - 2, r * 2, r + 2);
+    }
+    ctx.restore();
+  });
+
+  // local impact pulses, clipped to the whole face (not to a chunk) so nothing reveals the grid
+  if (face.chunks.some((c) => c.pulse)) {
+    ctx.save();
+    ctx.beginPath();
+    for (const p of polys) { ctx.moveTo(p[0], p[1]); for (let k = 2; k < p.length; k += 2) ctx.lineTo(p[k], p[k + 1]); ctx.closePath(); }
+    ctx.clip();
+    for (const c of face.chunks) {
+      const p = c.pulse; if (!p) continue;
+      const k = p.t / F.pulseSecs, r = F.pulseRadius * (0.55 + 0.6 * k) * (0.7 + 0.3 * Math.min(1.6, p.k));
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      const col = PULSE[c.mat.id];
+      g.addColorStop(0, col + (0.65 * Math.min(1, p.k) * (1 - k)).toFixed(3) + ')'); g.addColorStop(1, col + '0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.283); ctx.fill();
+    }
+    ctx.restore();
   }
-  const tint = 1 + (hash(c.seed) - 0.5) * 2 * CFG.face.tintJitter;
-  const col = c.mat.face.map((v) => v * tint) as RGB;
-  const g = ctx.createLinearGradient(0, b.y0, 0, b.y1);
-  g.addColorStop(0, rgb(col, 1.18)); g.addColorStop(0.25, rgb(col, 1)); g.addColorStop(1, rgb(col, 0.62));
-  polyPath(c.poly);
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  drawTexture(c, b);
-  for (const m of c.marks) drawMark(m);
-  drawCracks(c);
-  if (c.reveal > 0) { ctx.fillStyle = `rgba(10,5,0,${(0.45 * c.reveal) / CFG.face.revealSecs})`; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
-  if (c.flash > 0) { ctx.fillStyle = `rgba(255,250,235,${(0.28 * c.flash) / CFG.face.flashSecs})`; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
-  ctx.restore();
-  // faint side seams (not the bottom: the face should blend into the ground) + lit top edge
-  const n = c.poly.length / 2, t0 = c.top.length - 1;
-  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.2)';
-  ctx.beginPath(); ctx.moveTo(c.poly[t0 * 2], c.poly[t0 * 2 + 1]);
-  for (let v = t0 + 1; v < t0 + 1 + (n - t0 - 1) / 2; v++) ctx.lineTo(c.poly[v * 2], c.poly[v * 2 + 1]);
-  ctx.moveTo(c.poly[0], c.poly[1]);
-  for (let v = n - 1; v >= n - (n - t0 - 1) / 2; v--) ctx.lineTo(c.poly[v * 2], c.poly[v * 2 + 1]);
-  ctx.stroke();
-  ctx.beginPath();
-  c.top.forEach((v, i) => (i ? ctx.lineTo(c.poly[v * 2], c.poly[v * 2 + 1]) : ctx.moveTo(c.poly[v * 2], c.poly[v * 2 + 1])));
-  ctx.strokeStyle = rgba(col, 1.45, 0.7); ctx.lineWidth = 1.4; ctx.stroke();
-  ctx.restore();
+
+  // one continuous lit lip along the top of the face, with a soft shadow just under it
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const lip = () => {
+    ctx.beginPath();
+    face.chunks.forEach((c, i) => c.top.forEach((v, j) => {
+      const x = polys[i][v * 2], y = polys[i][v * 2 + 1];
+      i === 0 && j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }));
+  };
+  ctx.save(); ctx.translate(0, 2.2); lip(); ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = 2.2; ctx.stroke(); ctx.restore();
+  lip(); ctx.strokeStyle = rgba(cur.face, 1.5, 0.75); ctx.lineWidth = 1.5; ctx.stroke();
 }
 
 // ---------- figures ----------
 type ToolKind = 'pick' | 'jackhammer';
 
 /** Miner in logical face units, feet at (x, 0). angle from swingAngle(). */
-function drawWorker(x: number, dir: number, angle: number, tool: ToolKind, shirt: string, scale = 1) {
+function drawWorker(x: number, dir: number, angle: number, tool: ToolKind, shirt: string, scale: number, player: boolean) {
   ctx.save();
   ctx.translate(x, 0); ctx.scale(dir * scale, scale);
   const lean = Math.max(0, angle) * 0.12 - 0.04;
   ctx.rotate(lean);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (player) {
+    // helmet lamp beam toward the work + dark rim so the player's miner reads first
+    const beam = ctx.createLinearGradient(6, -38, 30, 6);
+    beam.addColorStop(0, 'rgba(255,240,170,.32)'); beam.addColorStop(1, 'rgba(255,240,170,0)');
+    ctx.fillStyle = beam;
+    ctx.beginPath(); ctx.moveTo(7, -39); ctx.lineTo(40, 2); ctx.lineTo(12, 6); ctx.closePath(); ctx.fill();
+    ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 3;
+  }
   // legs
   ctx.strokeStyle = '#2b2219'; ctx.lineWidth = 4;
   ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(-5, 0); ctx.moveTo(0, -14); ctx.lineTo(6, 0); ctx.stroke();
@@ -157,8 +215,8 @@ function drawWorker(x: number, dir: number, angle: number, tool: ToolKind, shirt
   ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, -28); ctx.stroke();
   // head + helmet + lamp
   ctx.fillStyle = '#f0c79a'; ctx.beginPath(); ctx.arc(1, -34, 5.5, 0, 6.283); ctx.fill();
-  ctx.fillStyle = '#ffcf3a'; ctx.beginPath(); ctx.arc(1, -36, 6.5, Math.PI, 0); ctx.fill(); ctx.fillRect(-6, -37, 14, 2.5);
-  ctx.fillStyle = '#fff7c0'; ctx.fillRect(6, -39, 2.5, 2.5);
+  ctx.fillStyle = player ? '#ffd83a' : '#c9a443'; ctx.beginPath(); ctx.arc(1, -36, 6.5, Math.PI, 0); ctx.fill(); ctx.fillRect(-6, -37, 14, 2.5);
+  ctx.fillStyle = player ? '#ffffff' : '#bfb68a'; ctx.fillRect(6, -39.5, 3, 3);
   if (tool === 'pick') {
     ctx.save(); ctx.translate(0, -27); ctx.rotate(angle);
     ctx.strokeStyle = '#f0c79a'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12, 0); ctx.stroke();
@@ -206,27 +264,38 @@ function workerAngle(timer: number, since: number) {
   return timer < IMPACT_AT ? swingAngle(IMPACT_AT - timer) : swingAngle(IMPACT_AT + since);
 }
 
-const SHIRTS = ['#3d6e9c', '#9c4b3d', '#4d8a52', '#7a5a9c', '#9c8a3d'];
+const SHIRTS = ['#4a6a86', '#6f5a4a', '#55705a'];
+
+/** Owned diggers beyond the visible few: a quiet row of helmets on the shaft wall. */
+function drawReserve() {
+  const extra = S.crew.dig - workers.filter((w) => w.id === 'dig').length;
+  if (extra <= 0) return;
+  const n = Math.min(extra, CFG.reserveHelmetsMax);
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = '#c9a443'; ctx.beginPath(); ctx.arc(8 + i * 7, -62, 3, Math.PI, 0); ctx.fill();
+  }
+  ctx.font = `700 8px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = '#e8dcc0';
+  ctx.fillText(`+${extra} crew`, 8 + n * 7, -60);
+  ctx.restore();
+}
 
 function drawFaceAndCrew() {
   const o = faceOrigin(), s = faceScale();
-  if (o.y < -120 || o.y > view.H + 120) return;
+  if (o.y < -160 || o.y > view.H + 160) return;
   ctx.save();
   ctx.translate(o.x, o.y); ctx.scale(s, s);
-  for (const c of face.chunks) drawChunk(c, s);
+  drawFace(s);
   drawCarts();
   let di = 0;
   for (const w of workers) {
     const a = workerAngle(w.timer, w.since);
     if (w.id === 'exc') drawExcavator(w.x, w.dir, a);
-    else drawWorker(w.x, w.dir, a, 'pick', SHIRTS[di++ % SHIRTS.length], CFG.crewScale);
+    else drawWorker(w.x, w.dir, a, 'pick', SHIRTS[di++ % SHIRTS.length], CFG.crewScale, false);
   }
-  const extra = S.crew.dig - workers.filter((w) => w.id === 'dig').length;
-  if (extra > 0) {
-    ctx.font = `700 10px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.85)';
-    ctx.fillText(`+${extra} more diggers`, CFG.face.logicalW / 2, -52);
-  }
-  drawWorker(miner.x, miner.dir, minerSwingAngle(), S.tool >= 1 ? 'jackhammer' : 'pick', '#c0532f');
+  drawReserve();
+  drawWorker(miner.x, miner.dir, minerSwingAngle(), S.tool >= 1 ? 'jackhammer' : 'pick', '#d0532c', CFG.playerScale, true);
   ctx.restore();
 }
 
@@ -295,6 +364,16 @@ function drawWorld() {
     }
     ctx.fillStyle = 'rgba(0,0,0,.28)';
     ctx.fillRect(cx - sw / 2, sTop, 8, sBot - sTop); ctx.fillRect(cx + sw / 2 - 8, sTop, 8, sBot - sTop);
+    // depth: the shaft darkens upward, and the work light pools on the face so the action is the focus
+    const L = CFG.light;
+    const gd = ctx.createLinearGradient(0, sBot - H * L.fadeSpan, 0, sBot);
+    gd.addColorStop(0, `rgba(0,0,0,${L.shaftDark})`); gd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gd; ctx.fillRect(cx - sw / 2, sTop, sw, sBot - sTop);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const gl = ctx.createRadialGradient(cx, sBot - 6, 0, cx, sBot - 6, sw * L.radius);
+    gl.addColorStop(0, `rgba(255,196,120,${L.glow})`); gl.addColorStop(1, 'rgba(255,196,120,0)');
+    ctx.fillStyle = gl; ctx.fillRect(cx - sw / 2, sBot - sw * L.radius, sw, sw * L.radius);
+    ctx.restore();
     ctx.strokeStyle = 'rgba(210,180,120,.45)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(cx - sw / 2 + 16, sTop); ctx.lineTo(cx - sw / 2 + 16, sBot - 30); ctx.stroke();
     ctx.font = `600 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.55)';

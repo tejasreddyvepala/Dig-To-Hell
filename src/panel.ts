@@ -25,7 +25,7 @@ export function buildPanel() {
       S.crew[c.id]++;
       syncWorkers();
       saveState();
-      popup(view.W / 2, faceY() - 70, c.name + ' hired', '#7ee08a', 20, 1.4);
+      popup(view.W / 2, faceY() - 90, c.name + ' hired', '#7ee08a', 20, { life: 1.4 });
     };
   });
 }

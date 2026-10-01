@@ -142,6 +142,7 @@ export function playBreak(mat: MaterialId, vol = 1) {
     noise(white, 'bandpass', rndr(bp), 1.4, t, amp, 0.002, rnd(0.025, 0.06), out);
   }
   tone('sine', 90 * jitter(), 45, t0, A.gain * vol * 0.8, 0.003, 0.12, out);
+  tone('sine', A.thump * jitter(), A.thump * 0.6, t0, A.gain * vol * A.thumpGain, 0.004, A.thumpDecay, out); // weight
 }
 
 export function playCrit(mat: MaterialId) {
@@ -151,6 +152,7 @@ export function playCrit(mat: MaterialId) {
   tone('sine', A.low * j, A.low * 0.5, t, A.gain, 0.002, A.lowDecay, out);
   tone('square', rndr(A.crack) * j, 600, t, A.gain * 0.22, 0.001, A.crackDecay, out);
   noise(white, 'highpass', A.noiseHp * j, 0.7, t, A.gain * 0.65, 0.001, A.noiseSecs, out);
+  tone('triangle', 320 * j, 160, t, A.gain * 0.45, 0.001, 0.05, out); // hard rock transient on top
 }
 
 export function playDebris(vol = 1) {

@@ -75,18 +75,33 @@ function shatter(c: Chunk, mult: number) {
   if (Math.random() < D.sparkChance * mult) sparks(mid.x, mid.y, rndi(1, 4));
 }
 
+let crewCash = 0, crewCashT = 0, crewAt = { x: 0, y: 0 };
+
+/** Crew money is aggregated into one quiet popup every few seconds instead of a number per strike. */
+export function updateJuice(dt: number) {
+  crewCashT += dt;
+  if (crewCashT < CFG.crewPopupSecs) return;
+  crewCashT = 0;
+  if (crewCash <= 0) return;
+  const T = CFG.text.crew;
+  popup(crewAt.x, crewAt.y - 34, '+' + money(crewCash), '#d8e6c8', T.size, { life: T.life, alpha: T.alpha, rise: 0.5 });
+  crewCash = 0;
+}
+
 export function present(r: HitResult) {
   const p = toScreen(r.x, r.y);
   const mat = r.mat;
   const player = !r.crew;
+  const k = player ? 1 : CFG.crewFxScale; // crew impacts are ~60% of the player's
   const vol = player ? 1 : AUDIO.crewVolume;
   const T = CFG.text;
 
-  // impact: local chips, crack change happened in the face state already
-  const chipN = Math.round(rndri(mat.hitChips) * (player ? 1 : 0.5) * (r.crit ? CFG.critFx.debrisMult : 1));
-  chips(mat, p.x, p.y, chipN, mat.id === 'stone' ? 260 : 170);
+  // LEVEL 1 — every hit: local chips + a puff when the crack advances (the crack itself lives in face state)
+  const chipN = Math.max(player ? 1 : 0, Math.round(rndri(mat.hitChips) * k * (r.crit ? CFG.critFx.debrisMult : 1)));
+  chips(mat, p.x, p.y, chipN, (mat.id === 'stone' ? 260 : 170) * (player ? 1 : 0.8));
   if (r.after > r.before) dust(mat, p.x, p.y, player ? 2 : 1, 4);
 
+  // LEVEL 3 — crit
   if (r.crit) {
     hitStop(CFG.hitStopMs);
     FX.stars.push({ x: p.x, y: p.y, t: 0, size: CFG.critFx.starSize * faceScale() });
@@ -98,23 +113,25 @@ export function present(r: HitResult) {
     playHit(mat.id, vol);
   }
 
+  // LEVEL 2 — break
   if (r.broke) {
-    shatter(r.chunk, (player ? 1 : 0.6) * (r.crit ? CFG.critFx.debrisMult : 1));
+    shatter(r.chunk, k * (r.crit ? CFG.critFx.debrisMult : 1));
     playBreak(mat.id, vol);
     playDebris(vol);
-    if (player) impulse(Math.max(CFG.impulse.break, r.crit ? CFG.impulse.crit : 0), rnd(-0.2, 0.2), 1);
-    else impulse(CFG.impulse.hit);
+    if (player && !r.crit) impulse(CFG.impulse.break, rnd(-0.2, 0.2), 1);
   } else if (player && !r.crit) {
     impulse(CFG.impulse.hit, rnd(-0.2, 0.2), 1);
   }
 
-  if (player) {
-    const px = p.x + rnd(-14, 14);
-    if (r.crit) popup(px, p.y - 30, '+' + money(r.cash) + '!', '#ffd84a', T.critSize, T.life * 1.4, 0.5);
-    else if (r.broke) popup(px, p.y - 24, '+' + money(r.cash), '#fff1c9', T.breakSize, T.life, 0.25);
-    else popup(px, p.y - 20, '+' + money(r.cash), '#f1ede4', T.hitSize, T.life * 0.8);
-    if (r.broke && r.meters > 0) popup(p.x + rnd(-10, 10), p.y + 22, '▼ ' + r.meters.toFixed(2) + ' m', 'rgba(200,220,255,.9)', T.hitSize * 0.8, T.life);
+  if (!player) {
+    crewCash += r.cash; crewAt = p;
+    return;
   }
+  const sub = r.broke && r.meters > 0 ? '▼ ' + r.meters.toFixed(2) + ' m' : undefined;
+  const px = p.x + rnd(-8, 8);
+  if (r.crit) popup(px, p.y - 34, '+' + money(r.cash) + '!', '#ffd84a', T.crit.size, { life: T.crit.life, pop: 0.6, sub });
+  else if (r.broke) popup(px, p.y - 28, '+' + money(r.cash), '#fff1c9', T.brk.size, { life: T.brk.life, pop: 0.2, sub });
+  else popup(px, p.y - 20, '+' + money(r.cash), '#f1ede4', T.hit.size, { life: T.hit.life, alpha: T.hit.alpha, rise: 0.6 });
 }
 
 /** Crit without a break still throws a heavy spray from the impact point. */

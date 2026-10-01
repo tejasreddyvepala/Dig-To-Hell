@@ -29,11 +29,12 @@ export function minerClick(x: number, y: number) {
   const hx = clampHitX(idx, x);
   const hy = clamp(y, CFG.face.hitYMin, CFG.face.hitYMax);
   // stand beside the target, keeping the current facing when there is room
+  const reach = M.reach * CFG.playerScale; // pick tip lands exactly on the hit point
   let dir = miner.dir;
-  if (hx > miner.x + M.reach * 0.5) dir = 1;
-  else if (hx < miner.x - M.reach * 0.5) dir = -1;
-  let stand = hx - dir * M.reach;
-  if (stand < 12 || stand > W - 12) { dir = dir === 1 ? -1 : 1; stand = hx - dir * M.reach; }
+  if (hx > miner.x + reach * 0.5) dir = 1;
+  else if (hx < miner.x - reach * 0.5) dir = -1;
+  let stand = hx - dir * reach;
+  if (stand < 12 || stand > W - 12) { dir = dir === 1 ? -1 : 1; stand = hx - dir * reach; }
   miner.dir = dir;
   miner.standX = clamp(stand, 12, W - 12);
   const last = miner.pending[miner.pending.length - 1];
