@@ -1,14 +1,19 @@
 // Draws the world, the destructible dig face, miner/crew, FX and HUD overlays. Reads state; never mutates sim.
-import { CFG, FINDS, MATERIALS, MAX_DEPTH, RESOURCES, TOOLS, type Find, type Tool } from './config';
+import { CFG, FINDS, MATERIALS, MAX_DEPTH, TOOLS, type Find } from './config';
 import { S } from './state';
-import { cartCapacity, materialAt, storageCap, tierOf } from './economy';
+import { cartCapacity, mixPick, tierOf } from './economy';
+import { materialAt, rubbleRGB } from './geo';
+import { drawSurface, flushGlows } from './yard';
+import { bubble, drawPile, pileHeight, pileLabel } from './draw';
 import { cartBlocked, cartDepth, cartFill } from './cart';
-import { SV } from './juice';
+import { CREW_LOOKS, PLAYER_LOOK, drawExcavator, drawExcavatorLight, drawLampBeam, drawMiner, type Look } from './characters';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { workers } from './sim';
 import { miner, minerSwingAngle, swingAngle } from './miner';
 import { FX, drawPopups, drawWorldFx } from './fx';
-import { cartScreen, ctx, faceOrigin, faceScale, faceY, shaftW, surfaceLayout, toScreen, view, viewTop, yOf } from './view';
+import { applyZoom, cartScreen, ctx, faceOrigin, faceScale, faceY, shaftCX, shaftW, toScreen, view, viewTop, yOf } from './view';
+import { drawGeology } from './geo';
+import { drawGround, drawLandscape, drawSurfaceGrade } from './landscape';
 import { fmt, hash, rgb, rgba } from './util';
 
 const FONT_DISPLAY = "'Bungee',Impact,sans-serif";
@@ -46,11 +51,10 @@ function strokeCrack(k: Crack) {
 }
 
 function drawCracks(c: Chunk) {
-  const red = S.depth >= CFG.face.redFleckDepth;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const k of c.cracks) {
     if (k.style === 'deep') {
-      ctx.strokeStyle = red ? 'rgba(190,30,20,.28)' : 'rgba(90,110,210,.22)';
+      ctx.strokeStyle = 'rgba(90,110,210,.22)';
       ctx.lineWidth = k.w * 2; strokeCrack(k);
       ctx.strokeStyle = 'rgba(2,2,8,.95)'; ctx.lineWidth = k.w; strokeCrack(k);
     } else if (k.style === 'thick') {
@@ -150,6 +154,8 @@ function drawFace(s: number) {
     ctx.clip();
     drawTexture(c, b);
     for (const m of c.marks) drawMark(m);
+    // damage cracks belong to the working face only: they fade out before the face blends into untouched ground
+    ctx.beginPath(); ctx.rect(b.x0 - 4, b.y0 - 8, b.x1 - b.x0 + 8, F.height * F.crackDepthFrac + 8); ctx.clip();
     drawCracks(c);
     if (c.reveal > 0) {
       // freshly exposed rock: a soft dark bowl around the crater, never a rectangle
@@ -191,71 +197,12 @@ function drawFace(s: number) {
   lip(); ctx.strokeStyle = rgba(cur.face, 1.5, 0.75); ctx.lineWidth = 1.5; ctx.stroke();
 }
 
-// ---------- figures ----------
-
-/** Miner in logical face units, feet at (x, 0). angle from swingAngle(). */
-function drawWorker(x: number, dir: number, angle: number, tool: Tool, shirt: string, scale: number, player: boolean, lamp = true) {
-  ctx.save();
-  ctx.translate(x, 0); ctx.scale(dir * scale, scale);
-  const lean = Math.max(0, angle) * 0.12 - 0.04;
-  ctx.rotate(lean);
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (player) {
-    // helmet lamp beam toward the work + dark rim so the player's miner reads first
-    const beam = ctx.createLinearGradient(6, -38, 30, 6);
-    beam.addColorStop(0, 'rgba(255,240,170,.32)'); beam.addColorStop(1, 'rgba(255,240,170,0)');
-    ctx.fillStyle = beam;
-    ctx.beginPath(); ctx.moveTo(7, -39); ctx.lineTo(40, 2); ctx.lineTo(12, 6); ctx.closePath(); ctx.fill();
-    ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 3;
-  }
-  // legs
-  ctx.strokeStyle = '#2b2219'; ctx.lineWidth = 4;
-  ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(-5, 0); ctx.moveTo(0, -14); ctx.lineTo(6, 0); ctx.stroke();
-  // torso
-  ctx.strokeStyle = shirt; ctx.lineWidth = 6;
-  ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, -28); ctx.stroke();
-  // head + helmet + lamp
-  ctx.fillStyle = '#f0c79a'; ctx.beginPath(); ctx.arc(1, -34, 5.5, 0, 6.283); ctx.fill();
-  ctx.fillStyle = player ? '#ffd83a' : '#c9a443'; ctx.beginPath(); ctx.arc(1, -36, 6.5, Math.PI, 0); ctx.fill(); ctx.fillRect(-6, -37, 14, 2.5);
-  ctx.fillStyle = !lamp ? '#6b6550' : player ? '#ffffff' : '#e8dfa8'; ctx.fillRect(6, -39.5, 3, 3);
-  if (tool.kind === 'pick') {
-    const hs = tool.headScale;
-    ctx.save(); ctx.translate(0, -27); ctx.rotate(angle);
-    ctx.strokeStyle = '#f0c79a'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12, 0); ctx.stroke();
-    ctx.strokeStyle = tool.handle; ctx.lineWidth = 2.2 + hs * 0.5; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(35, 0); ctx.stroke();
-    ctx.strokeStyle = tool.head; ctx.lineWidth = 2.6 * hs;
-    ctx.beginPath(); ctx.moveTo(33 - 2 * hs, -9 * hs); ctx.quadraticCurveTo(33 + 6 * hs, 0, 33 - hs, 10 * hs); ctx.stroke();
-    if (hs > 1.3) { ctx.fillStyle = tool.head; ctx.fillRect(30, -4, 7, 8); } // heavy head block
-    ctx.restore();
-  } else {
-    const plunge = Math.max(0, Math.min(1, (angle + 0.5) / 1.55));
-    const jx = 17, jy = -6 + plunge * 9 + (plunge > 0.9 ? Math.sin(view.t * 120) * 0.8 : 0);
-    ctx.strokeStyle = '#f0c79a'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(jx - 2, jy - 20); ctx.stroke();
-    ctx.fillStyle = '#ffcf3a'; ctx.fillRect(jx - 5, jy - 24, 10, 16);
-    ctx.fillStyle = '#3b3f45'; ctx.fillRect(jx - 7, jy - 26, 14, 3);
-    ctx.fillStyle = '#aab3bd'; ctx.fillRect(jx - 1.5, jy - 8, 3, 12);
-  }
-  ctx.restore();
-}
-
-function drawExcavator(x: number, dir: number, angle: number) {
-  ctx.save(); ctx.translate(x, 0); ctx.scale(dir, 1);
-  ctx.fillStyle = '#2c2f33'; ctx.fillRect(-26, -10, 46, 10);
-  ctx.fillStyle = '#f2b01e'; ctx.fillRect(-22, -32, 34, 22);
-  ctx.fillStyle = '#8fc6e8'; ctx.fillRect(-4, -29, 12, 10);
-  const k = Math.max(0, Math.min(1, (angle + 0.5) / 1.55));
-  const bx = 34, by = -34 + k * 36;
-  ctx.strokeStyle = '#f2b01e'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(8, -26); ctx.lineTo(24, -44 + k * 10); ctx.lineTo(bx, by); ctx.stroke();
-  ctx.fillStyle = '#7d848c'; ctx.beginPath(); ctx.moveTo(bx - 6, by - 4); ctx.lineTo(bx + 8, by - 4); ctx.lineTo(bx + 4, by + 8); ctx.lineTo(bx - 6, by + 6); ctx.closePath(); ctx.fill();
-  ctx.restore();
-}
-
+// ---------- figures (art lives in characters.ts) ----------
 function workerAngle(timer: number, since: number) {
   return timer < IMPACT_AT ? swingAngle(IMPACT_AT - timer) : swingAngle(IMPACT_AT + since);
 }
-
-const SHIRTS = ['#4a6a86', '#6f5a4a', '#55705a'];
+/** 0..1 swing progress for machines (0 raised, 1 at impact), derived from the same timing as the miners. */
+const machineK = (timer: number, since: number) => Math.max(0, Math.min(1, (workerAngle(timer, since) + 0.5) / 1.55));
 
 /** Owned diggers beyond the visible few: a quiet row of helmets on the shaft wall. */
 function drawReserve() {
@@ -263,57 +210,64 @@ function drawReserve() {
   if (extra <= 0) return;
   const n = Math.min(extra, CFG.reserveHelmetsMax);
   ctx.save();
-  ctx.globalAlpha = 0.6;
+  ctx.globalAlpha = 0.7;
   for (let i = 0; i < n; i++) {
-    ctx.fillStyle = '#c9a443'; ctx.beginPath(); ctx.arc(8 + i * 7, -62, 3, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#d6b24a'; ctx.beginPath(); ctx.arc(10 + i * 8, -70, 3.4, Math.PI, 0); ctx.fill();
   }
-  ctx.font = `700 8px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = '#e8dcc0';
-  ctx.fillText(`+${extra} crew`, 8 + n * 7, -60);
+  ctx.font = `700 9px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = '#e8dcc0';
+  ctx.fillText(`+${extra} crew`, 10 + n * 8, -68);
   ctx.restore();
 }
-
-const pileHeight = (qty: number, max: number, unit: number) => (3 + 24 * Math.min(1.3, qty / max)) * unit;
 
 function drawFaceAndCrew() {
   const o = faceOrigin(), s = faceScale();
-  if (o.y < -160 || o.y > view.H + 160) return;
+  if (o.y < view.vy0 - 200 || o.y > view.vy1 + 200) return;
   ctx.save();
   ctx.translate(o.x, o.y); ctx.scale(s, s);
   drawFace(s);
-  // rubble waiting at the dig site, with its count right on the pile
-  drawPile(C.pileX, 0, S.rubble.qty, CFG.rubble.pileVisualMax, 1, 17);
-  if (S.rubble.qty >= 1) pileLabel(C.pileX, -pileHeight(S.rubble.qty, CFG.rubble.pileVisualMax, 1) - 5, Math.floor(S.rubble.qty), 9, S.rubble.qty > CFG.rubble.pileVisualMax);
+  // rubble waiting at the dig site, coloured by what it is, with its count right on the pile
+  drawPile(C.pileX, 0, S.rubble, CFG.rubble.pileVisualMax, 1, 17);
+  if (S.rubble.qty >= 1) pileLabel(C.pileX, -pileHeight(S.rubble.qty, CFG.rubble.pileVisualMax, 1) - 5, Math.floor(S.rubble.qty), 10, S.rubble.qty > CFG.rubble.pileVisualMax);
   let di = 0;
-  const ropeTop = -(o.y + 30) / s;
+  const ropeTop = -(o.y - view.vy0 + 30) / s;
   for (const w of workers) {
-    if (w.arrive > 0) { drawArrival(w.x, w.dir, 1 - w.arrive / CFG.crewArriveSecs, ropeTop, SHIRTS[di++ % SHIRTS.length]); continue; }
-    const a = workerAngle(w.timer, w.since);
-    if (w.id === 'exc') drawExcavator(w.x, w.dir, a);
-    else drawWorker(w.x, w.dir, a, TOOLS[0], SHIRTS[di++ % SHIRTS.length], CFG.crewScale, false);
+    if (w.arrive > 0) { drawArrival(w.x, w.dir, 1 - w.arrive / CFG.crewArriveSecs, ropeTop, CREW_LOOKS[di++ % CREW_LOOKS.length]); continue; }
+    if (w.id === 'exc') drawExcavator(w.x, w.dir, machineK(w.timer, w.since), CFG.excavatorReach, w.since < 0.4 ? Math.sin(w.since * 25) * (0.4 - w.since) * 2.5 : 0);
+    else drawMiner(w.x, w.dir, workerAngle(w.timer, w.since), TOOLS[0], CREW_LOOKS[di++ % CREW_LOOKS.length], CFG.crewScale, false);
   }
   drawReserve();
-  drawWorker(miner.x, miner.dir, minerSwingAngle(), TOOLS[S.tool], '#d0532c', CFG.playerScale, true);
+  drawMiner(miner.x, miner.dir, minerSwingAngle(), TOOLS[S.tool], PLAYER_LOOK, CFG.playerScale, true);
+  // underground light: the deeper, the darker — helmet lamps carve out the work area
+  const dark = Math.min(CFG.light.maxDark, S.depth / CFG.light.darkAtM * CFG.light.maxDark);
+  if (dark > 0.01) {
+    // only inside the shaft (never over the sky), fading out through the face band into the ground
+    const top = -(o.y - Math.max(view.vy0, yOf(0))) / s, bot = CFG.face.height * 0.75;
+    const g = ctx.createLinearGradient(0, bot - 18, 0, bot);
+    g.addColorStop(0, `rgba(4,4,10,${dark})`); g.addColorStop(1, 'rgba(4,4,10,0)');
+    ctx.fillStyle = `rgba(4,4,10,${dark})`; ctx.fillRect(0, top, CFG.face.logicalW, bot - 18 - top);
+    ctx.fillStyle = g; ctx.fillRect(0, bot - 18, CFG.face.logicalW, 18);
+  }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const boost = 1 + dark * 1.4;
+  for (const w of workers) {
+    if (w.arrive > 0.15 * CFG.crewArriveSecs) continue;
+    if (w.id === 'exc') drawExcavatorLight(w.x, w.dir, 0.12 * boost);
+    else drawLampBeam(w.x, w.dir, CFG.crewScale, 0.1 * boost, CFG.miner.reach);
+  }
+  drawLampBeam(miner.x, miner.dir, CFG.playerScale, 0.2 * boost, CFG.miner.reach);
+  ctx.restore();
   ctx.restore();
 }
 
-/** Small count label sitting on a rubble pile. */
-function pileLabel(x: number, y: number, n: number, size: number, warn: boolean) {
-  ctx.font = `700 ${size}px ${FONT_UI}`; ctx.textAlign = 'center';
-  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(20,12,6,.7)'; ctx.lineJoin = 'round';
-  ctx.strokeText(String(n), x, y);
-  ctx.fillStyle = warn ? '#ffb38a' : '#f3e6cf'; ctx.fillText(String(n), x, y);
-}
-
 /** Rope drops from above, the digger slides down it, lands, the lamp clicks on (then normal digging resumes). */
-function drawArrival(x: number, dir: number, p: number, ropeTop: number, shirt: string) {
+function drawArrival(x: number, dir: number, p: number, ropeTop: number, look: Look) {
   const ropeIn = Math.min(1, p / 0.25);
   ctx.strokeStyle = 'rgba(210,180,120,.85)'; ctx.lineWidth = 1.2;
   ctx.beginPath(); ctx.moveTo(x + 4, ropeTop); ctx.lineTo(x + 4, ropeTop + (0 - ropeTop) * ropeIn); ctx.stroke();
   if (p < 0.25) return;
   const slide = Math.min(1, (p - 0.25) / 0.5), ease = slide * slide;
-  const y = ropeTop * (1 - ease);
-  ctx.save(); ctx.translate(0, y);
-  drawWorker(x, dir, -1.6, TOOLS[0], shirt, CFG.crewScale, false, p > 0.85);
+  ctx.save(); ctx.translate(0, ropeTop * (1 - ease));
+  drawMiner(x, dir, -1.6, TOOLS[0], look, CFG.crewScale, false, p > 0.85);
   ctx.restore();
 }
 
@@ -340,62 +294,78 @@ const RAIL_STYLES = [
   { rail: '#c4ccd4', w: 3.6, tie: '#3b3f45', tieW: 3.2, plate: '', bracket: '#e0b322' }, // heavy industrial
 ];
 
-/** Rails along the left wall from the headframe to the dig face; ties are anchored in world meters. */
+/** Rails along the transport wall from the headframe to the dig face; ties are anchored in world metres.
+ *  Major tiers change the material; EVERY Rail Quality level visibly changes something (thickness, sleeper
+ *  spacing, bolts, brackets, cross bracing, side braces, lamps, hazard paint, guard rails). */
+export const railCableW = () => 1.1 + 0.12 * S.upg.rail;
 function drawRails(yTop: number, yBot: number) {
-  const st = RAIL_STYLES[tierOf(S.upg.rail, C.railTiers)];
+  const L = S.upg.rail, st = RAIL_STYLES[tierOf(L, C.railTiers)];
   const s = faceScale(), x = toScreen(C.railX, 0).x, half = 6 * s;
-  const top = Math.max(-20, yTop), bot = Math.min(view.H + 20, yBot);
+  const top = Math.max(view.vy0 - 20, yTop), bot = Math.min(view.vy1 + 20, yBot);
   if (bot <= top) return;
-  // ties every metre of world depth (stable while scrolling)
-  const m0 = Math.floor(viewTop()), m1 = Math.ceil(viewTop() + view.H / CFG.ppm);
+  const railW = st.w + 0.18 * L, tieStep = Math.max(0.45, 1.15 - 0.06 * L); // metres between sleepers
+  const mTop = viewTop() + view.vy0 / CFG.ppm, mBot = viewTop() + view.vy1 / CFG.ppm;
   ctx.lineCap = 'butt';
-  for (let m = m0; m <= m1; m++) {
-    const y = yOf(m) + (st === RAIL_STYLES[0] ? (hash(m * 1.7) - 0.5) * 3 : 0);
-    if (y < top || y > bot) continue;
-    ctx.strokeStyle = st.tie; ctx.lineWidth = st.tieW;
-    ctx.beginPath(); ctx.moveTo(x - half - 3, y); ctx.lineTo(x + half + 3, y); ctx.stroke();
-    if (st.plate && m % 3 === 0) { ctx.fillStyle = st.plate; ctx.fillRect(x - half - 2, y - 2, 4, 4); ctx.fillRect(x + half - 2, y - 2, 4, 4); }
-    if (st.bracket && m % 4 === 0) { ctx.fillStyle = st.bracket; ctx.fillRect(x - half - 6, y - 3, 4, 6); }
+  // side braces (Lv 5+): timber/steel uprights tying the track to the wall
+  if (L >= 5) {
+    ctx.fillStyle = L >= 7 ? '#59616a' : '#4a3420';
+    ctx.fillRect(x + half + 4 * s, top, 2.2 + 0.1 * L, bot - top);
   }
-  ctx.strokeStyle = st.rail; ctx.lineWidth = st.w;
+  for (let i = Math.floor(mTop / tieStep); i * tieStep <= mBot; i++) {
+    const m = i * tieStep, y = yOf(m) + (st === RAIL_STYLES[0] ? (hash(i * 1.7) - 0.5) * 3 : 0);
+    if (y < top || y > bot) continue;
+    ctx.strokeStyle = st.tie; ctx.lineWidth = st.tieW + 0.05 * L;
+    ctx.beginPath(); ctx.moveTo(x - half - 3, y); ctx.lineTo(x + half + 3, y); ctx.stroke();
+    if (L >= 1) { // bolts on every sleeper
+      ctx.fillStyle = L >= 4 ? '#d6dde4' : '#b4bcc4';
+      ctx.fillRect(x - half - 2, y - 1.5, 3, 3); ctx.fillRect(x + half - 1, y - 1.5, 3, 3);
+    }
+    if (st.plate && i % 3 === 0) { ctx.fillStyle = st.plate; ctx.fillRect(x - half - 2, y - 2, 4, 4); ctx.fillRect(x + half - 2, y - 2, 4, 4); }
+  }
+  // per-metre structure: brackets (Lv 3+), cross bracing (Lv 4+), hazard paint (Lv 9+)
+  for (let m = Math.max(0, Math.floor(mTop)); m <= mBot; m++) {
+    const y = yOf(m);
+    if (y < top || y > bot) continue;
+    if ((L >= 3 || st.bracket) && m % 4 === 0) { ctx.fillStyle = st.bracket || '#7d858f'; ctx.fillRect(x + half + 2, y - 3, 5 * s * 0.6, 6); }
+    if (L >= 4 && m % 3 === 0) {
+      ctx.strokeStyle = 'rgba(160,170,180,.45)'; ctx.lineWidth = 1;
+      const y2 = yOf(m + 3);
+      ctx.beginPath(); ctx.moveTo(x - half, y); ctx.lineTo(x + half, y2); ctx.moveTo(x + half, y); ctx.lineTo(x - half, y2); ctx.stroke();
+    }
+    if (L >= 9 && m % 2 === 0) { ctx.fillStyle = m % 4 ? '#1d1d1d' : '#e0b322'; ctx.fillRect(x - half - railW / 2, y, railW, 6); }
+  }
+  ctx.strokeStyle = shadeHex(st.rail, 0.9 + Math.min(0.35, 0.03 * L)); ctx.lineWidth = railW;
   ctx.beginPath(); ctx.moveTo(x - half, top); ctx.lineTo(x - half, bot); ctx.moveTo(x + half, top); ctx.lineTo(x + half, bot); ctx.stroke();
-  if (st.w > 2.3) { // highlight edge on metal rails
+  if (railW > 2.3) { // highlight edge on metal rails
     ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 0.8;
     ctx.beginPath(); ctx.moveTo(x - half + 1, top); ctx.lineTo(x - half + 1, bot); ctx.moveTo(x + half + 1, top); ctx.lineTo(x + half + 1, bot); ctx.stroke();
   }
+  if (L >= 12) { // guard rail on the shaft side
+    ctx.strokeStyle = '#e0b322'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - half - 9 * s * 0.6, top); ctx.lineTo(x - half - 9 * s * 0.6, bot); ctx.stroke();
+  }
+  // shaft lamps (Lv 6+): warm lights on the wall, closer together every level
+  if (L >= 6) {
+    const every = Math.max(3, 12 - (L - 6));
+    ctx.save();
+    for (let m = Math.ceil(Math.max(0, mTop) / every) * every; m <= mBot; m += every) {
+      const y = yOf(m);
+      if (y < top || y > bot) continue;
+      ctx.fillStyle = '#3b3f45'; ctx.fillRect(x + half + 6, y - 2, 6, 4);
+      ctx.fillStyle = '#ffe2a0'; ctx.fillRect(x + half + 9, y - 1.5, 3, 3);
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x + half + 10, y, 0, x + half + 10, y, 46);
+      g.addColorStop(0, 'rgba(255,210,140,.22)'); g.addColorStop(1, 'rgba(255,210,140,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + half + 10, y, 46, 0, 6.283); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.restore();
+  }
 }
 
-/** A procedural rubble mound in face-logical units (or screen units with scale 1). Deterministic per rock index. */
-function drawPile(cx: number, baseY: number, qty: number, max: number, unit: number, seed: number) {
-  if (qty < 0.05) return;
-  const f = Math.min(1.5, qty / max);
-  const w = (10 + 46 * Math.min(f, 1.25)) * unit, h = (3 + 24 * Math.min(f, 1.3)) * unit;
-  const col = RESOURCES.rubble.color;
-  // mound body
-  ctx.fillStyle = rgb(col, 0.62);
-  ctx.beginPath(); ctx.moveTo(cx - w / 2, baseY);
-  for (let i = 0; i <= 10; i++) {
-    const k = i / 10, bump = (hash(seed + i * 3.3) - 0.5) * 0.18;
-    ctx.lineTo(cx - w / 2 + w * k, baseY - h * (Math.sin(Math.PI * k) * (0.92 + bump)));
-  }
-  ctx.closePath(); ctx.fill();
-  // rocks on the surface of the mound
-  const n = Math.min(46, Math.max(3, Math.round(f * 34)));
-  for (let i = 0; i < n; i++) {
-    const k = hash(seed + i * 7.1), lift = hash(seed + i * 2.3);
-    const px = cx - w / 2 + w * (0.08 + 0.84 * k);
-    const py = baseY - h * Math.sin(Math.PI * (0.08 + 0.84 * k)) * (0.35 + 0.6 * lift);
-    const r = (1.6 + hash(seed + i * 5.9) * 2.6) * unit;
-    ctx.fillStyle = rgb(col, 0.75 + hash(seed + i * 9.7) * 0.55);
-    ctx.beginPath(); ctx.ellipse(px, py, r * 1.2, r, hash(seed + i) * 3, 0, 6.283); ctx.fill();
-  }
-  if (f > 1) { // overflowing: rocks spill out to the sides
-    for (let i = 0; i < Math.round((f - 1) * 20); i++) {
-      const side = i % 2 ? 1 : -1, px = cx + side * (w / 2 + hash(seed + i * 4.4) * 10 * unit);
-      ctx.fillStyle = rgb(col, 0.8 + hash(seed + i) * 0.4);
-      ctx.beginPath(); ctx.arc(px, baseY - 1.5 * unit, (1.4 + hash(seed + i * 3.1) * 1.6) * unit, 0, 6.283); ctx.fill();
-    }
-  }
+function shadeHex(c: string, k: number) {
+  const n = parseInt(c.slice(1), 16);
+  return `rgb(${Math.min(255, Math.round(((n >> 16) & 255) * k))},${Math.min(255, Math.round(((n >> 8) & 255) * k))},${Math.min(255, Math.round((n & 255) * k))})`;
 }
 
 const CART_BODIES = [
@@ -414,12 +384,12 @@ function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, 
   ctx.translate(w / 2, -r); ctx.rotate(tip); ctx.translate(-w / 2, r); // tips over its right wheel, toward the stockpile
   // load: rocks heap up over the rim as it fills
   if (fill > 0.001) {
-    const col = RESOURCES.rubble.color, n = Math.max(2, Math.round(fill * 14));
+    const n = Math.max(2, Math.round(fill * 14));
     const mound = Math.max(0, fill - 0.35) * h * 0.75;
     for (let i = 0; i < n; i++) {
       const k = hash(31 + i * 7.3), px = -w / 2 + 3 * s + (w - 6 * s) * k;
       const py = -r - h + 3 * s + (1 - fill) * h * 0.55 - mound * Math.sin(Math.PI * k) * (0.6 + 0.4 * hash(i * 3.1));
-      ctx.fillStyle = rgb(col, 0.75 + hash(i * 5.3) * 0.5);
+      ctx.fillStyle = rgb(rubbleRGB(mixPick(S.cart.load, hash(i * 2.9))), 0.8 + hash(i * 5.3) * 0.45);
       ctx.beginPath(); ctx.ellipse(px, py, (2.2 + hash(i) * 1.6) * s, (1.8 + hash(i * 2) * 1.2) * s, 0, 0, 6.283); ctx.fill();
     }
   }
@@ -452,9 +422,9 @@ function drawCart() {
   }
   const roll = cartDepth() * 1.6;
   // cable from the headframe pulley to the cart
-  const pulleyY = yOf(-C.surfaceLiftM - 3.2);
-  ctx.strokeStyle = 'rgba(40,36,30,.8)'; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.moveTo(c.x, Math.max(-10, pulleyY)); ctx.lineTo(c.x, c.y - 22 * s + bump); ctx.stroke();
+  const pulleyY = yOf(-C.headframeM);
+  ctx.strokeStyle = 'rgba(40,36,30,.8)'; ctx.lineWidth = railCableW();
+  ctx.beginPath(); ctx.moveTo(c.x, Math.max(view.vy0 - 10, pulleyY)); ctx.lineTo(c.x, c.y - 22 * s + bump); ctx.stroke();
   drawCartAt(c.x, c.y + bump, s, cartFill(), tip, roll);
   const b = CART_BODIES[tierOf(S.upg.cartCap, C.bodyTiers)];
   view.cartRect = { x: c.x - (b.w / 2 + 6) * s, y: c.y - (b.h + b.wheel * 2 + 12) * s, w: (b.w + 12) * s, h: (b.h + b.wheel * 2 + 16) * s };
@@ -468,192 +438,25 @@ function drawCart() {
   if (cartBlocked()) bubble(c.x - 30, c.y - (b.h + b.wheel * 2 + 14) * s, 'STORAGE FULL', '#ff9a7a');
 }
 
-/** Speech/status bubble with a pointer, centred at (x, y). */
-function bubble(x: number, y: number, text: string, col = '#2a2420', pulse = false) {
-  ctx.font = `700 12px ${FONT_UI}`;
-  const w = ctx.measureText(text).width + 16, h = 22;
-  const a = pulse ? 0.85 + 0.15 * Math.sin(view.t * 5) : 1;
-  ctx.globalAlpha = a;
-  ctx.fillStyle = col === '#2a2420' ? '#fffaf0' : 'rgba(40,16,10,.92)';
-  ctx.beginPath(); ctx.roundRect(x - w / 2, y - h, w, h, 6); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 6); ctx.fill();
-  ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.fillText(text, x, y - 7);
-  ctx.globalAlpha = 1;
-}
-
-/** A rough stick figure that is clearly not a miner: flat cap, overalls. */
-function drawCivilian(x: number, y: number, u: number, cap: string, body: string, arm: number) {
-  ctx.save(); ctx.translate(x, y); ctx.scale(u, u); ctx.lineCap = 'round';
-  ctx.strokeStyle = '#2b2219'; ctx.lineWidth = 3.4;
-  ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-4, 0); ctx.moveTo(0, -12); ctx.lineTo(4, 0); ctx.stroke();
-  ctx.strokeStyle = body; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -25); ctx.stroke();
-  ctx.strokeStyle = '#f0c79a'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(0, -23); ctx.lineTo(-8 + arm * 4, -16 - arm * 6); ctx.stroke();
-  ctx.fillStyle = '#f0c79a'; ctx.beginPath(); ctx.arc(0, -30, 5, 0, 6.283); ctx.fill();
-  ctx.fillStyle = cap; ctx.fillRect(-6, -36, 12, 3); ctx.fillRect(-1, -35, 9, 2);
-  ctx.restore();
-}
-
-/** Surface: headframe over the right-hand rail, the stockpile beside it, then the buyer or the Scrap Stall. */
-function drawSurface(gy: number) {
-  if (gy < -80 || gy > view.H + 260) return;
-  const s = faceScale(), x = toScreen(C.railX, 0).x, topY = yOf(-C.surfaceLiftM - 3.2);
-  const L = surfaceLayout(), u = Math.max(1, s * 0.85);
-  const SFC = CFG.surface;
-  // deck bridging the shaft opening when the layout has to overlap it (narrow screens)
-  const deckFrom = L.stockX - 44 * u;
-  if (deckFrom < L.right) {
-    ctx.fillStyle = '#6b4a2c'; ctx.fillRect(deckFrom, gy - 4, L.right - deckFrom, 7);
-    ctx.fillStyle = 'rgba(0,0,0,.25)';
-    for (let px = deckFrom; px < L.right; px += 10) ctx.fillRect(px, gy - 4, 1, 7);
-  }
-  // headframe: two timber legs, crossbeam, pulley
-  ctx.strokeStyle = '#5b3d22'; ctx.lineWidth = 3.2 * s / 1.5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(x - 18 * s, gy - 2); ctx.lineTo(x - 4 * s, topY); ctx.moveTo(x + 16 * s, gy - 2); ctx.lineTo(x + 4 * s, topY);
-  ctx.moveTo(x - 14 * s, (gy + topY) / 2); ctx.lineTo(x + 12 * s, (gy + topY) / 2); ctx.stroke();
-  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.arc(x, topY, 5 * s, 0, 6.283); ctx.fill();
-  ctx.fillStyle = '#9aa3ad'; ctx.beginPath(); ctx.arc(x, topY, 2 * s, 0, 6.283); ctx.fill();
-  // chute from the cart's dump point down to the stockpile
-  ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(x + 10 * s, yOf(-C.surfaceLiftM) - 8 * s); ctx.lineTo(L.stockX - 10, gy - 14); ctx.stroke();
-
-  // storage tiers: loose pile -> wooden bin -> fenced yard
-  const cap = storageCap(S), st = tierOf(S.upg.storage, SFC.storageTiers);
-  if (st >= 1) { ctx.fillStyle = '#5b3d22'; ctx.fillRect(L.stockX - 34 * u, gy - 16 * u, 4 * u, 16 * u); ctx.fillRect(L.stockX + 30 * u, gy - 16 * u, 4 * u, 16 * u); ctx.fillRect(L.stockX - 34 * u, gy - 4 * u, 68 * u, 4 * u); }
-  if (st >= 2) {
-    ctx.strokeStyle = '#8a6a44'; ctx.lineWidth = 1.5;
-    for (let i = -4; i <= 4; i++) { const fx = L.stockX + i * 10 * u; ctx.beginPath(); ctx.moveTo(fx, gy); ctx.lineTo(fx, gy - 22 * u); ctx.stroke(); }
-    ctx.beginPath(); ctx.moveTo(L.stockX - 40 * u, gy - 16 * u); ctx.lineTo(L.stockX + 40 * u, gy - 16 * u); ctx.stroke();
-  }
-  drawPile(L.stockX, gy - 3, S.surface.qty, cap, u, 91);
-  if (S.surface.qty >= 1 || S.flags.arrived) {
-    const full = S.surface.qty >= cap - 0.5;
-    pileLabel(L.stockX, gy - 3 - pileHeight(S.surface.qty, cap, u) - 6, Math.floor(S.surface.qty), 12, full);
-    ctx.font = `600 10px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = full ? '#ffb38a' : 'rgba(255,255,255,.75)';
-    ctx.fillText(full ? `STORAGE FULL (${cap})` : `stock / ${cap}`, L.stockX, gy + 16);
-  }
-
-  // scrap buyer (tutorial) until the stall is built and he has driven off
-  if (SV.buyerGone < 1) {
-    const off = SV.buyerGone * 220;
-    ctx.save(); ctx.globalAlpha = 1 - SV.buyerGone;
-    const tx = L.stallX + 26 * u + off;
-    ctx.fillStyle = '#8c4a2c'; ctx.fillRect(tx - 16 * u, gy - 18 * u, 26 * u, 12 * u); // truck bed
-    ctx.fillStyle = '#a65b33'; ctx.fillRect(tx + 10 * u, gy - 22 * u, 12 * u, 16 * u); // cab
-    ctx.fillStyle = '#8fc6e8'; ctx.fillRect(tx + 14 * u, gy - 20 * u, 6 * u, 6 * u);
-    ctx.fillStyle = '#1c1c1c'; ctx.beginPath(); ctx.arc(tx - 8 * u, gy - 4 * u, 4 * u, 0, 6.283); ctx.arc(tx + 14 * u, gy - 4 * u, 4 * u, 0, 6.283); ctx.fill();
-    ctx.font = `700 ${Math.round(5.5 * u)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9c0';
-    ctx.fillText('BUYING SCRAP', tx - 3 * u, gy - 10 * u);
-    const buying = !S.flags.sold && S.flags.arrived && S.surface.qty > 0;
-    drawCivilian(L.stallX - 10 * u + off, gy - 1, u, '#3d5a3a', '#55703f', buying ? (Math.sin(view.t * 9) + 1) / 2 : 0.2);
-    ctx.restore();
-  }
-  // the Scrap Stall: boards go up, then the seller steps in and works the stock
-  if (S.stall) drawStall(L.stallX, gy, u);
-  // speech bubble from the buyer (or the seller once the stall exists)
-  if (SV.speech) bubble(L.stallX - 10 * u, gy - 52 * u, SV.speech.text, '#2a2420', SV.speech.hold);
-}
-
-function drawStall(x: number, gy: number, u: number) {
-  const b = SV.buildT, SFC = CFG.surface;
-  const vt = tierOf(S.upg.sellValue, SFC.sellValueTiers), sp = tierOf(S.upg.sellSpeed, SFC.sellSpeedTiers);
-  const w = 40 * u, h = 30 * u, left = x - w / 2;
-  const posts = Math.min(1, b / 0.35), counter = Math.min(1, Math.max(0, (b - 0.35) / 0.25));
-  const roof = Math.min(1, Math.max(0, (b - 0.6) / 0.25)), sign = Math.min(1, Math.max(0, (b - 0.85) / 0.15));
-  ctx.fillStyle = '#5b3d22';
-  ctx.fillRect(left, gy - h * posts, 3 * u, h * posts); ctx.fillRect(left + w - 3 * u, gy - h * posts, 3 * u, h * posts);
-  // seller behind the counter (after construction), working faster with Sell Speed
-  if (b >= 1) {
-    const working = S.surface.qty > 0.01;
-    const arm = working ? (Math.sin(view.t * (5 + 2.5 * S.upg.sellSpeed)) + 1) / 2 : 0.15;
-    drawCivilian(x - 4 * u, gy - 2, u, '#7a2f2a', '#3d5a8a', arm);
-    if (sp >= 2) drawCivilian(x + 12 * u, gy - 2, u * 0.85, '#4a4a4a', '#6a6a3a', working ? (Math.sin(view.t * 7 + 1) + 1) / 2 : 0.2); // helper
-  }
-  if (counter > 0) {
-    ctx.fillStyle = vt >= 3 ? '#8a5a34' : '#7a5233';
-    ctx.fillRect(left, gy - 12 * u * counter, w, 12 * u * counter);
-    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(left, gy - 12 * u * counter, w, 2);
-    if (sp >= 1 && counter >= 1) { ctx.fillStyle = '#9aa3ad'; ctx.fillRect(left + 4 * u, gy - 15 * u, 12 * u, 3 * u); } // sorting tray
-  }
-  if (roof > 0) {
-    const ry = gy - h - 4 * u;
-    if (vt >= 3) { // striped awning
-      for (let i = 0; i < 5; i++) { ctx.fillStyle = i % 2 ? '#f2e6c9' : '#c0532f'; ctx.fillRect(left - 4 * u + i * (w + 8 * u) / 5, ry, (w + 8 * u) / 5 * roof, 7 * u); }
-    } else { ctx.fillStyle = '#6b4a2c'; ctx.fillRect(left - 4 * u, ry, (w + 8 * u) * roof, 6 * u); }
-  }
-  if (sign > 0) {
-    ctx.globalAlpha = sign;
-    const sy = gy - h - 16 * u;
-    ctx.fillStyle = vt >= 1 ? '#2f3a2f' : '#a4793f';
-    ctx.fillRect(x - 17 * u, sy, 34 * u, 10 * u);
-    ctx.font = `${Math.round(7 * u)}px ${FONT_DISPLAY}`; ctx.textAlign = 'center';
-    ctx.fillStyle = vt >= 1 ? '#ffe08a' : '#2b1a0c';
-    ctx.fillText(vt >= 1 ? 'SCRAP $' : 'SCRAP', x, sy + 8 * u);
-    if (vt >= 2) { // weigh station
-      ctx.fillStyle = '#6f7780'; ctx.fillRect(left - 14 * u, gy - 8 * u, 10 * u, 8 * u);
-      ctx.fillStyle = '#c9d2dc'; ctx.fillRect(left - 16 * u, gy - 10 * u, 14 * u, 2 * u);
-    }
-    ctx.globalAlpha = 1;
-  }
-}
 
 function drawWorld() {
-  const { W, H, t } = view;
+  const { H, t } = view;
   const PPM = CFG.ppm;
-  const top = viewTop(), cx = W / 2, sw = shaftW();
-  const rows = Math.ceil(H / PPM) + 2, m0 = Math.floor(top);
+  const top = viewTop(), cx = shaftCX(), sw = shaftW();
+  const X0 = view.vx0 - 10, XW = view.vx1 - view.vx0 + 20;
   const gy = yOf(0);
-  if (gy > 0) {
-    const g = ctx.createLinearGradient(0, 0, 0, gy);
-    g.addColorStop(0, '#6fb7e8'); g.addColorStop(1, '#cfe9f7');
-    ctx.fillStyle = g; ctx.fillRect(-10, -10, W + 20, gy + 10);
-    ctx.fillStyle = 'rgba(255,255,255,.8)';
-    for (let i = 0; i < 4; i++) {
-      const x = ((i * 260 + t * 12) % (W + 200)) - 100;
-      ctx.beginPath(); ctx.ellipse(x, gy * 0.3 + i * 14, 46, 14, 0, 0, 7); ctx.fill();
-    }
-  }
-  for (let i = 0; i < rows; i++) {
-    const m = m0 + i; if (m < 0) continue;
-    const y = yOf(m), L = materialAt(m);
-    ctx.fillStyle = rgb(L.wall, 0.9 + hash(m) * 0.2); ctx.fillRect(-10, y, W + 20, PPM + 1);
-    // break the perfectly straight strata: lumps of the stratum above bulge across this boundary
-    if (m > 0) {
-      const U = materialAt(m - 1);
-      ctx.fillStyle = rgb(U.wall, 0.9 + hash(m - 1) * 0.2);
-      for (let k = 0; k < 3; k++) {
-        ctx.beginPath();
-        ctx.ellipse(hash(m * 13.1 + k) * W, y, 18 + hash(m * 7.7 + k) * 54, 1.5 + hash(m * 3.3 + k) * 3.5, 0, 0, 6.283);
-        ctx.fill();
-      }
-      // near a material change, fingers and pockets of the old material reach down a few metres
-      const prev = materialAt(m - 6);
-      if (prev.id !== L.id) {
-        const depthIn = m - L.from;
-        ctx.fillStyle = rgb(prev.wall, 0.85 + hash(m * 2.1) * 0.2);
-        for (let k = 0; k < 3; k++) {
-          if (hash(m * 5.3 + k) < depthIn / 7) continue;
-          ctx.beginPath();
-          ctx.ellipse(hash(m * 17.3 + k) * W, y + PPM * 0.5, 10 + hash(m * 9.1 + k) * 40, 3 + hash(m * 4.7 + k) * 6, 0, 0, 6.283);
-          ctx.fill();
-        }
-      }
-    }
-    if (hash(m * 3.1) < 0.5) { ctx.fillStyle = rgb(L.wall, 0.75); ctx.fillRect(hash(m * 5.7) * W, y, 6 + hash(m) * 20, 3); }
-    if (m >= CFG.face.redFleckDepth && hash(m * 8.1) < 0.4) { ctx.fillStyle = 'rgba(110,14,12,.7)'; ctx.fillRect(hash(m * 2.9) * W, y + 4, 3, 2); }
-  }
-  if (gy > -20 && gy < H) { ctx.fillStyle = '#4f8a3a'; ctx.fillRect(-10, gy - 6, W + 20, 10); }
-  // shaft interior down to the face
-  const sTop = Math.max(-10, gy), sBot = faceOrigin().y;
+  // sky + surface landscape (only when the ground line is in view)
+  if (gy > view.vy0) drawLandscape(gy, X0, XW);
+  // painted, deterministic geology
+  drawGeology(ctx, cx, yOf, Math.max(0, top + view.vy0 / PPM), top + view.vy1 / PPM, view.vx0, view.vx1);
+  if (gy > view.vy0 - 20 && gy < view.vy1) drawGround(gy, X0, XW);
+  // shaft interior: the same rock, in shadow, down to the face
+  const sTop = Math.max(view.vy0, gy), sBot = faceOrigin().y;
   if (sBot > sTop) {
-    for (let i = 0; i < rows; i++) {
-      const m = m0 + i; if (m < 0 || m >= view.camDepth) continue;
-      const y = yOf(m);
-      ctx.fillStyle = rgb(materialAt(m).wall, 0.4 + hash(m) * 0.06);
-      ctx.fillRect(cx - sw / 2, y, sw, Math.min(PPM + 1, sBot - y));
-    }
-    ctx.fillStyle = 'rgba(0,0,0,.28)';
-    ctx.fillRect(cx - sw / 2, sTop, 8, sBot - sTop); ctx.fillRect(cx + sw / 2 - 8, sTop, 8, sBot - sTop);
+    ctx.fillStyle = 'rgba(12,8,6,.62)';
+    ctx.fillRect(cx - sw / 2, sTop, sw, sBot - sTop);
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.fillRect(cx - sw / 2, sTop, 10, sBot - sTop); ctx.fillRect(cx + sw / 2 - 10, sTop, 10, sBot - sTop);
     // depth: the shaft darkens upward, and the work light pools on the face so the action is the focus
     const L = CFG.light;
     const gd = ctx.createLinearGradient(0, sBot - H * L.fadeSpan, 0, sBot);
@@ -667,14 +470,15 @@ function drawWorld() {
     ctx.restore();
     ctx.font = `600 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.55)';
     const stepM = S.depth > 80 ? 25 : 10;
-    for (let m = Math.max(stepM, Math.ceil(Math.max(0, top) / stepM) * stepM); m < Math.min(view.camDepth, top + rows); m += stepM) {
+    const mEnd = Math.min(view.camDepth, top + view.vy1 / PPM);
+    for (let m = Math.max(stepM, Math.ceil(Math.max(0, top + view.vy0 / PPM) / stepM) * stepM); m < mEnd; m += stepM) {
       const y = yOf(m);
       ctx.fillRect(cx + sw / 2 - 24, y, 16, 2); ctx.fillText(fmt(m) + ' m', cx + sw / 2 + 6, y + 4);
     }
   }
   FINDS.forEach((f, i) => {
-    const y = yOf(f.d); if (y < -120 || y > H + 120) return;
-    const x = cx + f.side * (sw / 2 + 80);
+    const y = yOf(f.d); if (y < view.vy0 - 120 || y > view.vy1 + 120) return;
+    const x = cx + f.side * (sw / 2 + 55);
     if (i < S.found) drawFind(f, x, y, 1);
     else if (i === S.found && f.d - S.depth < CFG.findTeaseM) {
       drawFind(f, x, y, 0.12 + 0.06 * Math.sin(t * 3));
@@ -682,8 +486,15 @@ function drawWorld() {
       ctx.fillText('Something is down here…', x, y - 40);
     }
   });
-  drawRails(yOf(-C.surfaceLiftM - 3), faceOrigin().y + 2);
+  drawRails(yOf(-C.surfaceLiftM - 1.5), faceOrigin().y + 2);
   drawSurface(gy);
+}
+
+/** Night/sunset grade over the surface, then the practical lights (yard lamps, headframe, headlights). */
+function drawSurfaceLight() {
+  const gy = yOf(0);
+  if (gy > view.vy0 - 50) drawSurfaceGrade(gy, view.vx0 - 10, view.vx1 - view.vx0 + 20);
+  flushGlows();
 }
 
 // ---------- HUD overlays ----------
@@ -735,9 +546,11 @@ export function render() {
   ctx.fillStyle = '#191c20'; ctx.fillRect(0, 0, view.W, view.H);
   ctx.save();
   ctx.translate(FX.cam.x, FX.cam.y);
+  applyZoom(ctx);
   drawWorld();
   drawFaceAndCrew();
   drawCart();
+  drawSurfaceLight();
   drawWorldFx(ctx);
   drawPopups(ctx);
   ctx.restore();

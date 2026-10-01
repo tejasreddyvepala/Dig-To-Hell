@@ -11,7 +11,7 @@ import { SV, present, presentCart, presentLandings, presentSurface, say } from '
 import { updateSurface, type SurfaceEvent } from './surface';
 import { FX, clearFx, popup, updateFx } from './fx';
 import { audioState, unlockAudio } from './audio';
-import { canvas, toLogical, updateCamera, view } from './view';
+import { canvas, toLogical, toVirtual, updateCamera, view } from './view';
 import { render } from './render';
 import { buildPanel, isModalOpen, showModal, tickCash, updatePanel } from './panel';
 import { fmt, money } from './util';
@@ -28,9 +28,9 @@ addEventListener('pagehide', saveState);
 
 let lastMat = materialAt(S.depth).id;
 // presentation state that depends on the loaded save
-SV.buildT = S.stall ? 1 : 0;
-SV.buyerGone = S.stall ? 1 : 0;
-if (S.flags.sold && !S.stall) say("I won't stay here all day. Build a stall.", true);
+SV.buildT = S.yard ? 1 : 0;
+SV.contractorGone = S.yard ? 1 : 0;
+if (S.flags.sold && !S.yard) say("I can't haul this forever. Build a recycling yard.", true);
 
 // ---- input ----
 const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
@@ -38,7 +38,8 @@ const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.
 canvas.addEventListener('pointerdown', (e) => {
   unlockAudio();
   const r = canvas.getBoundingClientRect();
-  const px = e.clientX - r.left, py = e.clientY - r.top;
+  const v = toVirtual(e.clientX - r.left, e.clientY - r.top); // world input goes through the camera zoom
+  const px = v.x, py = v.y;
   if (inRect(px, py, view.cartRect)) { // tap the cart: send it early (never required)
     if (sendCart()) popup(px, py - 20, 'Sent!', '#ffd84a', 16, { life: 0.8 });
     return;
@@ -70,7 +71,7 @@ function updateNav() {
   let label = '', to = '';
   if (away) { label = '▼ Back to the dig site'; to = 'dig'; }
   else if (cartUp && !S.flags.sold) { label = '▲ Follow the cart to the surface'; to = 'surface'; }
-  else if (S.flags.sold && !S.stall) { label = '▲ Surface: the buyer is waiting'; to = 'surface'; }
+  else if (S.flags.sold && !S.yard) { label = '▲ Surface: the contractor is waiting'; to = 'surface'; }
   navBtn.hidden = !label || !!view.glide;
   if (navBtn.textContent !== label) navBtn.textContent = label;
   navBtn.dataset.to = to;
@@ -87,7 +88,7 @@ document.getElementById('reset')!.onclick = () => {
   clearFx();
   view.camDepth = 0;
   view.scrollOff = 0;
-  SV.buildT = 0; SV.buyerGone = 0; SV.speech = null; SV.cashAcc = 0;
+  SV.buildT = 0; SV.contractorGone = 0; SV.speech = null;
   lastMat = materialAt(0).id;
   initSim();
   saveState();
@@ -97,7 +98,7 @@ if (offline) {
   const h = Math.floor(offline.secs / 3600), m = Math.floor((offline.secs % 3600) / 60);
   showModal(
     `<p>While you were away for ${h ? h + 'h ' : ''}${m}m</p><div class="big">Your crew dug ${fmt(offline.dm)} m</div>` +
-    `<p>${fmt(offline.dug)} rubble dug, ${fmt(offline.delivered)} hauled up, ${money(offline.earned)} earned at the stall</p>`,
+    `<p>${fmt(offline.dug)} rubble dug, ${fmt(offline.delivered)} hauled up, ${money(offline.earned)} earned from deliveries</p>`,
     'Get back to digging',
   );
 }
@@ -155,5 +156,7 @@ if (import.meta.env.DEV) {
     scrollTo: (m: number) => { view.glide = null; view.scrollOff = Math.min(0, m - view.camDepth); },
     save: () => saveState(),
     cartDepth: () => cartDepth(),
+    glide: (to: 'surface' | 'dig') => { view.glide = to; },
+    setPhase: (p: number) => { view.t = (((p - CFG.daynight.startPhase) % 1) + 1) % 1 * CFG.daynight.cycleSecs; },
   };
 }

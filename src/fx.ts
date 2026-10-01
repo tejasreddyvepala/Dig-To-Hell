@@ -17,7 +17,7 @@ export interface Part {
   shape?: number[]; // frag polygon (unit radius)
 }
 export interface Popup { x: number; y: number; s: string; col: string; size: number; t: number; life: number; pop: number; alpha: number; rise: number; sub?: string }
-export interface Ring { x: number; y: number; t: number }
+export interface Ring { x: number; y: number; t: number; s: number }
 export interface Star { x: number; y: number; t: number; size: number }
 export interface Banner { s: string; sub: string; t: number }
 
@@ -133,7 +133,7 @@ export function drawWorldFx(ctx: CanvasRenderingContext2D) {
     const k = r.t / C.ringSecs;
     ctx.globalAlpha = 1 - k;
     ctx.strokeStyle = '#fff6d8'; ctx.lineWidth = 4 * (1 - k) + 1;
-    ctx.beginPath(); ctx.ellipse(r.x, r.y, C.ringSize * Math.sqrt(k), C.ringSize * Math.sqrt(k) * 0.55, 0, 0, 6.283); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(r.x, r.y, C.ringSize * r.s * Math.sqrt(k), C.ringSize * r.s * Math.sqrt(k) * 0.55, 0, 0, 6.283); ctx.stroke();
   }
   for (const s of FX.stars) {
     const k = s.t / C.starSecs, R = s.size * (0.6 + k * 0.7);

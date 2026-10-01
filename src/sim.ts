@@ -36,7 +36,7 @@ export function strike(idx: number, x: number, y: number, power: number, crit: b
   let meters = 0, rubble = 0;
   if (r.broke) {
     rubble = CFG.rubble.perBreak * (crit ? CFG.rubble.critBreakMult : 1);
-    addTo(S.rubble, rubble, unitValue(S.depth));
+    addTo(S.rubble, rubble, unitValue(S.depth), c.mat.id); // the pile remembers what rock it came from
     meters = Math.min(c.mat.metersPerBreak, MAX_DEPTH - S.depth);
     S.depth += meters;
     const mat = materialAt(S.depth);
@@ -136,7 +136,7 @@ export function offlineAdvance(secs: number): OfflineReport | null {
     updateSurface(secs);
     return null;
   }
-  const d0 = S.depth, s0 = S.surface.qty + S.stats.sold, c0 = S.stats.earned;
+  const d0 = S.depth, s0 = S.raw.qty + S.goods.qty + S.truck.load.qty + S.stats.delivered, c0 = S.stats.earned;
   // crew digging stops just short of the next find so discoveries are never skipped silently
   const stopAt = Math.min(MAX_DEPTH, S.found < FINDS.length ? FINDS[S.found].d - 0.01 : Infinity);
   let dug = 0, left = secs;
@@ -146,7 +146,7 @@ export function offlineAdvance(secs: number): OfflineReport | null {
       const m = Math.min(crewMps(S) * dt, stopAt - S.depth);
       const frac = crewMps(S) > 0 ? m / (crewMps(S) * dt) : 0;
       const r = crewRubbleRate(S) * dt * frac;
-      addTo(S.rubble, r, unitValue(S.depth));
+      addTo(S.rubble, r, unitValue(S.depth), materialAt(S.depth).id);
       S.depth += m;
       dug += r;
     }
@@ -154,7 +154,7 @@ export function offlineAdvance(secs: number): OfflineReport | null {
     updateSurface(dt);
     left -= dt;
   }
-  const delivered = S.surface.qty + S.stats.sold - s0;
+  const delivered = S.raw.qty + S.goods.qty + S.truck.load.qty + S.stats.delivered - s0;
   if (S.depth - d0 < 0.01 && delivered < 0.01) return null;
   return { secs, dm: S.depth - d0, dug, delivered, earned: S.stats.earned - c0 };
 }

@@ -1,26 +1,27 @@
-// DOM side panel: EXTRACTION / TRANSPORT / SURFACE. Big cards for the next meaningful action, compact rows for
-// systems the player already understands; groups and rows are revealed by the game (problems teach upgrades).
-// Element updates are diffed; no per-frame DOM creation.
+// DOM side panel: accordion sections EXTRACTION / TRANSPORT / PROCESSING / FINDS.
+// Big cards for the next meaningful action, compact rows for understood systems; the game reveals sections and
+// rows as problems appear. Element updates are diffed; no per-frame DOM creation.
 import { CFG, CREW, FINDS, TOOLS, UPGRADES, type Upgrade, type UpgradeId } from './config';
 import { S, saveState } from './state';
 import {
-  addTo, cartCapacity, cartSpeed, crewCost, crewRubbleRate, loadRate, sellPrice, sellRate, storageCap, unitValue, upgCost,
+  addTo, cartCapacity, cartSpeed, contractPrice, crewCost, crewRubbleRate, loadRate, materialAt, processRate, rawCap, unitValue, upgCost,
 } from './economy';
 import { syncWorkers } from './sim';
-import { buildStall } from './surface';
+import { buildYard } from './surface';
 import { FX, popup } from './fx';
 import { playPurchase } from './audio';
-import { stallPurchased } from './juice';
-import { faceY, view } from './view';
+import { yardPurchased } from './juice';
+import { faceY, toScreen } from './view';
 import { fmt, money } from './util';
 
 const $ = (id: string) => document.getElementById(id)!;
-const SF = CFG.surface;
+const Y = CFG.yard;
 
 const CART_LABEL: Record<string, string> = {
-  BOTTOM_EMPTY: 'waiting for rubble', LOADING: 'loading', READY: 'departing', TRAVELLING_UP: 'heading up',
-  SURFACE_ARRIVAL: 'at the surface', UNLOADING: 'unloading', TRAVELLING_DOWN: 'heading down',
+  BOTTOM_EMPTY: 'waiting', LOADING: 'loading', READY: 'departing', TRAVELLING_UP: 'heading up',
+  SURFACE_ARRIVAL: 'at the top', UNLOADING: 'unloading', TRAVELLING_DOWN: 'heading down',
 };
+const TRUCK_LABEL: Record<string, string> = { NONE: 'waiting for blocks', ARRIVING: 'arriving', LOADING: 'loading', DEPARTING: 'delivering' };
 
 function card(attr: string, ic: string) {
   return `<button class="btn" ${attr}><span class="ic" aria-hidden="true">${ic}</span>` +
@@ -33,19 +34,53 @@ function row(u: Upgrade) {
 const set = (el: Element, sel: string, v: string) => { const e = el.querySelector(sel)!; if (e.textContent !== v) e.textContent = v; };
 function setText(id: string, v: string) { const e = $(id); if (e.textContent !== v) e.textContent = v; }
 
+// ---- accordion ----
+const ACC_KEY = 'dth_acc';
+let accOpen: Record<string, boolean> = { ext: true };
+let accSeen: Record<string, boolean> = {};
+try { const a = JSON.parse(localStorage.getItem(ACC_KEY) || 'null'); if (a) { accOpen = a.open ?? accOpen; accSeen = a.seen ?? {}; } } catch { /* session-only */ }
+const saveAcc = () => { try { localStorage.setItem(ACC_KEY, JSON.stringify({ open: accOpen, seen: accSeen })); } catch { /* ignore */ } };
+const narrow = () => window.matchMedia('(max-width: 760px)').matches;
+
+function setOpen(key: string, open: boolean) {
+  accOpen[key] = open;
+  if (open && narrow()) for (const k of Object.keys(accOpen)) if (k !== key) accOpen[k] = false; // mobile: one at a time
+  document.querySelectorAll<HTMLElement>('.acc').forEach((sec) => {
+    sec.querySelector('.acc-h')!.setAttribute('aria-expanded', String(!!accOpen[sec.dataset.acc!]));
+  });
+  saveAcc();
+}
+
+/** A section appears for the first time: open it once and flash the header (the game teaches the UI). */
+function reveal(key: string, sectionId: string, visible: boolean) {
+  const sec = $(sectionId);
+  sec.hidden = !visible;
+  if (visible && !accSeen[key]) {
+    accSeen[key] = true;
+    setOpen(key, true);
+    sec.classList.add('flash');
+    setTimeout(() => sec.classList.remove('flash'), 1300);
+  }
+}
+
 export function buildPanel() {
+  document.querySelectorAll<HTMLElement>('.acc').forEach((sec) => {
+    const key = sec.dataset.acc!;
+    sec.querySelector<HTMLButtonElement>('.acc-h')!.onclick = () => setOpen(key, !accOpen[key]);
+  });
+  setOpen('ext', accOpen.ext ?? true);
   $('tool').innerHTML = card('id="up"', '⛏️');
   $('up').onclick = buyTool;
   $('crew').innerHTML = CREW.map((c) => card(`data-crew="${c.id}"`, c.ic)).join('');
   document.querySelectorAll<HTMLButtonElement>('[data-crew]').forEach((b) => (b.onclick = () => hire(b.dataset.crew as 'dig' | 'exc')));
-  $('stall').innerHTML = card('id="buildStall"', '🏚️');
-  $('buildStall').onclick = () => {
-    if (!buildStall()) return;
-    stallPurchased();
+  $('yardCard').innerHTML = card('id="buildYard"', '🏭');
+  $('buildYard').onclick = () => {
+    if (!buildYard()) return;
+    yardPurchased();
     saveState();
   };
   $('transport').innerHTML = UPGRADES.filter((u) => u.group === 'transport').map(row).join('');
-  $('surface').innerHTML = UPGRADES.filter((u) => u.group === 'surface').map(row).join('');
+  $('processing').innerHTML = UPGRADES.filter((u) => u.group === 'processing').map(row).join('');
   document.querySelectorAll<HTMLButtonElement>('[data-upg]').forEach((b) => (b.onclick = () => buyUpgrade(b.dataset.upg as UpgradeId)));
   if (import.meta.env.DEV) buildDebug();
 }
@@ -59,7 +94,7 @@ function hire(id: 'dig' | 'exc') {
   syncWorkers(true); // a new visible worker rappels in; extras join the "+N crew" row
   saveState();
   playPurchase();
-  popup(view.W * 0.3, faceY() - 110, c.name + ' hired', '#7ee08a', 18, { life: 1.4 });
+  popup(toScreen(70, 0).x, faceY() - 130, c.name + ' hired', '#7ee08a', 20, { life: 1.4 });
 }
 
 function buyTool() {
@@ -88,12 +123,12 @@ function buildDebug() {
   const d = $('debug');
   d.innerHTML = '<h2>Debug (dev only)</h2>' +
     '<button class="dbg" data-d="cash">+$1,000</button><button class="dbg" data-d="rubble">+50 rubble at dig site</button>' +
-    '<button class="dbg" data-d="clear">Clear surface stock</button>';
+    '<button class="dbg" data-d="clear">Clear raw material</button>';
   d.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.d === 'cash') S.cash += 1000;
-      if (b.dataset.d === 'rubble') addTo(S.rubble, 50, unitValue(S.depth));
-      if (b.dataset.d === 'clear') { S.surface.qty = 0; S.surface.val = 0; }
+      if (b.dataset.d === 'rubble') addTo(S.rubble, 50, unitValue(S.depth), materialAt(S.depth).id);
+      if (b.dataset.d === 'clear') { S.raw.qty = 0; S.raw.val = 0; S.raw.mix = {}; }
     };
   });
 }
@@ -111,32 +146,32 @@ function upgStat(id: UpgradeId): string {
     case 'cartCap': return `${cartCapacity(S)}/trip`;
     case 'cartSpeed': case 'rail': return `${cartSpeed(S).toFixed(1)} m/s`;
     case 'loadSpeed': return `${loadRate(S).toFixed(1)}/s`;
-    case 'sellSpeed': return `${sellRate(S).toFixed(1)}/s`;
-    case 'sellValue': return `×${sellPrice(S).toFixed(2)}`;
-    case 'storage': return `${storageCap(S)}`;
+    case 'processSpeed': return `${processRate(S).toFixed(1)}/s`;
+    case 'contractValue': return `×${contractPrice(S).toFixed(2)}`;
+    case 'rawStorage': return `${rawCap(S)}`;
   }
 }
 
-/** Which surface rows the game has taught so far. */
-function surfaceRowVisible(id: UpgradeId) {
-  if (!S.stall) return false;
-  if (id === 'sellSpeed') return true;
-  if (id === 'sellValue') return S.stats.sold >= SF.revealSellValueAt || S.upg.sellValue > 0;
-  if (id === 'storage') return S.flags.storageSeen || S.upg.storage > 0;
+/** Which processing rows the game has taught so far. */
+function procRowVisible(id: UpgradeId) {
+  if (!S.yard) return false;
+  if (id === 'processSpeed') return true;
+  if (id === 'contractValue') return S.stats.delivered >= Y.revealValueAt || S.upg.contractValue > 0;
+  if (id === 'rawStorage') return S.flags.storageSeen || S.upg.rawStorage > 0;
   return true;
 }
 
 export function updatePanel() {
   setText('depth', (S.depth < 100 ? S.depth.toFixed(1) : fmt(S.depth)) + ' m');
-  setText('stock', fmt(S.surface.qty) + ' rubble');
-  if (S.surface.qty >= storageCap(S) * SF.revealStorageFrac) S.flags.storageSeen = true;
-  // until the Scrap Stall exists it is the only purchase (the tutorial's one forced step; prevents a soft-lock)
-  const hasMoney = S.stall || (!S.flags.sold && S.cash > 0 && S.flags.arrived);
+  setText('stock', S.yard ? `${fmt(S.raw.qty)} raw · ${fmt(S.goods.qty)} blocks` : `${fmt(S.raw.qty)} raw`);
+  if (S.raw.qty >= rawCap(S) * Y.revealStorageFrac) S.flags.storageSeen = true;
+  // until the Recycling Yard exists it is the only purchase (the tutorial's one forced step; prevents a soft-lock)
+  const hasMoney = S.yard;
 
-  // EXTRACTION — the player's own power and the crew. Revealed as purchases once there is money.
+  // EXTRACTION
   setText('extStat', S.crew.dig ? `${S.crew.dig} crew · ${crewRubbleRate(S).toFixed(1)} rubble/s` : TOOLS[S.tool].name);
   $('extHint').hidden = hasMoney;
-  setText('extHint', 'Fill the cart and get the rubble to the surface. Someone up there might buy it.');
+  setText('extHint', S.flags.sold ? 'Build the Recycling Yard (Processing) to start earning.' : 'Fill the cart and send the rubble up. Someone at the surface might want it.');
   const nt = TOOLS[S.tool + 1];
   const up = $('up') as HTMLButtonElement;
   up.hidden = !hasMoney || !nt;
@@ -160,24 +195,28 @@ export function updatePanel() {
     set(b, '.ct', S.crew[c.id] ? 'Own ' + S.crew[c.id] : '');
   });
 
-  // TRANSPORT — compact rows; revealed after the first dispatch, purchasable once there is money
-  $('g-tr').hidden = !S.flags.dispatched;
+  // TRANSPORT
+  reveal('tr', 'g-tr', S.flags.dispatched);
   setText('trStat', `Cart ${Math.floor(S.cart.load.qty)}/${cartCapacity(S)} ${CART_LABEL[S.cart.state]} · pile ${Math.floor(S.rubble.qty)}`);
   document.querySelectorAll<HTMLButtonElement>('#transport [data-upg]').forEach((b) => updRow(b, hasMoney));
 
-  // SURFACE — revealed at the first arrival; the stall is the big next action until it exists
-  $('g-surf').hidden = !S.flags.arrived;
-  const cap = storageCap(S);
-  setText('surfStat', S.stall ? `Stock ${Math.floor(S.surface.qty)}/${cap} · selling ${sellRate(S).toFixed(1)}/s` : `Stock ${Math.floor(S.surface.qty)}/${cap} · no seller`);
-  const bs = $('buildStall') as HTMLButtonElement;
-  bs.hidden = S.stall || !S.flags.sold;
-  bs.disabled = S.cash < SF.stallCost;
-  set(bs, '.nm', 'Build Scrap Stall');
-  set(bs, '.ds', 'A seller who turns surface rubble into cash');
-  set(bs, '.pr', money(SF.stallCost));
-  set(bs, '.ct', '');
-  document.querySelectorAll<HTMLButtonElement>('#surface [data-upg]').forEach((b) => updRow(b, surfaceRowVisible(b.dataset.upg as UpgradeId)));
+  // PROCESSING
+  reveal('proc', 'g-proc', S.flags.arrived);
+  const cap = rawCap(S);
+  setText('procStat', S.yard
+    ? `Raw ${Math.floor(S.raw.qty)}/${cap} · Blocks ${Math.floor(S.goods.qty)} · Truck ${TRUCK_LABEL[S.truck.state]}`
+    : `Raw ${Math.floor(S.raw.qty)}/${cap} · no yard`);
+  const by = $('buildYard') as HTMLButtonElement;
+  by.hidden = S.yard || !S.flags.sold;
+  by.disabled = S.cash < Y.cost;
+  set(by, '.nm', 'Build Recycling Yard');
+  set(by, '.ds', 'Crush raw rubble into blocks; trucks pay on pickup');
+  set(by, '.pr', money(Y.cost));
+  set(by, '.ct', '');
+  document.querySelectorAll<HTMLButtonElement>('#processing [data-upg]').forEach((b) => updRow(b, procRowVisible(b.dataset.upg as UpgradeId)));
 
+  // FINDS
+  setText('findStat', `${S.found}/${FINDS.length}`);
   const fh =
     FINDS.map((f, i) =>
       i < S.found

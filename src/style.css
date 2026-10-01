@@ -14,8 +14,8 @@ body{background:#191c20;color:var(--ink);font-family:'Rubik',system-ui,'Segoe UI
 canvas{display:block;width:100%;height:100%;cursor:pointer;touch-action:manipulation}
 #panel{width:360px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
 .top{padding:18px 20px 14px;border-bottom:1px solid var(--line)}
-.cash{font-family:'Bungee',Impact,sans-serif;font-size:38px;line-height:1;color:var(--hat)}
-.sub{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:14px}
+.cash{font-family:'Bungee',Impact,sans-serif;font-size:44px;line-height:1;color:var(--hat)}
+.sub{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:15px}
 .sub b{color:var(--ink);font-weight:500}
 .scroll{overflow-y:auto;padding:6px 14px 20px;flex:1}
 h2{font-family:'Bungee',Impact,sans-serif;font-weight:400;font-size:16px;margin:16px 6px 8px;color:var(--ink)}
@@ -24,7 +24,7 @@ h2{font-family:'Bungee',Impact,sans-serif;font-weight:400;font-size:16px;margin:
 .btn:focus-visible{outline:3px solid var(--hat);outline-offset:2px}
 .btn:disabled{opacity:.45;cursor:default}
 .ic{font-size:26px;text-align:center}
-.nm{font-weight:700;font-size:15px}
+.nm{font-weight:700;font-size:16px}
 .ds{color:var(--muted);font-size:13px;margin-top:2px}
 .pr{font-family:'Bungee',Impact,sans-serif;font-size:14px;color:var(--hat);text-align:right}
 .ct{color:var(--muted);font-size:12px;text-align:right}
@@ -60,3 +60,16 @@ section{border-bottom:1px solid var(--line);padding-bottom:6px}
   #panel{width:100%;flex:1;border-left:0;border-top:1px solid var(--line)}
   .cash{font-size:30px}
 }
+
+/* accordion sections */
+.acc{border-bottom:1px solid var(--line);padding:0}
+.acc-h{width:100%;display:grid;grid-template-columns:auto 1fr 18px;align-items:baseline;gap:10px;background:none;border:0;color:var(--ink);padding:14px 6px 12px;cursor:pointer;text-align:left;font:inherit}
+.acc-h:focus-visible{outline:3px solid var(--hat);outline-offset:-3px;border-radius:6px}
+.acc-t{font-family:'Bungee',Impact,sans-serif;font-size:17px}
+.acc-h .stat{font-size:13px;color:#c9cdd4;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--muted);transition:transform .15s;justify-self:end}
+.acc-h[aria-expanded="false"] .chev{transform:rotate(-90deg)}
+.acc-h[aria-expanded="false"] + .acc-b{display:none}
+.acc-b{padding:0 0 10px}
+.acc.flash .acc-h{animation:accflash 1.2s ease-out}
+@keyframes accflash{0%{background:rgba(255,207,58,.25)}100%{background:none}}

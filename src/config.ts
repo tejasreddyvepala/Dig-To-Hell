@@ -70,17 +70,17 @@ export const RESOURCES: Record<ResourceId, Resource> = {
 };
 
 // ---- level upgrades (the cart and the stall are permanent; these improve them) ----
-export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail' | 'sellSpeed' | 'sellValue' | 'storage';
-export type UpgradeGroup = 'transport' | 'surface';
+export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail' | 'processSpeed' | 'contractValue' | 'rawStorage';
+export type UpgradeGroup = 'transport' | 'processing';
 export interface Upgrade { id: UpgradeId; group: UpgradeGroup; name: string; ic: string; baseCost: number; growth: number; maxLevel: number }
 export const UPGRADES: Upgrade[] = [
   { id: 'cartCap', group: 'transport', name: 'Cart Capacity', ic: '🛒', baseCost: 80, growth: 1.6, maxLevel: 30 },
   { id: 'cartSpeed', group: 'transport', name: 'Cart Speed', ic: '💨', baseCost: 100, growth: 1.6, maxLevel: 30 },
   { id: 'loadSpeed', group: 'transport', name: 'Loading Speed', ic: '🪣', baseCost: 50, growth: 1.55, maxLevel: 30 },
   { id: 'rail', group: 'transport', name: 'Rail Quality', ic: '🛤️', baseCost: 200, growth: 1.8, maxLevel: 20 },
-  { id: 'sellSpeed', group: 'surface', name: 'Sell Speed', ic: '⏩', baseCost: 75, growth: 1.6, maxLevel: 30 },
-  { id: 'sellValue', group: 'surface', name: 'Sell Value', ic: '💲', baseCost: 140, growth: 1.75, maxLevel: 30 },
-  { id: 'storage', group: 'surface', name: 'Storage', ic: '📦', baseCost: 110, growth: 1.65, maxLevel: 30 },
+  { id: 'processSpeed', group: 'processing', name: 'Processing Speed', ic: '⚙️', baseCost: 75, growth: 1.6, maxLevel: 30 },
+  { id: 'contractValue', group: 'processing', name: 'Contract Value', ic: '💲', baseCost: 140, growth: 1.75, maxLevel: 30 },
+  { id: 'rawStorage', group: 'processing', name: 'Raw Storage', ic: '📦', baseCost: 110, growth: 1.65, maxLevel: 30 },
 ];
 
 // ---- player tools: a short early ladder, then the Jackhammer changes how digging works ----
@@ -122,9 +122,10 @@ export const FINDS: Find[] = [
 ];
 
 export const CFG = {
-  saveKey: 'digtohell_v3',
-  saveVersion: 3,
-  migrateFrom: { key: 'digtohell_v2', version: 2 }, // v2 (cash-from-digging) saves migrate: progress kept, cart starts empty at the bottom
+  saveKey: 'digtohell_v4',
+  saveVersion: 4,
+  // older saves migrate (progress, cash and material kept): v3 = Phase 3A–3C (seller model), v2 = cash-from-digging
+  migrateFrom: [{ key: 'digtohell_v3', version: 3 }, { key: 'digtohell_v2', version: 2 }],
   legacySaveKeys: ['digtohell_v1'], // deliberately discarded: old 15,000 m economy
   saveIntervalMs: 5000,
 
@@ -157,30 +158,34 @@ export const CFG = {
     readySecs: 0.6, // full cart pause before departure
     arriveSecs: 0.5, // brake + bump at the surface
     unloadSecs: 1.6, // tip and dump
-    surfaceLiftM: 2.4, // the cart parks this far above ground in the headframe
-    railX: 211, // logical face x of the rail (right wall: transport side)
-    cartX: 198, // logical x of the cart centre
-    pileX: 156, // logical x of the rubble pile centre (between the miners and the cart)
+    surfaceLiftM: 7, // the cart parks this far above ground in the headframe, over the hopper mouth
+    headframeM: 16, // headframe pulley height above ground (~2.5 worker heights)
+    railX: 249, // logical face x of the rail (right wall: transport side)
+    cartX: 234, // logical x of the cart centre
+    pileX: 186, // logical x of the rubble pile centre (between the miners and the cart)
     loadArcSecs: 0.16, // a piece arcs from pile to cart this often while loading
     clackEveryM: 2.5, // rail clack spacing
     soundRangeScreens: 1.5, // off-screen cart sounds fade to silence over this many screen heights
   },
-  // ---- surface: stockpile, tutorial scrap buyer, scrap stall (the only cash source) ----
-  surface: {
-    stockOffsetPx: 46, // stockpile centre, px right of the shaft opening (clamped on screen)
-    stallOffsetPx: 128, // stall / buyer, px right of the shaft opening
-    storage: { base: 120, perLevel: 0.5 }, // units the surface can hold; a full surface makes the cart wait
-    storageTiers: [0, 2, 4], // loose pile -> bin -> fenced yard
-    sellRate: { base: 1.7, perLevel: 0.35 }, // units/s the seller processes
-    price: { base: 3, perLevel: 0.25 }, // $ per unit of material value
-    sellSpeedTiers: [0, 3, 6], // seller gets a sorting tray, then a helper bench
-    sellValueTiers: [0, 2, 4, 6], // crude sign -> price board -> scale -> proper stall
-    stallCost: 80,
-    stallBuildSecs: 1.6,
-    buyerRate: 30, // units/s the tutorial buyer takes the first load
-    cashPopupSecs: 0.9, // seller cash is aggregated into one popup at most this often
-    revealSellValueAt: 120, // units sold before Sell Value shows
-    revealStorageFrac: 0.5, // stock fraction of capacity that reveals Storage
+  // ---- surface: the Recycling Yard (the only cash source is a loaded truck leaving) ----
+  // Phase 3C's Scrap Buyer / Scrap Stall seller model is superseded by this production chain:
+  // raw material -> hopper -> crusher + auger -> press -> finished blocks -> delivery truck -> cash.
+  yard: {
+    workerUnit: 30, // logical px of a person's height at the surface (× face scale) — all yard scale derives from it
+    cost: 80,
+    buildSecs: 2.6,
+    rawStorage: { base: 120, perLevel: 0.5 }, // raw units the hopper/yard holds; when full the cart waits
+    processRate: { base: 2, perLevel: 0.35 }, // raw units/s turned into finished blocks
+    price: { base: 3, perLevel: 0.25 }, // $ per unit of carried material value, paid on truck departure
+    pressBatch: 4, // units per press cycle (visual cadence; a block appears each THUMP)
+    contractorRate: 30, // units/s the contractor (tutorial buyer) takes before the yard exists
+    truck: { capacity: 60, pickupMin: 15, arriveSecs: 3.6, departSecs: 3.4, loadRate: 16, minLoadSecs: 1.8, waitSecs: 4 },
+    processTiers: [0, 3, 6], // faster parts, then a second crusher drum, then a bigger press
+    valueTiers: [0, 2, 4, 6], // painted sign -> contract board -> weigh station -> company livery
+    storageTiers: [0, 2, 4], // hopper -> bigger hopper -> overflow bunker
+    revealValueAt: 120, // units delivered before Contract Value shows
+    revealStorageFrac: 0.5, // raw fraction of capacity that reveals Raw Storage
+    stackVisualMax: 120, // finished units at which the output stack reads as full
   },
 
   // ---- offline ----
@@ -191,7 +196,7 @@ export const CFG = {
   // ---- dig face ----
   face: {
     chunks: 8,
-    logicalW: 220, // face geometry is authored at this width and scaled to the shaft
+    logicalW: 260, // face geometry is authored at this width and scaled to the shaft
     height: 40, // logical px from surface to chunk bottom
     edgeJitter: 4, // irregular top edge / seams
     seamJitter: 0.12, // fraction of chunk width seams may wander
@@ -203,7 +208,7 @@ export const CFG = {
     dipSettle: 5, // 1/s
     craterDepth: 22, // logical px of dark inner earth that craters reveal
     dentPx: 4.5, // clay deformation per stage
-    redFleckDepth: 292,
+    crackDepthFrac: 0.62, // cracks are clipped above this fraction of the face band (no cracks in untouched ground)
   },
 
   // ---- player miner ----
@@ -219,16 +224,16 @@ export const CFG = {
   },
   crewVisibleMax: 3, // animated diggers on the face; the rest still dig at full DPS, shown as a helmet row
   crewVisibleWithExc: 2, // the excavator takes one digger's space
-  crewSlots: { dig: [20, 56, 118], exc: [24] } as Record<CrewId, number[]>, // right side is the loading area
-  crewSlotsWithExc: [70, 118],
-  minerStartX: 86,
+  crewSlots: { dig: [22, 62, 140], exc: [34] } as Record<CrewId, number[]>, // right side is the loading area
+  crewSlotsWithExc: [130, 166], // the excavator works from a timber mat on the left
+  minerStartX: 100,
   crewArriveSecs: 1.2, // rope drop -> slide down -> land -> lamp on -> dig
   jackBurstGapMs: 45, // jackhammer impacts within one click
   reserveHelmetsMax: 8,
-  playerScale: 1.12, // player miner is drawn larger + rim + lamp beam so it reads first
-  crewScale: 0.85,
+  playerScale: 1.3, // player miner is drawn larger + rim + strongest lamp so it reads first
+  crewScale: 1.05,
   crewFxScale: 0.6, // crew impact intensity relative to the player's (chips, dust, pulse)
-  excavatorReach: 34,
+  excavatorReach: 66, // logical px from the excavator's centre to where the bucket bites
 
   // ---- camera / juice hierarchy ----
   impulse: { hit: 0.3, break: 1.4, crit: 2.1, spring: 340, damping: 26 },
@@ -244,17 +249,26 @@ export const CFG = {
   critFx: { starSecs: 0.1, starSize: 30, ringSecs: 0.22, ringSize: 64, debrisMult: 2 },
   bannerSecs: 3,
 
+  // ---- surface day/night (cosmetic only) ----
+  daynight: { cycleSecs: 600, startPhase: 0.1 },
+
+  // ---- geology painter (deterministic; cached 5 m segments) ----
+  geo: { segmentM: 5, res: 0.5, halfWidthM: 110, maxBuildsPerFrame: 1, prefetch: 3, cacheSegments: 90 },
+
   // ---- view ----
   ppm: 12, // pixels per meter
   faceYFrac: 0.71, // working face sits at ~71% of the viewport during active digging
-  shaftMaxW: 400,
-  shaftWFrac: 0.46,
+  shaftMaxW: 680,
+  shaftWFrac: 0.6, // the working shaft dominates the game canvas
   shaftMinW: 260, // narrow screens: shaft takes at least this (bounded by shaftNarrowFrac)
   shaftNarrowFrac: 0.84,
-  light: { fadeSpan: 0.75, shaftDark: 0.45, radius: 0.75, glow: 0.14 }, // shaft vignette + warm work light
+  shaftCenterFrac: 0.45, // shaft sits slightly left so the Recycling Yard fits on the right at the surface
+  zoom: { dig: 1, surfaceMax: 1, surfaceMin: 0.45, ease: 3.5 }, // camera scale: close at the dig site; the surface pans + fits the yard
+  fxScaleRef: 1.8, // face scale the particle sizes were authored at (effects grow with the work area)
+  light: { fadeSpan: 0.75, shaftDark: 0.45, radius: 0.75, glow: 0.14, maxDark: 0.42, darkAtM: 260 }, // shaft vignette, work light, depth darkness
   scrollSpeed: 0.6,
   scrollAboveM: 14, // how far above ground the camera may scroll (sky + headframe)
-  surfaceGroundFrac: 0.6, // when viewing the surface, the ground sits at this fraction of the screen height
+  surfaceGroundFrac: 0.72, // when viewing the surface, the ground sits at this fraction of the screen height
   cameraGlide: 5, // 1/s ease when the camera is sent somewhere
   findTeaseM: 40,
   maxDt: 0.1,

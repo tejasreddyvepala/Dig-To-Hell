@@ -1,7 +1,10 @@
 // Presentation: maps sim results (strikes, cart events) to FX + audio.
 // Impact hierarchy: normal hit (local) < chunk break (small camera impulse) < crit (hit-stop, star, ring, strongest).
 // Digging feedback is impact, cracks, debris, depth and material — never cash.
-import { AUDIO, CFG, RESOURCES, TOOLS, type Material } from './config';
+import { AUDIO, CFG, TOOLS, type Material } from './config';
+import { rubbleRGB } from './geo';
+import { mixPick } from './economy';
+import type { Load } from './state';
 import { landings, type HitResult, type Worker } from './sim';
 import type { SurfaceEvent } from './surface';
 import type { Chunk } from './digface';
@@ -13,10 +16,10 @@ import { cartScreen, faceScale, surfaceLayout, toScreen, view, yOf } from './vie
 import { S } from './state';
 import { fmt, money, rgb, rnd, rndi, rndr, rndri } from './util';
 
-const RED_FLECK = 'rgb(120,18,16)';
+/** Effects grow with the work area (authored at CFG.fxScaleRef face scale). */
+const fxk = () => faceScale() / CFG.fxScaleRef;
 
 function fragColor(mat: Material) {
-  if (S.depth >= CFG.face.redFleckDepth && Math.random() < 0.18 + (S.depth - CFG.face.redFleckDepth) * 0.03) return RED_FLECK;
   return rgb(mat.chip, rnd(0.8, 1.2));
 }
 
@@ -35,7 +38,7 @@ function dust(mat: Material, x: number, y: number, n: number, spread: number) {
   for (let i = 0; i < n; i++) {
     addPart({
       kind: 'dust', x: x + rnd(-spread, spread), y: y + rnd(-4, 4), vx: rnd(-40, 40), vy: rnd(-50, -10),
-      size: rnd(3, 7), col: mat.dust + '1)', life: rnd(0.4, 0.8), floor: Infinity, bounce: 0,
+      size: rnd(3, 7) * fxk(), col: mat.dust + '1)', life: rnd(0.4, 0.8), floor: Infinity, bounce: 0,
     });
   }
 }
@@ -90,7 +93,8 @@ function arc(x0: number, y0: number, x1: number, y1: number, t: number, col: str
 
 /** Screen position of the rubble pile's top at the dig site. */
 const pileTop = () => toScreen(CFG.cart.pileX + rnd(-10, 10), -4);
-const rubbleCol = () => rgb(RESOURCES.rubble.color, rnd(0.75, 1.2));
+/** A piece of rubble coloured by the load's material composition (stone looks gray, clay red-brown...). */
+const rubbleCol = (l: Load = S.rubble) => rgb(rubbleRGB(mixPick(l, Math.random())), rnd(0.8, 1.15));
 
 export function present(r: HitResult) {
   const p = toScreen(r.x, r.y);
@@ -110,7 +114,7 @@ export function present(r: HitResult) {
   if (r.crit) {
     hitStop(CFG.hitStopMs);
     FX.stars.push({ x: p.x, y: p.y, t: 0, size: CFG.critFx.starSize * faceScale() });
-    FX.rings.push({ x: p.x, y: p.y, t: 0 });
+    FX.rings.push({ x: p.x, y: p.y, t: 0, s: fxk() });
     if (!r.broke) shatterBurst(mat, p.x, p.y);
     impulse(CFG.impulse.crit, rnd(-0.3, 0.3), 1);
     playCrit(mat.id);
@@ -126,7 +130,7 @@ export function present(r: HitResult) {
     playDebris(vol);
     if (player && !r.crit) impulse(CFG.impulse.break * (0.85 + 0.15 * tool.fx), rnd(-0.2, 0.2), 1);
     const n = Math.round(CFG.rubble.arcsPerBreak * (player ? 1 : 0.67) * (r.crit ? 1.5 : 1));
-    for (let i = 0; i < n; i++) { const t = pileTop(); arc(p.x, p.y - 4, t.x, t.y, rnd(0.35, 0.55), rubbleCol(), rnd(2.2, 3.6) * faceScale()); }
+    for (let i = 0; i < n; i++) { const t = pileTop(); arc(p.x, p.y - 4, t.x, t.y, rnd(0.35, 0.55), rgb(rubbleRGB(mat.id), rnd(0.85, 1.15)), rnd(2.2, 3.6) * faceScale()); }
   } else if (player && !r.crit) {
     impulse(CFG.impulse.hit, rnd(-0.2, 0.2), 1);
   }
@@ -135,8 +139,8 @@ export function present(r: HitResult) {
   if (!player || !r.broke) return;
   const sub = r.meters > 0 ? '▼ ' + r.meters.toFixed(2) + ' m' : undefined;
   const label = '+' + Math.round(r.rubble) + ' rubble';
-  if (r.crit) popup(p.x + rnd(-8, 8), p.y - 32, label + '!', '#ffd84a', T.crit.size, { life: T.crit.life, pop: 0.6, sub });
-  else popup(p.x + rnd(-8, 8), p.y - 26, label, '#ecdcc0', T.brk.size, { life: T.brk.life, alpha: T.brk.alpha, pop: 0.2, sub });
+  if (r.crit) popup(p.x + rnd(-8, 8), p.y - 32, label + '!', '#ffd84a', T.crit.size * Math.sqrt(fxk()), { life: T.crit.life, pop: 0.6, sub });
+  else popup(p.x + rnd(-8, 8), p.y - 26, label, '#ecdcc0', T.brk.size * Math.sqrt(fxk()), { life: T.brk.life, alpha: T.brk.alpha, pop: 0.2, sub });
 }
 
 // ---- cart presentation ----
@@ -173,14 +177,14 @@ export function presentCart(events: CartEvent[], dt: number) {
     if (loadArcT <= 0) {
       loadArcT = CFG.cart.loadArcSecs * Math.max(0.35, 2 / Math.max(2, S.upg.loadSpeed + 2));
       const from = pileTop();
-      arc(from.x, from.y, c.x + rnd(-8, 8) * s, c.y - 18 * s, rnd(0.3, 0.42), rubbleCol(), rnd(2, 3.2) * s);
+      arc(from.x, from.y, c.x + rnd(-8, 8) * s, c.y - 18 * s, rnd(0.3, 0.42), rubbleCol(S.rubble), rnd(2, 3.2) * s);
       if (Math.random() < 0.35) playLoadTick(vol);
     }
   }
   // unloading: rubble pours out of the tipped cart down onto the surface stockpile beside it
   if (S.cart.state === 'UNLOADING' && S.cart.load.qty > 0.01 && Math.random() < dt * 30) {
     const L = surfaceLayout();
-    arc(c.x + 14 * s, c.y - 20 * s, L.stockX + rnd(-14, 14), L.gy - 8, rnd(0.35, 0.5), rubbleCol(), rnd(2, 3.4) * s);
+    arc(c.x + 14 * s, c.y - 20 * s, L.hopperX + rnd(-L.u * 0.25, L.u * 0.25), S.yard ? L.hopperTop + 6 : L.gy - 6, rnd(0.3, 0.45), rubbleCol(S.cart.load), rnd(2, 3.4) * s);
   }
   // travelling: rail clacks spaced by distance actually covered
   const d = cartDepth();
@@ -209,59 +213,91 @@ export function presentLandings() {
 }
 export const arrivingWorkers = (ws: Worker[]) => ws.filter((w) => w.arrive > 0);
 
-// ---- surface: scrap buyer, scrap stall, seller ----
+// ---- surface: contractor (tutorial), Recycling Yard, delivery truck ----
 /** Presentation-only surface state (never saved). */
 export const SV = {
   speech: null as { text: string; t: number; hold: boolean } | null,
-  buildT: S.stall ? 1 : 0, // 0..1 stall construction progress
-  buyerGone: S.stall ? 1 : 0, // 0..1 buyer walking off after the stall is built
-  sellerAnim: 0,
-  cashAcc: 0, cashT: 0,
+  buildT: 0, // 0..1 Recycling Yard construction progress
+  contractorGone: 0, // 0..1 contractor driving off once the yard is built
+  pressT: 1, // secs since the last press THUMP (drives the ram animation)
   knockT: 0,
+  spin: 0, // auger / crusher rotation (advances only while processing)
+  blocksIn: 0, // blocks flying from the stack to the truck (visual count)
 };
 
 export function say(text: string, hold = false) { SV.speech = { text, t: 0, hold }; }
+
+const exhaust = (x: number, y: number, n: number) => {
+  for (let i = 0; i < n; i++) addPart({ kind: 'dust', x: x + rnd(-3, 3), y: y + rnd(-2, 2), vx: rnd(20, 50), vy: rnd(-30, -12), size: rnd(4, 7) * fxk(), col: 'rgba(150,150,150,1)', life: rnd(0.7, 1.2), floor: Infinity, bounce: 0 });
+};
+
+/** Screen positions of the truck parts (shared by juice + renderer). */
+export function truckPose() {
+  const L = surfaceLayout(), u = L.u, tr = S.truck, T = CFG.yard.truck;
+  const len = 3.6 * u, park = L.bayX; // the truck's rear stops at the loading bay
+  const offRight = view.vx1 + 0.4 * u, ease = (k: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3);
+  let rear = park, rock = 0;
+  if (tr.state === 'ARRIVING') rear = offRight + (park - offRight) * ease(tr.t / T.arriveSecs);
+  else if (tr.state === 'DEPARTING') { const k = Math.min(1, tr.t / T.departSecs); rear = park + (offRight + len - park) * k * k; rock = Math.sin(tr.t * 18) * (k < 0.2 ? 1 : 0); }
+  else if (tr.state === 'NONE') rear = offRight + len * 2;
+  return { rear, len, y: L.roadY, u, rock, visible: tr.state !== 'NONE' };
+}
 
 export function presentSurface(events: SurfaceEvent[], dt: number) {
   const L = surfaceLayout(), s = faceScale();
   const near = surfaceVol();
   for (const e of events) {
-    if (e.type === 'firstSaleStart') say("That's useful stuff.");
-    else if (e.type === 'sold') {
-      SV.cashAcc += e.cash ?? 0;
-      SV.sellerAnim += dt;
-      if (Math.random() < Math.min(0.9, (e.qty ?? 0) * 0.6)) { // pieces hop from the stockpile to the buyer/stall
-        arc(L.stockX + rnd(-10, 10), L.gy - 10, L.stallX - 14 + rnd(-4, 4), L.gy - 26, rnd(0.3, 0.4), rubbleCol(), rnd(1.8, 2.8) * s);
-      }
+    if (e.type === 'firstSaleStart') say("Rubble like this? I'll take it.");
+    else if (e.type === 'contractorSold') {
+      if (Math.random() < Math.min(0.9, (e.qty ?? 0) * 0.6)) arc(L.hopperX + rnd(-10, 10), L.gy - 10, L.stackX + L.u * 0.6 + rnd(-8, 8), L.roadY - L.u * 0.7, rnd(0.35, 0.45), rubbleCol(S.raw), rnd(2, 3) * s);
     } else if (e.type === 'firstSaleDone') {
-      SV.cashAcc = 0;
-      popup(L.stallX, L.gy - 92, '+' + money(e.cash ?? 0), '#ffd84a', 30, { life: 2.6, pop: 0.6, sub: `SOLD ${fmt(e.qty ?? 0)} RUBBLE`, rise: 0.4 });
+      popup(L.stackX, L.gy - L.u * 2.2, '+' + money(e.cash ?? 0), '#ffd84a', 30 * Math.sqrt(fxk()), { life: 2.6, pop: 0.6, sub: `SOLD ${fmt(e.qty ?? 0)} RUBBLE`, rise: 0.4 });
       playSting();
-      setTimeout(() => { if (!S.stall) say("I won't stay here all day. Build a stall.", true); }, 1800);
+      setTimeout(() => { if (!S.yard) say("I can't haul this forever. Build a recycling yard.", true); }, 1800);
+    } else if (e.type === 'pressed') {
+      SV.pressT = 0;
+      playThud(0.5 * near);
+      for (let i = 0; i < 5; i++) addPart({ kind: 'dust', x: L.pressX + rnd(-L.u * 0.3, L.u * 0.3), y: L.gy - L.u * 0.35, vx: rnd(-40, 40), vy: rnd(-30, -5), size: rnd(3, 6) * fxk(), col: rubbleCol(S.goods).replace('rgb', 'rgba').replace(')', ',1)'), life: rnd(0.4, 0.7), floor: Infinity, bounce: 0 });
+    } else if (e.type === 'truckArrive') {
+      playRoll(near * 0.7);
+    } else if (e.type === 'truckLoad') {
+      SV.blocksIn += e.qty ?? 0;
+      while (SV.blocksIn >= 2) { // one flying block per couple of units
+        SV.blocksIn -= 2;
+        const p = truckPose();
+        arc(L.stackX + rnd(-L.u * 0.3, L.u * 0.3), L.gy - L.u * 0.5, p.rear + p.len * rnd(0.12, 0.5), p.y - L.u * 0.85, rnd(0.35, 0.5), rubbleCol(S.truck.load), L.u * 0.12);
+      }
+    } else if (e.type === 'truckDepart') {
+      const p = truckPose();
+      exhaust(p.rear - 4, p.y - L.u * 0.25, 4);
+      popup(p.rear + p.len * 0.5, p.y - L.u * 2.1, '+' + money(e.cash ?? 0), '#ffd84a', 26 * Math.sqrt(fxk()), { life: 2, pop: 0.5, sub: 'DELIVERY', rise: 0.5 });
+      playCoin(near); playRoll(near * 0.8);
     }
   }
-  // aggregate seller cash into readable batches (never a popup per unit)
-  SV.cashT += dt;
-  if (SV.cashAcc > 0 && SV.cashT >= CFG.surface.cashPopupSecs && S.flags.sold) {
-    popup(L.stallX + rnd(-6, 6), L.gy - 70, '+' + money(SV.cashAcc), '#ffe08a', 16, { life: 1.1, rise: 0.6 });
-    playCoin(near);
-    SV.cashAcc = 0; SV.cashT = 0;
+  // exhaust puffs while the truck slows into the bay
+  if (S.truck.state === 'ARRIVING' && S.truck.t > S.truck.dur * 0.6 && Math.random() < dt * 3) { const p = truckPose(); exhaust(p.rear + p.len - 4, p.y - L.u * 0.25, 1); }
+  // machines turn only while there is material to process
+  const working = S.yard && SV.buildT >= 1 && S.raw.qty > 0.01;
+  if (working) SV.spin += dt * (2.4 + 0.5 * S.upg.processSpeed);
+  SV.pressT += dt;
+  if (working && Math.random() < dt * 2.5) {
+    addPart({ kind: 'dust', x: L.hopperX + rnd(-L.u * 0.3, L.u * 0.3), y: L.gy - L.u * 1.2, vx: rnd(-20, 20), vy: rnd(-25, -5), size: rnd(3, 6) * fxk(), col: rubbleCol(S.raw).replace('rgb', 'rgba').replace(')', ',1)'), life: rnd(0.4, 0.7), floor: Infinity, bounce: 0 });
   }
   if (SV.speech && !SV.speech.hold) { SV.speech.t += dt; if (SV.speech.t > 3) SV.speech = null; }
-  // stall construction: boards go up with hammer knocks, then the seller steps in
-  if (S.stall && SV.buildT < 1) {
-    SV.buildT = Math.min(1, SV.buildT + dt / CFG.surface.stallBuildSecs);
+  // yard construction: frame, hopper, drum, auger, press, lights — with hammer knocks
+  if (S.yard && SV.buildT < 1) {
+    SV.buildT = Math.min(1, SV.buildT + dt / CFG.yard.buildSecs);
     SV.knockT -= dt;
-    if (SV.knockT <= 0 && SV.buildT < 0.9) { SV.knockT = 0.22; playKnock(near); }
+    if (SV.knockT <= 0 && SV.buildT < 0.92) { SV.knockT = 0.2; playKnock(near); }
     if (SV.buildT >= 1) playSting();
   }
-  if (S.stall && SV.buildT >= 1 && SV.buyerGone < 1) SV.buyerGone = Math.min(1, SV.buyerGone + dt / 3);
+  if (S.yard && SV.buildT >= 1 && SV.contractorGone < 1) SV.contractorGone = Math.min(1, SV.contractorGone + dt / 3);
 }
 
-/** Called by the panel when the stall is bought. */
-export function stallPurchased() {
+/** Called by the panel when the Recycling Yard is bought. */
+export function yardPurchased() {
   SV.buildT = 0; SV.knockT = 0;
-  say('Good luck down there.');
+  say('Now that is a proper operation.');
   playPurchase();
 }
 

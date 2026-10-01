@@ -4,7 +4,7 @@
 //   BOTTOM_EMPTY → LOADING → READY → TRAVELLING_UP → SURFACE_ARRIVAL → UNLOADING → TRAVELLING_DOWN → (BOTTOM_EMPTY | LOADING)
 import { CFG } from './config';
 import { S, type CartState } from './state';
-import { cartCapacity, loadRate, moveLoad, storageCap, travelTime } from './economy';
+import { cartCapacity, loadRate, moveLoad, rawCap, travelTime } from './economy';
 
 export type CartEventType = 'loaded' | 'ready' | 'depart' | 'arrive' | 'unloadStart' | 'unloaded' | 'returnStart' | 'back';
 export interface CartEvent { type: CartEventType; qty?: number }
@@ -50,7 +50,7 @@ export function sendCart(): boolean {
 /** Advance the cart by dt seconds. Consumes leftover time across transitions so large offline steps stay exact. */
 /** True while the cart is stuck at the top because surface storage is full. */
 export const cartBlocked = () =>
-  S.cart.state === 'UNLOADING' && S.cart.load.qty > EPS && S.surface.qty >= storageCap(S) - EPS;
+  S.cart.state === 'UNLOADING' && S.cart.load.qty > EPS && S.raw.qty >= rawCap(S) - EPS;
 
 export function updateCart(dt: number, out: CartEvent[] = []): CartEvent[] {
   const c = S.cart;
@@ -110,19 +110,19 @@ export function updateCart(dt: number, out: CartEvent[] = []): CartEvent[] {
       case 'UNLOADING': {
         // dump at a steady rate; if surface storage is full the cart WAITS holding its load (never destroys material).
         // c.t only advances while rubble actually moves, so the tip animation pauses too.
-        const room = Math.max(0, storageCap(S) - S.surface.qty);
+        const room = Math.max(0, rawCap(S) - S.raw.qty);
         const rate = Math.max(c.load.qty, EPS) / Math.max(EPS, c.dur - c.t);
         if (room <= EPS && c.load.qty > EPS) { left = 0; break; }
         const want = Math.min(rate * left, room);
-        const moved = moveLoad(c.load, S.surface, want);
+        const moved = moveLoad(c.load, S.raw, want);
         const used = moved > 0 ? moved / rate : left;
         c.t = Math.min(c.dur, c.t + used); left -= used;
         if (c.load.qty <= 1e-4) {
-          moveLoad(c.load, S.surface, c.load.qty); // never leave a crumb behind
+          moveLoad(c.load, S.raw, c.load.qty); // never leave a crumb behind
           out.push({ type: 'unloaded' });
           enter('TRAVELLING_DOWN', travelTime(S, S.depth));
           out.push({ type: 'returnStart' });
-        } else if (storageCap(S) - S.surface.qty <= EPS) {
+        } else if (rawCap(S) - S.raw.qty <= EPS) {
           left = 0; // storage just filled: wait
         }
         break;

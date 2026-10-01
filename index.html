@@ -19,26 +19,29 @@
   <div id="panel">
     <div class="top">
       <div class="cash" id="cash">$0</div>
-      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span>Surface <b id="stock">0 rubble</b></span></div>
+      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span>Yard <b id="stock">—</b></span></div>
     </div>
     <div class="scroll">
-      <section id="g-ext">
-        <div class="sh"><h2>Extraction</h2><span class="stat" id="extStat"></span></div>
-        <div class="status" id="extHint"></div>
-        <div id="tool"></div>
-        <div id="crew"></div>
+      <section class="acc" id="g-ext" data-acc="ext">
+        <button class="acc-h" aria-expanded="true"><span class="acc-t">Extraction</span><span class="stat" id="extStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+        <div class="acc-b">
+          <div class="status" id="extHint"></div>
+          <div id="tool"></div>
+          <div id="crew"></div>
+        </div>
       </section>
-      <section id="g-tr" hidden>
-        <div class="sh"><h2>Transport</h2><span class="stat" id="trStat"></span></div>
-        <div id="transport"></div>
+      <section class="acc" id="g-tr" data-acc="tr" hidden>
+        <button class="acc-h" aria-expanded="false"><span class="acc-t">Transport</span><span class="stat" id="trStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+        <div class="acc-b"><div id="transport"></div></div>
       </section>
-      <section id="g-surf" hidden>
-        <div class="sh"><h2>Surface</h2><span class="stat" id="surfStat"></span></div>
-        <div id="stall"></div>
-        <div id="surface"></div>
+      <section class="acc" id="g-proc" data-acc="proc" hidden>
+        <button class="acc-h" aria-expanded="false"><span class="acc-t">Processing</span><span class="stat" id="procStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+        <div class="acc-b"><div id="yardCard"></div><div id="processing"></div></div>
       </section>
-      <h2>Finds</h2>
-      <div id="finds"></div>
+      <section class="acc" id="g-finds" data-acc="finds">
+        <button class="acc-h" aria-expanded="false"><span class="acc-t">Finds</span><span class="stat" id="findStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+        <div class="acc-b"><div id="finds"></div></div>
+      </section>
       <div id="debug"></div>
       <button class="reset" id="reset">Start over</button>
     </div>

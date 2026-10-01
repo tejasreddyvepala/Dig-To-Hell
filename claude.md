@@ -31,7 +31,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Cosmetic-only monetization later. No pay-to-win, no energy systems.
 
 ## WORLD STRUCTURE
-- Surface (depth 0): sky, ground, shaft opening, headframe, rail end, unloading point, stockpile; seller and buildings come in Phase 3C.
+- Surface (depth 0): painted landscape with day/night, headframe, and the Recycling Yard (hopper, crusher, auger, press, block stack, road + loading bay, delivery trucks).
 - Shaft: rails along the wall, the cart in transit (position derived from its actual journey), depth markers, geology, finds, structures.
 - Dig site: destructible face (8 logical chunks rendered as one mass), miners, rubble pile, loading point with the cart.
 - **Persistent shaft history approach:** do not save transient detail (cracks, particles). Reconstruct deterministically from `worldSeed + segment index` (geology, wall features) plus saved milestone state (finds found, structures built, rail tier). This keeps saves tiny at any depth. (Deterministic geology lands in Phase 3D.)
@@ -42,17 +42,18 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Save to localStorage every 5 s and on unload/pagehide, try/catch, versioned schema with migration.
 - All tuning numbers in `src/config.ts`. Never scatter magic numbers.
 - 60 FPS on mid-range laptops; mobile (touch to dig, panel stacks below the canvas under 760 px).
-- Modules: `config` (tuning), `economy` (pure formulas), `state` (save schema/load/save), `sim` (strikes, crew, finds, offline), `cart` (transport state machine, pure), `digface` (chunk damage state), `miner` (player swing scheduling), `juice` (sim results → FX + audio), `fx` (particles/popups/camera impulse), `audio`, `view` (canvas/camera/geometry), `render` (all drawing), `panel` (DOM upgrades), `main` (wiring + loop only).
+- Modules: `config` (tuning), `economy` (pure formulas), `state` (save schema/load/save/migration), `sim` (strikes, crew, finds, offline), `cart` (transport state machine), `surface` (contractor, processing, truck state machine — the only cash source), `digface` (chunk damage state), `geo` (geology sampler + painter), `miner` (player swing scheduling), `juice` (sim results → FX + audio), `fx` (particles/popups/camera impulse), `audio`, `view` (canvas, camera zoom/pan, geometry, yard layout), `render` (world/dig site/cart/rails/HUD), `characters` (people, lamps, excavator), `yard` (surface plant + trucks), `landscape` (sky/day-night/scenery), `draw` (shared helpers), `panel` (DOM accordion), `main` (wiring + loop only).
 - Dev-only hooks (`import.meta.env.DEV`): `window.__dig` for tests and a small debug panel (add cash/rubble, clear stock). Stripped from production builds.
 - `dig-to-hell.html` is the original single-file prototype (reference only).
 
 ## CURRENT ECONOMY
-- **Resource:** `rubble` (data-driven `RESOURCES` table). Quantities carry accumulated value `{qty, val}`; value per unit = `baseValue × valueAt(depth)`, `valueAt(d) = (1 + d/valueDiv)^valueExp`.
+- **Resource:** `rubble` (data-driven `RESOURCES` table). Every quantity is a Load `{qty, val, mix}` — units, accumulated value, and material composition (units per source material). Value per unit = `baseValue × valueAt(depth)`, `valueAt(d) = (1 + d/valueDiv)^valueExp`. Composition travels pile → cart → hopper → blocks and drives every rubble/block colour.
 - **Extraction:** chunk breaks add `rubblePerBreak` to the dig-site pile (×2 on a crit break) and advance depth by the material's `metersPerBreak`. Chunk HP = `stages × hpPerStage` per material; pickaxe = 1 power ≈ one visible stage per hit. Excess damage carries into the fresh chunk.
 - **Transport:** one permanent cart. `capacity`, `loadRate`, `cartSpeed`, `railMult` from upgrade levels; `travelTime(d) = baseTravel + d / (cartSpeed × railMult)`.
-- **Surface:** unloaded rubble accumulates in `surfaceStock` (capped by Storage; a full surface makes the cart wait, never destroys material). A tutorial Scrap Buyer buys the first load; after that the Scrap Stall's seller sells `sellRate` units/s at `price × carried value`. **`surface.ts` is the only code that adds cash.**
+- **Surface (Recycling Yard, Phase 3C.5):** the cart unloads into RAW (capped by Raw Storage; when full the cart waits holding its load). The yard's crusher + auger + press turn raw into FINISHED BLOCKS at `processRate`. A delivery truck arrives when ≥ 15 blocks are stacked, loads up to 60, and **pays `load value × contractPrice` when it departs** — the only normal cash source (`surface.ts`). Before the yard exists, a contractor buys raw loads (first-load tutorial + no-soft-lock safety net).
+- *(Superseded Phase 3C model: Scrap Buyer + Scrap Stall seller converting surface stock straight into a cash drip.)*
 - **Extraction purchases:** tool ladder (Pickaxe → Iron → Heavy → Jackhammer) and Digger hiring.
-- **Upgrades** cost cash with geometric growth per level; groups EXTRACTION / TRANSPORT / SURFACE revealed progressively.
+- **Upgrades** cost cash with geometric growth per level; accordion groups EXTRACTION / TRANSPORT / PROCESSING / FINDS revealed progressively.
 - *(Superseded: hardness `(1 + d/20)^2`, value per meter paid per click, Mine Cart as a repeatedly purchased crew unit, find cash bonuses.)*
 
 ## CURRENT BUILD ORDER
@@ -61,7 +62,8 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 2.5. Readability / core-loop polish — DONE
 3A. Rubble economy — digging produces rubble, no cash from hits, visible bottom pile, save migration
 3B. Physical cart loop — one permanent cart, loading, real travel through the shaft, unloading, return, transport upgrades
-3C. Surface economy + restored extraction ladder — DONE (Scrap Buyer, Scrap Stall, seller, sell speed/value/storage, tool ladder, Digger hiring, panel restructure)
+3C. Surface economy + restored extraction ladder — DONE (seller model later superseded by 3C.5)
+3C.5. World identity + surface factory — DONE (Recycling Yard, trucks, material composition, painted geology, characters/excavator/lamps, landscape + day/night, accordion UI, per-level rails)
 3D. Navigation + world — Surface / Dig Site controls, smooth camera, manual scroll (wheel + touch), deterministic irregular geology, persistent rails/history rendering, unlimited depth
 → HUMAN PLAYTEST
 4. Animated Finds
@@ -81,6 +83,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Design update (physical economy, unbounded depth): `6ea5c2b`
 - Phase 3A + 3B (rubble economy + physical cart loop): `b4a2c08`
 - Phase 3C (surface economy + restored extraction ladder): `ce168ca`
+- Phase 3C.5 (world identity + surface factory): `PHASE3C5_HASH`
 
 ### Phase 3A + 3B — rubble economy + physical cart loop
 - **Files:** new `src/cart.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `sim.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `miner.ts`, `index.html`, `style.css`.
@@ -128,43 +131,45 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Frame work at the 700-particle cap (8 diggers, crits, cart, seller): p99 2.8 ms desktop, 10.4 ms at 4× CPU throttle.
 - Verified: digging/crew/cart never add cash; material conserved through storage-full waits and reloads mid-sale; seller runs with the camera underground; crew dig with the camera at the surface; v2 and 3B saves migrate.
 
+### Recommended next task (after 3C)
+Human playtest of 3C — done; it led to Phase 3C.5 below.
+
+### Phase 3C.5 — world identity + surface factory: `PHASE3C5_HASH`
+- **Why:** the 3C playtest found the world still looked like a prototype: a broken-looking excavator, inconsistent scale, a tiny "Scrap Stall" (and "scrap" made no sense for dirt), a toy truck, a narrow shaft with useless side geology, layer-cake strata, face/wall/rubble colours that didn't match, random cracks and premature red, rails that only changed at a few levels, no helmet lights, an empty surface and an overlong panel.
+- **Surface economy superseded:** the Phase 3C seller model (Scrap Buyer + Scrap Stall cash drip) is replaced by the **Recycling Yard**: cart → hopper (RAW) → crusher + auger → hydraulic press → FINISHED BLOCKS → delivery truck → **cash only when a loaded truck departs**. A contractor (pickup "CONTRACTOR") buys the first load and is the no-soft-lock safety net until the yard ($80) is built. Trucks: arrive when ≥ 15 blocks, capacity 60, reverse in from the right to a loading bay, blocks arc onto the bed, drive off; colour `hsl((n × 137.508) mod 360, 42–54%, 44%)` per delivery index.
+- **New modules:** `geo.ts` (deterministic geology sampler + cached 5 m segment painter), `characters.ts` (people, lamps, articulated excavator), `yard.ts` (headframe, yard, road, truck, contractor), `landscape.ts` (sky, day/night, mountains, trees, clouds, birds, night grade), `draw.ts` (shared pile/label/bubble helpers). `surface.ts` rewritten (contractor, processor, truck state machine).
+- **Composition + scale:** shaft ≈ 60% of the canvas (max 680 px), centred at 45% so the yard fits; face logical width 220 → 260; player scale 1.3, crew 1.05; camera zoom/pan: close at the dig site, pans + fits the whole yard and truck bay at the surface (smooth, input inverted through the zoom). Effects scale with the work area (`fxScaleRef`).
+- **Material consistency:** one sampler (`materialAt` logical / `materialAtXY` visual) feeds walls, face, debris and rubble. Loads carry `mix` (units per material); pile, cart fill, hopper, blocks and truck load are coloured by it. Undamaged face chunks follow the geology when it changes.
+- **Geology:** painted per 5 m segment (value noise, large boundary waves + small noise, lenses/pockets near boundaries, wandering strata and streaks, embedded rocks, faint fissures), cached (LRU 90), ≤1 build/frame + 3-segment prefetch, blit clipped to the visible span. Shaft interior = same rock in shadow. Face cracks clipped above 62% of the face band (no damage cracks in untouched ground). Premature red cracks/flecks near 292 m removed.
+- **Characters:** ~4.7-head stylised miners (boots, bent knees, belt, gloves, face, hard hat + lamp); player orange/red with hi-vis stripes; crew muted blue/green; contractor/yard hand with caps. Every visible worker has a lamp beam (player strongest); the shaft gets darker with depth (max 42% at ~260 m) so lamps matter. Excavator rebuilt: tracks, slewing body, cab (~1.15 worker heights), boom/stick/bucket solved with two-link IK so every joint stays attached and the bucket tip lands on the impact point; post-bite body rock; works from a timber mat on the left.
+- **Rails:** every Rail Quality level changes something (thickness, brightness, sleeper spacing 1.15 → 0.45 m, cable thickness; bolts Lv1, brackets Lv3, cross bracing Lv4, side braces Lv5, shaft lamps Lv6+ getting closer, hazard paint Lv9, guard rail Lv12) on top of the 4 material tiers.
+- **Surface environment:** 10-minute cosmetic day/night (dawn, day, sunset, night) with sun/moon arcs, stars, two parallax mountain ridgelines, distant tree line + framing tree clusters, layered painted clouds lit by time of day, an occasional distant flock; at night a cool grade with yard/headframe lamps and truck headlights glowing on top.
+- **UI:** accordion sections EXTRACTION / TRANSPORT / PROCESSING / FINDS with live summaries (`PROCESSING  Raw 54/120 · Blocks 10 · Truck loading`), auto-open + flash when first revealed, one-at-a-time on mobile, state persisted in localStorage (`dth_acc`). Bigger cash, section titles and next-action names.
+- **Save v4:** Loads `{qty, val, mix}`; `raw`, `goods`, `truck {state, t, dur, load, n, paid, bed}`, `yard`, `upg.processSpeed/contractValue/rawStorage`, `stats {earned, delivered, processed}`. v3 → v4 maps surface → raw, stall → yard, sellSpeed/sellValue/storage → processSpeed/contractValue/rawStorage, infers mix from depth; v2 still migrates. A departing truck's load is removed at departure (paid once); `bed` is visual only.
+- **Tuning:** processRate 2.0/s (+35%/lvl), price ×3 (+25%/lvl), raw storage 120 (+50%/lvl), yard $80, truck pickup 15 / capacity 60 / load 16 per s, cart surfaceLift 7 m, headframe 16 m.
+
+### Measurements (Phase 3C.5)
+- Headless bot, 4 clicks/s: cart departs ~18 s · contractor sale $169 at ~26 s · yard built ~27–33 s · first truck paid ~64 s · trucks every 10–23 s · earned ~$1,600–1,800 by 3:00 · depth ~100 m at 3:00. Typical choice snapshot after the yard: 4–7 of 7–8 options affordable with cash for one; mid-game (2:00+) cash sometimes covers several options at once.
+- Real-browser bot (~6 clicks/s, real panel + nav prompt): first sale $176 at 25 s · yard 28 s · first truck arrives 59 s / paid 64 s · 7 trucks by 3:00 · **0 cash increases outside a truck departure after the yard** · v3 save migrates with cash, yard, upgrades and material exactly conserved · reloads in every truck state conserve material and never pay twice · processing + trucks keep running with the camera underground.
+- Frame work at the 700-particle cap (8 diggers + excavator, all crits, yard running): p99 ≈ 5–6 ms desktop; 26–49 ms at 4× CPU throttle and 25–65 ms at 6× (headless software rendering; noisy). This is a regression from 3C (≈10 ms at 4×) — more gradients (lamps), characters and the geology blit.
+
 ### Recommended next task
-Human playtest of 3C. Then Phase 3D (navigation + deterministic geology + unlimited depth). Balance watch-items: transport still dominates (dig-site pile grows to 300–1,000 by 3:00); Rail Quality is rarely bought; the Heavy Pickaxe at $260 competes poorly with cheaper options.
-
-### Step 2 — summary
-Destructible face (8 chunks, per-material stages), miner swing scheduling with impact-frame resolution, crew strikes, impact hierarchy with crit hit-stop/star/ring, synthesized audio, economy retuned to ~12 m at 25 s / 45 m at 85 s (4 clicks/s), save v2.
-
-### Step 2.5 — what changed
-- Face reads as one mass of earth: no chunk outlines, a shared face-space gradient that fades into the surrounding ground, shared seam tops (continuous lit lip), dark inner earth revealed only by craters. Breaks leave a bowl-shaped crater + soft dark reveal that settles. Whole-chunk flash/flinch/squash removed (they exposed the tile grid) and replaced with a local impact pulse at the hit point.
-- Popup hierarchy: hit = small/faint/short; break = one combined label; crit = large gold with pop. Max 6 popups on screen. *(Cash in these popups is superseded by Phase 3A.)*
-- Crew: max 3 animated diggers (2 when an excavator is present); extras dig at full DPS and show as a helmet row "+N crew". Randomized phases/periods. Crew FX ~60% of player's, crew audio 0.2 volume.
-- Player miner: 1.12× scale, brighter helmet, lamp beam, dark rim. Pick reach scales with size so the tip lands on the hit point on the impact frame.
-- Camera: face at 71% of viewport, shaft wider (max 400 px), shaft darkens upward, warm work light on the face.
-- Audio: heavier 55 Hz thump on breaks, extra hard transient on crits.
-- Tuning changes: faceYFrac 0.62→0.71, shaftMaxW 320→400, shaftWFrac 0.42→0.46, crewVisibleMax 5→3, crewScale 0.88→0.85, playerScale 1.12, crewFxScale 0.6, AUDIO.crewVolume 0.28→0.2, impulse.hit 0.6→0.3, impulse.crit 2.2→2.1, critFx.starSecs 0.16→0.1, dentPx 3.2→4.5.
-- Measurements: 12 m 27.5 s, 20 m 46.4 s, 45 m 86.4 s at 4 clicks/s; frame work p99 2.6 ms desktop / 8.6 ms at 4× CPU throttle at the 700-particle cap.
+Human playtest of 3C.5. Then Phase 3D (navigation + unlimited depth). A real-GPU performance profile of the lamps/characters/geology at low-end settings should come before adding more visuals.
 
 ## KNOWN ISSUES
+- Performance regressed under heavy CPU throttling in 3C.5 (see measurements); desktop is fine. Candidate costs: per-worker radial-gradient lamps, character geometry, particle polygons, large geology blits. Profile on a real low-end GPU before optimising blindly.
+- First truck only pays ~30 s after the yard is built (the contractor bought the first load, so the yard waits for the second cart). The wait is filled by the build animation and first processing, but it is a soft dead zone.
+- Transport still dominates (dig-site pile grows to several hundred by 3:00); mid-game cash can cover several upgrades at once (opportunity cost loosens after ~2:00).
 - Hits land ~72 ms after the click (windup + downswing) to keep animation and sim in sync.
-- Mobile: figures and face are small (stage is only 56% of the screen height); the find tease can be off-screen on narrow widths; no touch scrolling yet (3D).
-- Excavator can overlap the player miner when the player digs on the right side.
+- Mobile: the surface yard fits but is small; the accordion opens one section at a time (the most recently revealed).
 - Cracks are clipped per chunk, so a crack can stop at an invisible chunk boundary.
-- Finds still use the placeholder modal (pauses digging) until Phase 4.
-- Depth is still capped at 300 m in code until Phase 3D.
-- Geology is still a clean layer cake until Phase 3D.
+- Finds still use the placeholder modal (pauses digging) until Phase 4. Depth is still capped at 300 m until Phase 3D.
+- Contractor speech uses a real-time `setTimeout` (cosmetic). Surface popups are world-space and can appear at the edge of the dig-site view when shallow.
 - Sounds verified only as error-free, not by ear.
-- Offline progression design is unresolved (interim: conservative chain simulation, stops before the next find).
-- Transport dominates: the dig-site pile grows to several hundred by 3:00 because depth makes trips longer while capacity/loading upgrades lag. The surface stock stays modest (seller rarely the bottleneck before ~2:00).
-- Depth runs fast with active clicking (~106 m at 3:00 at 4 clicks/s, 169 m at ~6/s) — finds/interruptions will absorb time later.
-- Surface buildings are small on screen (stall ≈ 70 px wide on desktop); on mobile the stockpile/stall overlap the shaft opening on a deck.
-- The Scrap Buyer speech uses a real-time `setTimeout` (cosmetic).
-- Pile at the dig site grows without limit when transport lags (by design for now; a "RUBBLE FULL" nav alert comes in 3D).
-- The cart rides a vertical rail on a cable (a hoisted skip); it reads as a cart but is not physically "rolling" on a slope.
-- The "n/cap" cart label and the headframe overlap at very shallow depth (< 5 m).
-- Panel status text ("No buyer yet") is placeholder copy for 3C.
+- Offline progression design is unresolved (interim: real chain simulation incl. processing + trucks, stops before the next find).
 
 ## CURRENT IMPLEMENTATION TASK
-Phase 3C is DONE — awaiting human playtest. Next (only after approval): Phase 3D (navigation + deterministic geology + unlimited depth). Still out of scope: find cinematics, interruptions, Red Door, multiple carts, elevators, conveyors, leaderboards, prestige, new resources, music.
+Phase 3C.5 is DONE — awaiting human playtest. Next (only after approval): Phase 3D (free navigation + unlimited depth + persistent history). Still out of scope: find cinematics, interruptions, Red Door, multiple carts, elevators, conveyors, truck upgrades, leaderboards, prestige, new resources, music.
 
 ## HOW TO WORK WITH TEJAS
 - Be opinionated. Say when an idea is weak.
