@@ -42,7 +42,7 @@ Build the 0–300 m vertical slice exactly as described in SPEC.md (beat sheet, 
 ## Status log
 - Step 1 (port to TS + Vite): `e4d758d`
 - Step 2 (destructible face, juice, Web Audio, economy retune): `fc51a70`
-- Step 2.5 (polish the click loop): `STEP25_HASH`
+- Step 2.5 (polish the click loop): `72800ed`
 
 ### Step 2.5 — what changed
 - Face reads as one mass of earth: no chunk outlines, a shared face-space gradient that fades into the surrounding ground, shared seam tops (continuous lit lip), dark inner earth revealed only by craters. Breaks leave a bowl-shaped crater + soft dark reveal that settles. Whole-chunk flash/flinch/squash removed (they exposed the tile grid) and replaced with a local impact pulse at the hit point.
