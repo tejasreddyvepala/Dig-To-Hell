@@ -1,6 +1,7 @@
 // Canvas, camera and face <-> screen geometry. Shared by rendering, input and FX.
 import { CFG } from './config';
 import { S } from './state';
+import { cartDepth } from './cart';
 
 export const canvas = document.getElementById('c') as HTMLCanvasElement;
 export const ctx = canvas.getContext('2d')!;
@@ -11,9 +12,9 @@ export const view = {
   dpr: 1,
   t: 0,
   camDepth: S.depth, // eased view depth; trails S.depth so each break visibly extends the shaft
-  scrollOff: 0, // meters, <= 0 when the player scrolls up the shaft
-  scrollIdle: 0,
+  scrollOff: 0, // meters, <= 0 when the player scrolls up the shaft (stays until they return)
   hideDigHint: false,
+  cartRect: null as { x: number; y: number; w: number; h: number } | null, // last drawn cart, for tap-to-send
 };
 
 function resize() {
@@ -50,5 +51,11 @@ export function updateCamera(dt: number) {
   view.t += dt;
   view.camDepth += (S.depth - view.camDepth) * (1 - Math.exp(-CFG.cameraFollow * dt));
   if (Math.abs(S.depth - view.camDepth) > 20) view.camDepth = S.depth; // offline jumps, resets
-  if (view.scrollIdle > 0) { view.scrollIdle -= dt; if (view.scrollIdle <= 0) view.scrollOff = 0; }
+}
+
+/** Screen position of the cart's base: on the face while at the dig site, else at its true world depth. */
+export function cartScreen() {
+  const x = toScreen(CFG.cart.cartX, 0).x;
+  const atFace = S.cart.state === 'BOTTOM_EMPTY' || S.cart.state === 'LOADING' || S.cart.state === 'READY';
+  return { x, y: atFace ? toScreen(0, 0).y : yOf(cartDepth()) };
 }

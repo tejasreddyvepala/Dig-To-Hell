@@ -1,12 +1,13 @@
 // Draws the world, the destructible dig face, miner/crew, FX and HUD overlays. Reads state; never mutates sim.
-import { CFG, FINDS, MATERIALS, MAX_DEPTH, type Find } from './config';
+import { CFG, FINDS, MATERIALS, MAX_DEPTH, RESOURCES, type Find } from './config';
 import { S } from './state';
-import { materialAt } from './economy';
+import { cartCapacity, materialAt, tierOf } from './economy';
+import { cartDepth, cartFill } from './cart';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { workers } from './sim';
 import { miner, minerSwingAngle, swingAngle } from './miner';
 import { FX, drawPopups, drawWorldFx } from './fx';
-import { ctx, faceOrigin, faceScale, faceY, shaftW, view, viewTop, yOf } from './view';
+import { cartScreen, ctx, faceOrigin, faceScale, faceY, shaftW, toScreen, view, viewTop, yOf } from './view';
 import { fmt, hash, rgb, rgba } from './util';
 
 const FONT_DISPLAY = "'Bungee',Impact,sans-serif";
@@ -248,18 +249,6 @@ function drawExcavator(x: number, dir: number, angle: number) {
   ctx.restore();
 }
 
-function drawCarts() {
-  const n = S.crew.cart;
-  if (!n) return;
-  const x = 10;
-  ctx.save(); ctx.translate(x, -2);
-  ctx.fillStyle = '#5f646b'; ctx.beginPath(); ctx.moveTo(-6, -16); ctx.lineTo(22, -16); ctx.lineTo(18, -3); ctx.lineTo(-2, -3); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = rgb(materialAt(S.depth).chip, 1.1); ctx.fillRect(-4, -20, 24, 5);
-  ctx.fillStyle = '#1c1c1c'; ctx.beginPath(); ctx.arc(2, -2, 3, 0, 6.283); ctx.arc(14, -2, 3, 0, 6.283); ctx.fill();
-  if (n > 1) { ctx.font = `700 9px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('×' + n, 8, -24); }
-  ctx.restore();
-}
-
 function workerAngle(timer: number, since: number) {
   return timer < IMPACT_AT ? swingAngle(IMPACT_AT - timer) : swingAngle(IMPACT_AT + since);
 }
@@ -287,7 +276,7 @@ function drawFaceAndCrew() {
   ctx.save();
   ctx.translate(o.x, o.y); ctx.scale(s, s);
   drawFace(s);
-  drawCarts();
+  drawPile(CFG.cart.pileX, 0, S.rubble.qty, CFG.rubble.pileVisualMax, 1, 17);
   let di = 0;
   for (const w of workers) {
     const a = workerAngle(w.timer, w.since);
@@ -313,19 +302,158 @@ function drawFind(f: Find, x: number, y: number, alpha: number) {
   ctx.restore();
 }
 
-function drawBase(cx: number, groundY: number) {
-  const total = S.crew.dig + S.crew.cart + S.crew.exc;
-  const bx = cx + 120;
-  if (total < 1) {
-    ctx.fillStyle = '#4f6b3a'; ctx.beginPath(); ctx.moveTo(bx, groundY); ctx.lineTo(bx + 30, groundY - 40); ctx.lineTo(bx + 60, groundY); ctx.fill();
-  } else if (total < 8) {
-    ctx.fillStyle = '#7a5a3a'; ctx.fillRect(bx, groundY - 44, 70, 44);
-    ctx.fillStyle = '#5a3e26'; ctx.beginPath(); ctx.moveTo(bx - 6, groundY - 44); ctx.lineTo(bx + 35, groundY - 68); ctx.lineTo(bx + 76, groundY - 44); ctx.fill();
-    ctx.fillStyle = '#ffd76a'; ctx.fillRect(bx + 10, groundY - 32, 14, 12);
-  } else {
-    ctx.fillStyle = '#8c949e'; ctx.fillRect(bx, groundY - 70, 120, 70);
-    ctx.fillStyle = '#ffcf3a'; ctx.fillRect(bx, groundY - 78, 120, 8);
-    for (let i = 0; i < 4; i++) { ctx.fillStyle = '#ffd76a'; ctx.fillRect(bx + 10 + i * 28, groundY - 56, 16, 14); }
+// ---------- transport: rails, cart, piles, headframe ----------
+const C = CFG.cart;
+const RAIL_STYLES = [
+  { rail: '#7a5634', w: 2.2, tie: '#4e3620', tieW: 2.4, plate: '', bracket: '' }, // rough wooden track
+  { rail: '#5e4127', w: 3, tie: '#3e2a17', tieW: 3, plate: '#8a9198', bracket: '' }, // reinforced wood
+  { rail: '#a3acb6', w: 2.4, tie: '#4e3620', tieW: 2.6, plate: '', bracket: '' }, // metal rail
+  { rail: '#c4ccd4', w: 3.6, tie: '#3b3f45', tieW: 3.2, plate: '', bracket: '#e0b322' }, // heavy industrial
+];
+
+/** Rails along the left wall from the headframe to the dig face; ties are anchored in world meters. */
+function drawRails(yTop: number, yBot: number) {
+  const st = RAIL_STYLES[tierOf(S.upg.rail, C.railTiers)];
+  const s = faceScale(), x = toScreen(C.railX, 0).x, half = 6 * s;
+  const top = Math.max(-20, yTop), bot = Math.min(view.H + 20, yBot);
+  if (bot <= top) return;
+  // ties every metre of world depth (stable while scrolling)
+  const m0 = Math.floor(viewTop()), m1 = Math.ceil(viewTop() + view.H / CFG.ppm);
+  ctx.lineCap = 'butt';
+  for (let m = m0; m <= m1; m++) {
+    const y = yOf(m) + (st === RAIL_STYLES[0] ? (hash(m * 1.7) - 0.5) * 3 : 0);
+    if (y < top || y > bot) continue;
+    ctx.strokeStyle = st.tie; ctx.lineWidth = st.tieW;
+    ctx.beginPath(); ctx.moveTo(x - half - 3, y); ctx.lineTo(x + half + 3, y); ctx.stroke();
+    if (st.plate && m % 3 === 0) { ctx.fillStyle = st.plate; ctx.fillRect(x - half - 2, y - 2, 4, 4); ctx.fillRect(x + half - 2, y - 2, 4, 4); }
+    if (st.bracket && m % 4 === 0) { ctx.fillStyle = st.bracket; ctx.fillRect(x - half - 6, y - 3, 4, 6); }
+  }
+  ctx.strokeStyle = st.rail; ctx.lineWidth = st.w;
+  ctx.beginPath(); ctx.moveTo(x - half, top); ctx.lineTo(x - half, bot); ctx.moveTo(x + half, top); ctx.lineTo(x + half, bot); ctx.stroke();
+  if (st.w > 2.3) { // highlight edge on metal rails
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(x - half + 1, top); ctx.lineTo(x - half + 1, bot); ctx.moveTo(x + half + 1, top); ctx.lineTo(x + half + 1, bot); ctx.stroke();
+  }
+}
+
+/** A procedural rubble mound in face-logical units (or screen units with scale 1). Deterministic per rock index. */
+function drawPile(cx: number, baseY: number, qty: number, max: number, unit: number, seed: number) {
+  if (qty < 0.05) return;
+  const f = Math.min(1.5, qty / max);
+  const w = (10 + 46 * Math.min(f, 1.25)) * unit, h = (3 + 24 * Math.min(f, 1.3)) * unit;
+  const col = RESOURCES.rubble.color;
+  // mound body
+  ctx.fillStyle = rgb(col, 0.62);
+  ctx.beginPath(); ctx.moveTo(cx - w / 2, baseY);
+  for (let i = 0; i <= 10; i++) {
+    const k = i / 10, bump = (hash(seed + i * 3.3) - 0.5) * 0.18;
+    ctx.lineTo(cx - w / 2 + w * k, baseY - h * (Math.sin(Math.PI * k) * (0.92 + bump)));
+  }
+  ctx.closePath(); ctx.fill();
+  // rocks on the surface of the mound
+  const n = Math.min(46, Math.max(3, Math.round(f * 34)));
+  for (let i = 0; i < n; i++) {
+    const k = hash(seed + i * 7.1), lift = hash(seed + i * 2.3);
+    const px = cx - w / 2 + w * (0.08 + 0.84 * k);
+    const py = baseY - h * Math.sin(Math.PI * (0.08 + 0.84 * k)) * (0.35 + 0.6 * lift);
+    const r = (1.6 + hash(seed + i * 5.9) * 2.6) * unit;
+    ctx.fillStyle = rgb(col, 0.75 + hash(seed + i * 9.7) * 0.55);
+    ctx.beginPath(); ctx.ellipse(px, py, r * 1.2, r, hash(seed + i) * 3, 0, 6.283); ctx.fill();
+  }
+  if (f > 1) { // overflowing: rocks spill out to the sides
+    for (let i = 0; i < Math.round((f - 1) * 20); i++) {
+      const side = i % 2 ? 1 : -1, px = cx + side * (w / 2 + hash(seed + i * 4.4) * 10 * unit);
+      ctx.fillStyle = rgb(col, 0.8 + hash(seed + i) * 0.4);
+      ctx.beginPath(); ctx.arc(px, baseY - 1.5 * unit, (1.4 + hash(seed + i * 3.1) * 1.6) * unit, 0, 6.283); ctx.fill();
+    }
+  }
+}
+
+const CART_BODIES = [
+  { w: 24, h: 13, body: '#8a5a3a', band: '#5b3a22', rim: '#a9764f', wheel: 3.2 }, // tiny rusty hand cart
+  { w: 28, h: 15, body: '#7a5233', band: '#3d3d3d', rim: '#9a6c45', wheel: 3.6 }, // reinforced
+  { w: 32, h: 17, body: '#6f7780', band: '#4b5157', rim: '#9aa3ad', wheel: 4 }, // metal mining cart
+  { w: 36, h: 19, body: '#d9a520', band: '#2c2f33', rim: '#f2c64a', wheel: 4.4 }, // heavy industrial
+];
+
+/** The cart in screen space, base centred at (x, y). */
+function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, roll: number) {
+  const b = CART_BODIES[tierOf(S.upg.cartCap, C.bodyTiers)];
+  const w = b.w * s, h = b.h * s, r = b.wheel * s;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.translate(-w / 2, -r); ctx.rotate(tip); ctx.translate(w / 2, r); // tips over its left wheel
+  // load: rocks heap up over the rim as it fills
+  if (fill > 0.001) {
+    const col = RESOURCES.rubble.color, n = Math.max(2, Math.round(fill * 14));
+    const mound = Math.max(0, fill - 0.35) * h * 0.75;
+    for (let i = 0; i < n; i++) {
+      const k = hash(31 + i * 7.3), px = -w / 2 + 3 * s + (w - 6 * s) * k;
+      const py = -r - h + 3 * s + (1 - fill) * h * 0.55 - mound * Math.sin(Math.PI * k) * (0.6 + 0.4 * hash(i * 3.1));
+      ctx.fillStyle = rgb(col, 0.75 + hash(i * 5.3) * 0.5);
+      ctx.beginPath(); ctx.ellipse(px, py, (2.2 + hash(i) * 1.6) * s, (1.8 + hash(i * 2) * 1.2) * s, 0, 0, 6.283); ctx.fill();
+    }
+  }
+  // body (slightly tapered tub)
+  ctx.fillStyle = b.body;
+  ctx.beginPath(); ctx.moveTo(-w / 2, -r - h); ctx.lineTo(w / 2, -r - h); ctx.lineTo(w / 2 - 2.5 * s, -r); ctx.lineTo(-w / 2 + 2.5 * s, -r); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = b.band; ctx.fillRect(-w / 2 + 1.5 * s, -r - h * 0.55, w - 3 * s, 2 * s);
+  ctx.fillStyle = b.rim; ctx.fillRect(-w / 2 - 1 * s, -r - h - 1.5 * s, w + 2 * s, 2.2 * s);
+  if (b === CART_BODIES[2] || b === CART_BODIES[3]) { // rivets
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    for (let i = 0; i < 4; i++) ctx.fillRect(-w / 2 + (4 + i * (w / s - 8) / 3) * s - 1, -r - h * 0.3, 2, 2);
+  }
+  // wheels with turning spokes
+  for (const wx of [-w / 2 + r + 1.5 * s, w / 2 - r - 1.5 * s]) {
+    ctx.fillStyle = '#1c1c1c'; ctx.beginPath(); ctx.arc(wx, -r, r, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#777'; ctx.lineWidth = Math.max(1, 0.8 * s);
+    ctx.beginPath(); ctx.moveTo(wx + Math.cos(roll) * r * 0.8, -r + Math.sin(roll) * r * 0.8); ctx.lineTo(wx - Math.cos(roll) * r * 0.8, -r - Math.sin(roll) * r * 0.8); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCart() {
+  const s = faceScale(), c = cartScreen(), st = S.cart.state, cs = S.cart;
+  if (c.y < -80 || c.y > view.H + 80) { view.cartRect = null; return; }
+  let tip = 0, bump = 0;
+  if (st === 'SURFACE_ARRIVAL') bump = Math.sin(Math.min(1, cs.t / cs.dur) * Math.PI) * 3 * s;
+  if (st === 'UNLOADING') {
+    const p = Math.min(1, cs.t / cs.dur);
+    tip = -0.95 * (p < 0.75 ? Math.sin(Math.min(1, p / 0.3) * Math.PI / 2) : (1 - p) / 0.25);
+  }
+  const roll = cartDepth() * 1.6;
+  // cable from the headframe pulley to the cart
+  const pulleyY = yOf(-C.surfaceLiftM - 3.2);
+  ctx.strokeStyle = 'rgba(40,36,30,.8)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(c.x, Math.max(-10, pulleyY)); ctx.lineTo(c.x, c.y - 22 * s + bump); ctx.stroke();
+  drawCartAt(c.x, c.y + bump, s, cartFill(), tip, roll);
+  const b = CART_BODIES[tierOf(S.upg.cartCap, C.bodyTiers)];
+  view.cartRect = { x: c.x - (b.w / 2 + 6) * s, y: c.y - (b.h + b.wheel * 2 + 12) * s, w: (b.w + 12) * s, h: (b.h + b.wheel * 2 + 16) * s };
+  // "tap to send" hint while it holds something but is not yet full
+  if ((st === 'LOADING' || st === 'BOTTOM_EMPTY') && cs.load.qty > 0.5) {
+    const cap = cartCapacity(S);
+    ctx.font = `700 ${Math.round(9 * s)}px ${FONT_UI}`; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
+    ctx.fillText(`${Math.floor(cs.load.qty)}/${cap}`, c.x, c.y - (b.h + b.wheel * 2 + 6) * s);
+  }
+}
+
+/** Surface: headframe over the shaft opening + the stockpile where the cart dumps. */
+function drawSurface(gy: number) {
+  if (gy < -60 || gy > view.H + 260) return;
+  const s = faceScale(), x = toScreen(C.railX, 0).x, topY = yOf(-C.surfaceLiftM - 3.2);
+  // headframe: two timber legs, crossbeam, pulley
+  ctx.strokeStyle = '#5b3d22'; ctx.lineWidth = 3.2 * s / 1.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - 16 * s, gy - 2); ctx.lineTo(x - 4 * s, topY); ctx.moveTo(x + 18 * s, gy - 2); ctx.lineTo(x + 4 * s, topY);
+  ctx.moveTo(x - 12 * s, (gy + topY) / 2); ctx.lineTo(x + 14 * s, (gy + topY) / 2); ctx.stroke();
+  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.arc(x, topY, 5 * s, 0, 6.283); ctx.fill();
+  ctx.fillStyle = '#9aa3ad'; ctx.beginPath(); ctx.arc(x, topY, 2 * s, 0, 6.283); ctx.fill();
+  // stockpile (surfaceStock) beside the opening
+  const px = view.W / 2 - shaftW() / 2 - CFG.surface.stockOffsetPx;
+  drawPile(px, gy - 4, S.surface.qty, CFG.surface.stockVisualMax, s * 1.15, 91);
+  if (S.surface.qty > 0.5) {
+    ctx.font = `700 11px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.fillText(`${Math.floor(S.surface.qty)} rubble`, px, gy + 16);
   }
 }
 
@@ -372,10 +500,9 @@ function drawWorld() {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const gl = ctx.createRadialGradient(cx, sBot - 6, 0, cx, sBot - 6, sw * L.radius);
     gl.addColorStop(0, `rgba(255,196,120,${L.glow})`); gl.addColorStop(1, 'rgba(255,196,120,0)');
-    ctx.fillStyle = gl; ctx.fillRect(cx - sw / 2, sBot - sw * L.radius, sw, sw * L.radius);
+    const gTop = Math.max(sTop, sBot - sw * L.radius); // never leak above ground into the sky
+    ctx.fillStyle = gl; ctx.fillRect(cx - sw / 2, gTop, sw, sBot - gTop);
     ctx.restore();
-    ctx.strokeStyle = 'rgba(210,180,120,.45)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cx - sw / 2 + 16, sTop); ctx.lineTo(cx - sw / 2 + 16, sBot - 30); ctx.stroke();
     ctx.font = `600 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.55)';
     const stepM = S.depth > 80 ? 25 : 10;
     for (let m = Math.ceil(Math.max(0, top) / stepM) * stepM; m < Math.min(view.camDepth, top + rows); m += stepM) {
@@ -393,7 +520,8 @@ function drawWorld() {
       ctx.fillText('Something is down here…', x, y - 40);
     }
   });
-  if (gy > -200) drawBase(cx + sw / 2, gy - 4);
+  drawRails(yOf(-C.surfaceLiftM - 3), faceOrigin().y + 2);
+  drawSurface(gy);
 }
 
 // ---------- HUD overlays ----------
@@ -406,6 +534,9 @@ function drawGauge() {
     ctx.fillRect(gx, gt + (a / MAX_DEPTH) * gh, 8, ((b - a) / MAX_DEPTH) * gh + 1);
   }
   ctx.fillStyle = '#fff'; ctx.fillRect(gx - 5, gt + (S.depth / MAX_DEPTH) * gh - 1, 18, 3);
+  // the cart's live position on its journey
+  const cd = Math.max(0, cartDepth());
+  ctx.fillStyle = '#ffcf3a'; ctx.fillRect(gx - 9, gt + (cd / MAX_DEPTH) * gh - 3, 6, 6);
   ctx.font = `700 11px ${FONT_UI}`; ctx.textAlign = 'right';
   FINDS.forEach((f, i) => {
     ctx.fillStyle = i < S.found ? '#ffcf3a' : 'rgba(255,255,255,.75)';
@@ -432,11 +563,11 @@ function drawOverlays() {
   }
   if (S.depth >= MAX_DEPTH) {
     ctx.textAlign = 'center'; ctx.font = `600 14px ${FONT_UI}`; ctx.fillStyle = 'rgba(255,190,180,.9)';
-    ctx.fillText('300 m. The slice ends here, for now.', W / 2, H - 38);
+    ctx.fillText('300 m: digging deeper arrives in a later build.', W / 2, H - 38);
   }
   if (view.scrollOff < 0) {
     ctx.textAlign = 'center'; ctx.font = `600 14px ${FONT_UI}`; ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillText('Viewing the shaft. Click to jump back to the bottom', W / 2, H - 16);
+    ctx.fillText('Viewing the shaft. Click the rock area to return to the dig site', W / 2, H - 16);
   }
 }
 
@@ -447,6 +578,7 @@ export function render() {
   ctx.translate(FX.cam.x, FX.cam.y);
   drawWorld();
   drawFaceAndCrew();
+  drawCart();
   drawWorldFx(ctx);
   drawPopups(ctx);
   ctx.restore();

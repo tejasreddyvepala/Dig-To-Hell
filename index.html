@@ -18,15 +18,26 @@
   <div id="panel">
     <div class="top">
       <div class="cash" id="cash">$0</div>
-      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span>Crew <b id="rate">$0/s</b></span></div>
+      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span>Surface <b id="stock">0 rubble</b></span></div>
     </div>
     <div class="scroll">
-      <h2>Your tool</h2>
-      <div id="tool"></div>
-      <h2>Hire crew</h2>
-      <div id="crew"></div>
+      <section id="g-ext">
+        <h2>Extraction</h2>
+        <div id="tool"></div>
+        <div id="crew"></div>
+      </section>
+      <section id="g-tr" hidden>
+        <h2>Transport</h2>
+        <div class="status" id="cartStatus"></div>
+        <div id="transport"></div>
+      </section>
+      <section id="g-surf" hidden>
+        <h2>Surface</h2>
+        <div class="status" id="surfStatus"></div>
+      </section>
       <h2>Finds</h2>
       <div id="finds"></div>
+      <div id="debug"></div>
       <button class="reset" id="reset">Start over</button>
     </div>
   </div>

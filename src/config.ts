@@ -62,24 +62,39 @@ export const MATERIALS: Material[] = [
   },
 ];
 
-// ---- tools & crew (0–300 m slice only) ----
+// ---- resources (data-driven; V1 has exactly one) ----
+export type ResourceId = 'rubble';
+export interface Resource { id: ResourceId; name: string; baseValue: number; color: RGB; rarity: 'common' | 'uncommon' | 'rare' }
+export const RESOURCES: Record<ResourceId, Resource> = {
+  rubble: { id: 'rubble', name: 'Rubble', baseValue: 1, color: [128, 96, 66], rarity: 'common' },
+};
+
+// ---- transport upgrades (the cart itself is permanent; these improve it) ----
+export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail';
+export interface Upgrade { id: UpgradeId; name: string; ic: string; ds: string; baseCost: number; growth: number; maxLevel: number }
+export const UPGRADES: Upgrade[] = [
+  { id: 'cartCap', name: 'Cart Capacity', ic: '🛒', ds: 'Bigger cart, more rubble per trip', baseCost: 60, growth: 1.55, maxLevel: 30 },
+  { id: 'cartSpeed', name: 'Cart Speed', ic: '💨', ds: 'Faster trips up and down the shaft', baseCost: 80, growth: 1.6, maxLevel: 30 },
+  { id: 'loadSpeed', name: 'Loading Speed', ic: '🪣', ds: 'Shovel rubble into the cart faster', baseCost: 50, growth: 1.5, maxLevel: 30 },
+  { id: 'rail', name: 'Rail Quality', ic: '🛤️', ds: 'Better track, faster travel', baseCost: 150, growth: 1.75, maxLevel: 20 },
+];
+
+// ---- tools & crew ----
 export interface Tool { name: string; ic: string; pow: number; cost: number; unlockDepth: number }
 export const TOOLS: Tool[] = [
   { name: 'Pickaxe', ic: '⛏️', pow: 1, cost: 0, unlockDepth: 0 },
   { name: 'Jackhammer', ic: '🔨', pow: 3, cost: 2500, unlockDepth: 105 },
 ];
 
-export type CrewId = 'dig' | 'cart' | 'exc';
+export type CrewId = 'dig' | 'exc';
 export interface Crew {
   id: CrewId; name: string; ic: string; ds: string; cost: number; unlockDepth: number;
-  dps: number; // raw dig power per second per unit (0 for carts)
-  boost: number; // fractional boost to all crew digging per unit (carts)
+  dps: number; // raw dig power per second per unit
   swingSecs: number; // visible strike cadence per worker
 }
 export const CREW: Crew[] = [
-  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Swings a pick all day', cost: 240, unlockDepth: 20, dps: 0.4, boost: 0, swingSecs: 1.1 },
-  { id: 'cart', name: 'Mine cart', ic: '🛒', ds: 'Hauls rubble so diggers go faster', cost: 900, unlockDepth: 60, dps: 0, boost: 0.25, swingSecs: 0 },
-  { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'A bucket the size of a car', cost: 30000, unlockDepth: 235, dps: 14, boost: 0, swingSecs: 1.8 },
+  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Swings a pick all day', cost: 240, unlockDepth: 20, dps: 0.4, swingSecs: 1.1 },
+  { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'A bucket the size of a car', cost: 30000, unlockDepth: 235, dps: 14, swingSecs: 1.8 },
 ];
 
 // Finds kept from the prototype that fall inside the slice. Animated reveals are Step 3.
@@ -91,23 +106,53 @@ export const FINDS: Find[] = [
 ];
 
 export const CFG = {
-  saveKey: 'digtohell_v2',
-  saveVersion: 2,
+  saveKey: 'digtohell_v3',
+  saveVersion: 3,
+  migrateFrom: { key: 'digtohell_v2', version: 2 }, // v2 (cash-from-digging) saves migrate: progress kept, cart starts empty at the bottom
   legacySaveKeys: ['digtohell_v1'], // deliberately discarded: old 15,000 m economy
   saveIntervalMs: 5000,
 
   // ---- economy ----
-  valueDiv: 40, // value V(d) = (1 + d/div)^exp; scales all cash
+  valueDiv: 40, // material value per unit V(d) = (1 + d/div)^exp (realised only when sold, Phase 3C)
   valueExp: 1.3,
-  cashPerPower: 1, // $ per point of dig power at V = 1 ("+$1" on the first click)
-  breakCash: 2, // extra $ (× V) when a chunk breaks
   crewCostGrowth: 1.15,
-  findMultBonus: 0.1, // +10% digging per find
-  findBonus: { min: 60, incomeSecs: 90, clicks: 40 }, // cash = max(min, income*secs, clickCash*clicks)
+  findMultBonus: 0.1, // +10% digging per find (finds give no cash)
   overflowCarry: 0.99, // fraction of a stage that excess damage may carry into the fresh chunk
   critChance: 0.07,
   critStages: 2, // crit advances the crack this many stages
-  critCashMult: 5,
+
+  // ---- rubble (extraction output) ----
+  rubble: {
+    perBreak: 2, // units added to the dig-site pile per chunk break
+    critBreakMult: 2, // a crit that breaks a chunk yields this many times the rubble
+    pileVisualMax: 80, // units at which the pile reads as "overflowing"
+    arcsPerBreak: 3, // pieces that visibly fly from the broken chunk into the pile
+  },
+
+  // ---- cart (one permanent cart; transport) ----
+  cart: {
+    capacity: { base: 40, perLevel: 0.4 }, // units = base × (1 + perLevel × L)
+    loadRate: { base: 2, perLevel: 0.35 }, // units/s pile -> cart
+    speed: { base: 6, perLevel: 0.2 }, // m/s along the shaft
+    railPerLevel: 0.15, // travel speed multiplier per Rail Quality level
+    railTiers: [0, 2, 4, 7], // Rail Quality levels where the track visibly upgrades
+    bodyTiers: [0, 2, 5, 9], // Cart Capacity levels where the cart body visibly upgrades
+    baseTravel: 2.5, // secs added to every trip (start/stop)
+    readySecs: 0.6, // full cart pause before departure
+    arriveSecs: 0.5, // brake + bump at the surface
+    unloadSecs: 1.6, // tip and dump
+    surfaceLiftM: 2.4, // the cart parks this far above ground in the headframe
+    railX: 9, // logical face x of the rail (left wall)
+    cartX: 22, // logical x of the cart centre
+    pileX: 62, // logical x of the rubble pile centre
+    loadArcSecs: 0.16, // a piece arcs from pile to cart this often while loading
+    clackEveryM: 2.5, // rail clack spacing
+    soundRangeScreens: 1.5, // off-screen cart sounds fade to silence over this many screen heights
+  },
+  surface: {
+    stockVisualMax: 160, // units at which the surface stockpile reads as huge
+    stockOffsetPx: 74, // stockpile sits this far left of the shaft opening
+  },
 
   // ---- offline ----
   offlineCapSecs: 8 * 3600,
@@ -145,13 +190,13 @@ export const CFG = {
   },
   crewVisibleMax: 3, // animated diggers on the face; the rest still dig at full DPS, shown as a helmet row
   crewVisibleWithExc: 2, // the excavator takes one digger's space
-  crewSlots: { dig: [22, 198, 62], cart: [], exc: [196] } as Record<CrewId, number[]>,
-  crewSlotsWithExc: [22, 62],
+  crewSlots: { dig: [212, 182, 96], exc: [196] } as Record<CrewId, number[]>, // left side is the loading area
+  crewSlotsWithExc: [96, 150],
+  minerStartX: 140,
   reserveHelmetsMax: 8,
   playerScale: 1.12, // player miner is drawn larger + rim + lamp beam so it reads first
   crewScale: 0.85,
   crewFxScale: 0.6, // crew impact intensity relative to the player's (chips, dust, pulse)
-  crewPopupSecs: 3, // crew cash is aggregated into one quiet popup this often
   excavatorReach: 34,
 
   // ---- camera / juice hierarchy ----
@@ -162,10 +207,8 @@ export const CFG = {
   maxParticles: 700,
   text: {
     max: 6, rise: 46,
-    hit: { size: 12, life: 0.5, alpha: 0.7 }, // small, quick, quiet
-    brk: { size: 18, life: 0.85, alpha: 1 }, // one combined "+$ / ▼ m" label
-    crit: { size: 32, life: 1.15, alpha: 1 },
-    crew: { size: 11, life: 1.2, alpha: 0.45 },
+    brk: { size: 16, life: 0.85, alpha: 0.95 }, // one combined "+N rubble / ▼ m" label (no cash: digging never pays)
+    crit: { size: 26, life: 1.1, alpha: 1 },
   },
   critFx: { starSecs: 0.1, starSize: 30, ringSecs: 0.22, ringSize: 64, debrisMult: 2 },
   bannerSecs: 3,
@@ -179,8 +222,7 @@ export const CFG = {
   shaftNarrowFrac: 0.84,
   light: { fadeSpan: 0.75, shaftDark: 0.45, radius: 0.75, glow: 0.14 }, // shaft vignette + warm work light
   scrollSpeed: 0.6,
-  scrollExtraM: 40,
-  scrollIdleSecs: 3,
+  scrollAboveM: 14, // how far above ground the camera may scroll (sky + headframe)
   findTeaseM: 40,
   maxDt: 0.1,
   panelRefreshSecs: 0.12,
@@ -203,4 +245,10 @@ export const AUDIO = {
   },
   crit: { low: 70, lowDecay: 0.18, crack: [1200, 2500] as Range, crackDecay: 0.05, noiseHp: 1500, noiseSecs: 0.09, gain: 0.9 },
   debris: { ticks: [3, 6] as Range, freq: [150, 600] as Range, spread: 0.35, gain: 0.12 },
+  // cart / transport
+  roll: { secs: 0.7, lp: 380, gain: 0.32 }, // departure rumble
+  clack: { low: 95, tick: [1100, 1900] as Range, gain: 0.16 },
+  brake: { freq: [1500, 2600] as Range, secs: 0.32, vibrato: 28, gain: 0.07 },
+  dump: { secs: 0.55, lp: 1200, gain: 0.4 },
+  loadTick: { freq: [180, 420] as Range, gain: 0.07 },
 };

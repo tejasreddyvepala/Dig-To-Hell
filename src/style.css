@@ -38,6 +38,8 @@ h2{font-family:'Bungee',Impact,sans-serif;font-weight:400;font-size:16px;margin:
 .card p{color:var(--muted);margin:0 0 6px}
 .card button{margin-top:16px;font:700 16px 'Rubik',system-ui,sans-serif;background:var(--hat);color:#2a2100;border:0;border-radius:6px;padding:12px 22px;cursor:pointer}
 .card button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.status{color:var(--muted);font-size:13px;padding:0 6px 8px}
+.dbg{background:#3a2f2f;border:1px dashed #8a5a5a;color:#f0c9c9;font:inherit;font-size:12px;border-radius:6px;padding:6px 8px;margin:0 6px 6px 0;cursor:pointer}
 .reset{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;margin:18px 6px 0;cursor:pointer;text-decoration:underline}
 @media (max-width:760px){
   #app{flex-direction:column}

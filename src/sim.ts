@@ -1,10 +1,12 @@
 // Simulation: resolves strikes against the dig face, crew strike timing, finds, offline progress.
 // No DOM, no rendering, no audio. Presentation reacts to the HitResults returned here.
+// Digging never creates cash: broken chunks add rubble to the dig-site pile (see cart.ts for transport).
 import { CFG, CREW, FINDS, MAX_DEPTH, type CrewId, type Find, type Material } from './config';
 import { S } from './state';
 import {
-  chunkHp, clickPower, crewIncome, crewMps, crewTypeDps, hitCash, breakCash, materialAt,
+  addTo, chunkHp, clickPower, crewMps, crewRubbleRate, crewTypeDps, materialAt, unitValue,
 } from './economy';
+import { updateCart } from './cart';
 import { face, initFace, renewChunk, damageChunk, chunkAtX, clampHitX, type Chunk } from './digface';
 import { rnd } from './util';
 
@@ -16,7 +18,7 @@ export interface HitResult {
   crit: boolean;
   crew: CrewId | null;
   before: number; after: number; broke: boolean;
-  cash: number;
+  rubble: number; // units added to the pile (0 unless broke)
   meters: number;
 }
 
@@ -30,20 +32,19 @@ export function strike(idx: number, x: number, y: number, power: number, crit: b
   const c = face.chunks[idx];
   const dmg = crit ? Math.max(power, c.stageHp) * CFG.critStages : power;
   const r = damageChunk(c, dmg, x, y, crew ? CFG.crewFxScale : crit ? 1.6 : 1);
-  let cash = hitCash(power, S.depth) * (crit ? CFG.critCashMult : 1);
-  let meters = 0;
+  let meters = 0, rubble = 0;
   if (r.broke) {
-    cash += breakCash(S.depth);
+    rubble = CFG.rubble.perBreak * (crit ? CFG.rubble.critBreakMult : 1);
+    addTo(S.rubble, rubble, unitValue(S.depth));
     meters = Math.min(c.mat.metersPerBreak, MAX_DEPTH - S.depth);
     S.depth += meters;
     const fresh = renewChunk(idx, materialAt(S.depth), chunkHp(S.depth), meters * CFG.ppm);
     // excess damage carries into the fresh chunk (never a full visible stage), so +% bonuses always count
     fresh.hp = Math.min(c.hp - c.maxHp, fresh.stageHp * CFG.overflowCarry);
   }
-  S.cash += cash;
   if (!crew) S.clicks++;
   checkFinds(false);
-  return { chunk: c, idx, x, y, mat: c.mat, crit, crew, ...r, cash, meters };
+  return { chunk: c, idx, x, y, mat: c.mat, crit, crew, ...r, rubble, meters };
 }
 
 export function playerStrike(idx: number, x: number, y: number): HitResult {
@@ -94,35 +95,44 @@ export function updateCrew(dt: number): HitResult[] {
   return out;
 }
 
-// ---- finds (placeholder modal flow from the prototype; animated reveals are Step 3) ----
-export interface FindEvent { f: Find; bonus: number }
+// ---- finds (placeholder modal flow; animated reveals are Phase 4). Finds give bonuses, never cash. ----
+export interface FindEvent { f: Find }
 export const pendingFinds: FindEvent[] = [];
 
 export function checkFinds(silent: boolean) {
   while (S.found < FINDS.length && S.depth >= FINDS[S.found].d) {
     const f = FINDS[S.found];
-    const b = CFG.findBonus;
-    const bonus = Math.max(b.min, crewIncome(S) * b.incomeSecs, hitCash(clickPower(S), S.depth) * b.clicks);
     S.found++;
-    S.cash += bonus;
-    if (!silent) pendingFinds.push({ f, bonus });
+    if (!silent) pendingFinds.push({ f });
   }
 }
 
-// ---- offline ----
-export interface OfflineReport { secs: number; dm: number; dc: number }
+// ---- offline (interim): simulate the real production chain conservatively ----
+export interface OfflineReport { secs: number; dm: number; dug: number; delivered: number }
 
 export function offlineAdvance(secs: number): OfflineReport | null {
   secs = Math.min(CFG.offlineCapSecs, secs);
-  if (secs <= CFG.offlineMinSecs || crewMps(S) <= 0) return null;
-  const d0 = S.depth, c0 = S.cash;
-  let left = secs;
+  if (secs <= CFG.offlineMinSecs) {
+    updateCart(secs); // short gaps (reloads): just let the cart catch up
+    return null;
+  }
+  const d0 = S.depth, s0 = S.surface.qty;
+  // crew digging stops just short of the next find so discoveries are never skipped silently
+  const stopAt = Math.min(MAX_DEPTH, S.found < FINDS.length ? FINDS[S.found].d - 0.01 : Infinity);
+  let dug = 0, left = secs;
   while (left > 0) {
     const dt = Math.min(left, CFG.offlineStepSecs);
-    S.cash += crewIncome(S) * dt;
-    S.depth = Math.min(MAX_DEPTH, S.depth + crewMps(S) * dt);
+    if (S.depth < stopAt) {
+      const m = Math.min(crewMps(S) * dt, stopAt - S.depth);
+      const frac = crewMps(S) > 0 ? m / (crewMps(S) * dt) : 0;
+      const r = crewRubbleRate(S) * dt * frac;
+      addTo(S.rubble, r, unitValue(S.depth));
+      S.depth += m;
+      dug += r;
+    }
+    updateCart(dt);
     left -= dt;
-    checkFinds(true);
   }
-  return { secs, dm: S.depth - d0, dc: S.cash - c0 };
+  if (S.depth - d0 < 0.01 && S.surface.qty - s0 < 0.01) return null;
+  return { secs, dm: S.depth - d0, dug, delivered: S.surface.qty - s0 };
 }

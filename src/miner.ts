@@ -12,8 +12,8 @@ const W = CFG.face.logicalW;
 interface Pending { idx: number; x: number; y: number; at: number; swung: boolean }
 
 export const miner = {
-  x: W / 2, // logical stand position
-  standX: W / 2,
+  x: CFG.minerStartX, // logical stand position (the left side of the face is the loading area)
+  standX: CFG.minerStartX,
   dir: 1 as 1 | -1, // facing
   clock: 0,
   lastImpact: -10,

@@ -1,24 +1,25 @@
-// Entry point: wiring, input, and the frame loop. Game logic lives in sim/digface/miner; presentation in juice/render.
+// Entry point: wiring, input, and the frame loop. Game logic lives in sim/cart/digface/miner; presentation in juice/render.
 import './style.css';
 import { CFG } from './config';
 import { S, loadState, resetState, saveState } from './state';
 import { materialAt } from './economy';
 import { initSim, offlineAdvance, pendingFinds, updateCrew, workers } from './sim';
+import { cartDepth, sendCart, updateCart, type CartEvent } from './cart';
 import { updateFace } from './digface';
 import { miner, minerClick, minerKeyStrike, updateMiner } from './miner';
-import { present, updateJuice } from './juice';
-import { FX, clearFx, updateFx } from './fx';
+import { present, presentCart } from './juice';
+import { FX, clearFx, popup, updateFx } from './fx';
 import { audioState, unlockAudio } from './audio';
 import { canvas, toLogical, updateCamera, view } from './view';
 import { render } from './render';
 import { buildPanel, isModalOpen, showModal, updatePanel } from './panel';
-import { fmt, money } from './util';
+import { fmt } from './util';
 
 // ---- load + offline ----
 const away = loadState();
 const offline = offlineAdvance(away);
 view.camDepth = S.depth;
-view.hideDigHint = !!offline;
+view.hideDigHint = !!offline || S.clicks >= 3;
 initSim();
 setInterval(saveState, CFG.saveIntervalMs);
 addEventListener('beforeunload', saveState);
@@ -27,18 +28,24 @@ addEventListener('pagehide', saveState);
 let lastMat = materialAt(S.depth).id;
 
 // ---- input ----
+const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
 canvas.addEventListener('pointerdown', (e) => {
   unlockAudio();
-  if (view.scrollOff < 0) { view.scrollOff = 0; return; } // first click while scrolled up returns to the face
   const r = canvas.getBoundingClientRect();
-  const p = toLogical(e.clientX - r.left, e.clientY - r.top);
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  if (inRect(px, py, view.cartRect)) { // tap the cart: send it early (never required)
+    if (sendCart()) popup(px, py - 20, 'Sent!', '#ffd84a', 16, { life: 0.8 });
+    return;
+  }
+  if (view.scrollOff < 0) { view.scrollOff = 0; return; } // a click while exploring the shaft returns to the dig site
+  const p = toLogical(px, py);
   minerClick(p.x, p.y);
 });
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   view.scrollOff = Math.min(0, view.scrollOff + (e.deltaY / CFG.ppm) * CFG.scrollSpeed);
-  view.scrollOff = Math.max(-S.depth - CFG.scrollExtraM, view.scrollOff);
-  view.scrollIdle = CFG.scrollIdleSecs;
+  view.scrollOff = Math.max(-S.depth - CFG.scrollAboveM, view.scrollOff);
 }, { passive: false });
 addEventListener('keydown', (e) => {
   unlockAudio();
@@ -58,6 +65,7 @@ document.getElementById('reset')!.onclick = () => {
   miner.pending.length = 0;
   clearFx();
   view.camDepth = 0;
+  view.scrollOff = 0;
   lastMat = materialAt(0).id;
   initSim();
   saveState();
@@ -66,12 +74,14 @@ document.getElementById('reset')!.onclick = () => {
 if (offline) {
   const h = Math.floor(offline.secs / 3600), m = Math.floor((offline.secs % 3600) / 60);
   showModal(
-    `<p>While you were away for ${h ? h + 'h ' : ''}${m}m</p><div class="big">Your crew dug ${fmt(offline.dm)} m</div><p>and earned ${money(offline.dc)}</p>`,
+    `<p>While you were away for ${h ? h + 'h ' : ''}${m}m</p><div class="big">Your crew dug ${fmt(offline.dm)} m</div>` +
+    `<p>${fmt(offline.dug)} rubble dug, ${fmt(offline.delivered)} hauled to the surface</p>`,
     'Get back to digging',
   );
 }
 
 // ---- loop ----
+const cartEvents: CartEvent[] = [];
 let last = performance.now(), panelT = 0;
 function frame(now: number) {
   const realDt = Math.min(CFG.maxDt, (now - last) / 1000);
@@ -82,20 +92,22 @@ function frame(now: number) {
 
   for (const r of updateMiner(dt)) present(r);
   for (const r of updateCrew(dt)) present(r);
+  cartEvents.length = 0;
+  updateCart(dt, cartEvents);
+  presentCart(cartEvents, dt);
   updateFace(dt, CFG.cameraFollow);
   updateCamera(dt);
   updateFx(dt);
-  updateJuice(dt);
 
   const mat = materialAt(S.depth);
   if (mat.id !== lastMat) {
     lastMat = mat.id;
-    FX.banner = { s: mat.name.toUpperCase() + ' · ' + mat.from + ' m', sub: 'Harder to break, but every meter pays more', t: 0 };
+    FX.banner = { s: mat.name.toUpperCase() + ' · ' + mat.from + ' m', sub: 'Harder to break, but deeper material is worth more', t: 0 };
   }
   if (pendingFinds.length && !isModalOpen()) {
     const p = pendingFinds.shift()!;
     showModal(
-      `<p>You hit something at ${fmt(p.f.d)} m</p><div class="big">${p.f.name}</div><p>Sold for ${money(p.bonus)}. All digging is now ${Math.round(CFG.findMultBonus * 100)}% faster.</p>`,
+      `<p>You hit something at ${fmt(p.f.d)} m</p><div class="big">${p.f.name}</div><p>All digging is now ${Math.round(CFG.findMultBonus * 100)}% faster.</p>`,
       'Keep digging',
     );
   }
@@ -110,7 +122,10 @@ requestAnimationFrame(frame);
 // dev-only hooks for automated smoke tests (stripped from production builds)
 if (import.meta.env.DEV) {
   (window as any).__dig = {
-    state: () => ({ ...S, crew: { ...S.crew }, parts: FX.parts.length, audio: audioState() }),
+    state: () => JSON.parse(JSON.stringify({ ...S, parts: FX.parts.length, audio: audioState() })),
     setCritChance: (v: number) => { CFG.critChance = v; },
+    scrollTo: (m: number) => { view.scrollOff = Math.min(0, m - S.depth); },
+    save: () => saveState(),
+    cartDepth: () => cartDepth(),
   };
 }

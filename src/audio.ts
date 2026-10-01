@@ -165,3 +165,49 @@ export function playDebris(vol = 1) {
     tone('triangle', f, f * 0.8, t, amp, 0.001, rnd(0.012, 0.03));
   }
 }
+
+// ---- cart / transport ----
+/** Departure/return rumble: low-passed rolling noise. */
+export function playRoll(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.roll, t = ac!.currentTime;
+  noise(brown, 'lowpass', A.lp * jitter(), 0.8, t, A.gain * vol, 0.08, A.secs);
+  tone('triangle', 60 * jitter(), 48, t, A.gain * vol * 0.5, 0.05, A.secs * 0.8);
+}
+
+/** Rail clack: low knock + bright tick. */
+export function playClack(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.clack, t = ac!.currentTime;
+  tone('triangle', A.low * jitter(), A.low * 0.7, t, A.gain * vol, 0.001, 0.04);
+  tone('square', rndr(A.tick), 900, t, A.gain * vol * 0.25, 0.001, 0.015);
+}
+
+/** Brake squeal on arrival: high sine with vibrato. */
+export function playBrake(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.brake, t = ac!.currentTime, f = rndr(A.freq);
+  const o = ac!.createOscillator(), lfo = ac!.createOscillator(), lg = ac!.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 0.85, t + A.secs);
+  lfo.frequency.value = A.vibrato; lg.gain.value = f * 0.02;
+  lfo.connect(lg).connect(o.frequency);
+  o.connect(env(t, A.gain * vol, 0.02, A.secs, master));
+  voices++; o.onended = () => voices--;
+  o.start(t); lfo.start(t); o.stop(t + A.secs + 0.05); lfo.stop(t + A.secs + 0.05);
+  tone('triangle', 70, 50, t, AUDIO.clack.gain * vol * 1.5, 0.002, 0.08); // bump
+}
+
+/** Unloading: a rock slide + scattered ticks. */
+export function playDump(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.dump, t = ac!.currentTime;
+  noise(brown, 'lowpass', A.lp * jitter(), 0.7, t, A.gain * vol, 0.06, A.secs);
+  playDebris(vol);
+}
+
+/** A rubble piece landing in the cart while loading. */
+export function playLoadTick(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.loadTick, t = ac!.currentTime + 0.3, f = rndr(A.freq);
+  tone('triangle', f, f * 0.7, t, A.gain * vol, 0.001, 0.03);
+}
