@@ -83,7 +83,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Design update (physical economy, unbounded depth): `6ea5c2b`
 - Phase 3A + 3B (rubble economy + physical cart loop): `b4a2c08`
 - Phase 3C (surface economy + restored extraction ladder): `ce168ca`
-- Phase 3C.5 (world identity + surface factory): `PHASE3C5_HASH`
+- Phase 3C.5 (world identity + surface factory): `4bfadeb`
 
 ### Phase 3A + 3B — rubble economy + physical cart loop
 - **Files:** new `src/cart.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `sim.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `miner.ts`, `index.html`, `style.css`.
@@ -134,7 +134,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 ### Recommended next task (after 3C)
 Human playtest of 3C — done; it led to Phase 3C.5 below.
 
-### Phase 3C.5 — world identity + surface factory: `PHASE3C5_HASH`
+### Phase 3C.5 — world identity + surface factory: `4bfadeb`
 - **Why:** the 3C playtest found the world still looked like a prototype: a broken-looking excavator, inconsistent scale, a tiny "Scrap Stall" (and "scrap" made no sense for dirt), a toy truck, a narrow shaft with useless side geology, layer-cake strata, face/wall/rubble colours that didn't match, random cracks and premature red, rails that only changed at a few levels, no helmet lights, an empty surface and an overlong panel.
 - **Surface economy superseded:** the Phase 3C seller model (Scrap Buyer + Scrap Stall cash drip) is replaced by the **Recycling Yard**: cart → hopper (RAW) → crusher + auger → hydraulic press → FINISHED BLOCKS → delivery truck → **cash only when a loaded truck departs**. A contractor (pickup "CONTRACTOR") buys the first load and is the no-soft-lock safety net until the yard ($80) is built. Trucks: arrive when ≥ 15 blocks, capacity 60, reverse in from the right to a loading bay, blocks arc onto the bed, drive off; colour `hsl((n × 137.508) mod 360, 42–54%, 44%)` per delivery index.
 - **New modules:** `geo.ts` (deterministic geology sampler + cached 5 m segment painter), `characters.ts` (people, lamps, articulated excavator), `yard.ts` (headframe, yard, road, truck, contractor), `landscape.ts` (sky, day/night, mountains, trees, clouds, birds, night grade), `draw.ts` (shared pile/label/bubble helpers). `surface.ts` rewritten (contractor, processor, truck state machine).
