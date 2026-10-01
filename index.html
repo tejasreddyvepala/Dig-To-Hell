@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dig to Hell</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="c" aria-label="Mine shaft. Click to dig."></canvas>
+    <div id="modal"><div class="card" id="card"></div></div>
+  </div>
+  <div id="panel">
+    <div class="top">
+      <div class="cash" id="cash">$0</div>
+      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span>Crew <b id="rate">$0/s</b></span></div>
+    </div>
+    <div class="scroll">
+      <h2>Your tool</h2>
+      <div id="tool"></div>
+      <h2>Hire crew</h2>
+      <div id="crew"></div>
+      <h2>Finds</h2>
+      <div id="finds"></div>
+      <button class="reset" id="reset">Start over</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
