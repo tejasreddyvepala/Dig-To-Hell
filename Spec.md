@@ -86,9 +86,19 @@ The upgrade decision should usually come from watching the world, not reading nu
 - The player clicks/taps the face; the miner swings; the strike resolves on the impact frame (§14).
 - Each broken chunk advances depth by the material's `metersPerBreak` and adds rubble to the pile at the dig site.
 - Crits advance the crack two stages; a crit that breaks a chunk yields ×2 rubble.
-- **Crew (Diggers)** strike chunks on their own timers and produce rubble the same way. Max 3 animated diggers on the face; the rest dig at full rate and are shown as a helmet row.
-- **Excavator** (later extraction machinery) strikes a large area periodically.
-- **Tool**: Pickaxe → Jackhammer (unlocks at 105 m). Future: more tools/machines.
+- **Crew (Diggers)** strike chunks on their own timers and produce rubble the same way. Hiring one is a visible event: a rope drops, the digger slides down, lands in a dust puff, the helmet lamp clicks on, and they start swinging. Max 3 animated diggers on the face; the rest dig at full rate and are shown as a "+N crew" helmet row. Cost escalates ×1.28 per hire.
+- **Excavator** (later extraction machinery, 235 m) strikes a large area periodically.
+- **Tool ladder** (Phase 3C; each tier changes the tool in hand, the impact sound and the debris):
+
+| Tool | Power / click | Unlock | Look / feel |
+|---|---|---|---|
+| Pickaxe | 1 | start | light gray head |
+| Iron Pickaxe | 1.5 | $75 | larger dark head, more chips, extra low thud |
+| Heavy Pickaxe | 2.25 | $260, 25 m | big block head, heavy THUNK, bigger break |
+| Jackhammer | 4 × 1.4 burst | $1,800, 75 m | each click rattles 4 rapid impacts, BRRRT |
+
+  Hits per dirt chunk: 3 → 2 → ~1.3 → <1 click. Clicking stays meaningful because every tier still needs clicks.
+- *(History: Phases 3A/3B temporarily left extraction progression inaccessible — no income existed and only the tool name was shown. Phase 3C restores the tool ladder and Digger hiring as real early purchases.)*
 
 ### Rubble pile
 - `rubbleWaiting` is shown as a procedural pile next to the loading point, sized by quantity (few stones → small → medium → large → overflowing at ~100%+ of the pile's visual capacity).
@@ -136,20 +146,22 @@ Rails run the full height of the shaft along the wall; the cart rides them, hang
 
 V1 surface (deliberately primitive, built to be transformed): sky, ground, shaft opening, headframe, rail end, unloading point, rubble stockpile, seller location.
 
-### Bootstrap: first-cartload tutorial buyer
-1. Player digs; rubble accumulates; the cart fills and leaves.
-2. The player is invited to follow it to the surface.
-3. A temporary scrappy junk buyer purchases the **first** load → the player's first cash.
-4. Prompt: "WE NEED SOMEONE UP HERE." → **BUILD SELLER $X**, priced so the first sale (nearly) covers it.
+### Bootstrap: first-cartload Scrap Buyer (implemented, Phase 3C)
+1. Player digs; rubble accumulates; the cart fills and leaves. A "▲ Follow the cart to the surface" prompt glides the camera up.
+2. A Scrap Buyer (flat cap, rusty "BUYING SCRAP" truck) waits beside the stockpile. When the first load has been dumped he says "That's useful stuff." and buys it: the stockpile visibly drains, pieces hop to him, cash counts up in the HUD.
+3. A big surface popup: **+$X / SOLD N RUBBLE** with a discovery sting (~$165–175 at 4 clicks/s).
+4. "I won't stay here all day. Build a stall." → **BUILD SCRAP STALL $80**. Until the stall exists it is the only purchase offered, and the buyer keeps buying if the player somehow can't afford it (no soft-lock).
+5. Building it: boards and posts go up with hammer knocks, counter, roof, sign "SCRAP", then the seller steps in; the buyer says "Good luck down there." and drives off.
 
 ### Seller
-- Physically appears (character/stall). Has `sellRate` and `sellValue`.
+- Physically appears (the Scrap Stall + a seller behind the counter). Has `sellRate` (1.7 units/s base, +35%/level) and price (×3 per unit of material value, +25%/level).
+- Visual tiers: Sell Speed 3 → sorting tray, 6 → helper; Sell Value 2 → price board "SCRAP $", 4 → weigh station, 6 → striped awning; Storage 2 → wooden bin, 4 → fenced yard. The seller's arms work faster with Sell Speed.
 - Consumes `surfaceStock` over time; cash increases only as units are sold. Never converts the whole pile instantly.
 - Player sees: cart unloads → pile grows → seller works → pile shrinks → money appears.
 - Cash popups appear at the seller, aggregated into readable batches at higher throughput (+$12, +$34, +$81 — not hundreds of +$1).
 
 ### Surface upgrades
-Sell Speed, Sell Value, Surface Storage (when full, the cart cannot fully unload and waits — visible, not punishing).
+Sell Speed (revealed with the stall), Sell Value (after 120 units sold), Storage (once stock reaches 50% of capacity). Storage starts at 120 units (+50%/level); when full, the cart pauses mid-dump holding the rest of its load and shows STORAGE FULL — nothing is ever destroyed.
 
 ### Future surface systems (documented only, not tasks)
 Sorting table, crusher, weigh station, warehouse, market stall, processing plant, specialty buyers, rare-material processing. The surface can eventually become an industrial complex.
@@ -186,15 +198,21 @@ Panel groups, revealed progressively (no walls of disabled buttons):
 
 | Group | Upgrades | Revealed |
 |---|---|---|
-| EXTRACTION | Tool, Digger, (Excavator, future machinery) | from the start |
-| TRANSPORT | Cart Capacity, Cart Speed, Loading Speed, Rail Quality | after the first cart dispatch |
-| SURFACE | Seller, Sell Speed, Sell Value, Surface Storage | after the first load reaches the surface (3C) |
+| EXTRACTION | Tool (next tier card), Hire Digger (card), (Excavator, future machinery) | purchasable once the Scrap Stall exists |
+| TRANSPORT | Cart Capacity, Cart Speed, Loading Speed, Rail Quality (compact rows) | after the first cart dispatch |
+| SURFACE | Build Scrap Stall (card) → Sell Speed, Sell Value, Storage (compact rows) | after the first load reaches the surface |
+
+Panel rule: big cards only for the next meaningful action (next tool, hire digger, build stall); systems the player already understands are compact one-line rows (`Cart Speed  Lv 1 · 10 m/s  $160`). Each group header shows a live summary (crew + rubble/s; cart state + pile; stock/capacity + sell rate).
+
+Current costs (Phase 3C, base × growth^level): Digger $80 ×1.28 · Cart Capacity $80 ×1.6 · Cart Speed $100 ×1.6 · Loading Speed $50 ×1.55 · Rail Quality $200 ×1.8 · Sell Speed $75 ×1.6 · Sell Value $140 ×1.75 · Storage $110 ×1.65 · Scrap Stall $80 (once).
 
 Arrival animations (Phase 5, kept from the original spec): Digger rope-drop (1.2 s), Jackhammer crate (1.4 s), Foreman lift + whistle (1.7 s), Excavator lowered on a platform (1.9 s); abbreviated 0.5–0.8 s arrivals for repeat purchases. (The old "Minecart rolls in" purchase arrival is obsolete — the cart is permanent; cart/rail tier changes get small upgrade animations instead.)
 
 ---
 
 ## 11. Revised 0–300 m Onboarding Beat Sheet
+
+Measured first minutes (Phase 3C, headless bot at 4 clicks/s buying the cheapest affordable option every ~3 s): first break 0.5 s · cart departs 16 s · arrives 20 s · first cash 22 s (~$165) · stall built 24 s · first tool 51 s · first digger 76 s · earned $285 by 1:00, $956 by 2:00, $2,200 by 3:00 · depth 29 m at 1:00, 106 m at 3:00. Between purchases the player usually has 2–5 affordable options but cash for one.
 
 Exact seconds are set by playtesting. Rule: **no long dead zones** — something meaningfully changes, unlocks, arrives or becomes actionable every ~15–45 s during onboarding.
 
@@ -320,7 +338,7 @@ Sounds from off-screen sources (e.g., the cart far up the shaft) are attenuated 
 ## 16. Persistence / Save / Offline
 
 - localStorage, saved every 5 s and on unload/pagehide; all access wrapped in try/catch; versioned schema with explicit migration (old versions either migrate or are deliberately discarded).
-- Saved: cash, depth, tool, crew, finds, clicks, rubble pile, cart (state, time in state, state duration, departure depth, load), surface stock, upgrade levels, onboarding flags.
+- Saved: cash, depth, tool, crew, finds, clicks, rubble pile, cart (state, time in state, state duration, departure depth, load), surface stock, upgrade levels, Scrap Stall built, onboarding flags (dispatched, arrived, sold, storageSeen), lifetime stats (earned, sold).
 - Not saved: dig-face cracks, particles, popups. The world is reconstructed deterministically (§9).
 - **Offline (interim, unresolved design):** elapsed time (capped) is simulated conservatively through the real production chain — crew digging feeds the pile, the actual cart state machine moves it — and crew digging stops just short of the next find so discoveries are never skipped silently. A proper offline design (summary screen, caps per system, seller behavior) is still to be decided.
 
@@ -353,6 +371,6 @@ Possible categories: deepest depth (primary), fastest milestone times, highest p
 
 ---
 
-## 20. Explicitly Out of Scope For the Current Phase (3A + 3B)
+## 20. Explicitly Out of Scope For the Current Phase (3C done, awaiting playtest)
 
-Seller, tutorial buyer, surface buildings, find cinematics, interruptions, Red Door, multiple carts, elevators, leaderboards, prestige, new resources, music, navigation buttons and procedural geology (3D).
+Find cinematics, interruptions, Red Door, multiple carts, elevators, conveyors, leaderboards, prestige, new resources, processing plant, museum, music. Full navigation (persistent Surface/Dig Site controls, touch drag) and deterministic geology are Phase 3D; 3C only adds a contextual nav prompt and cheap strata irregularity.

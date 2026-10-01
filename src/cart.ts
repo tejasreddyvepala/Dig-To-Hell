@@ -4,7 +4,7 @@
 //   BOTTOM_EMPTY → LOADING → READY → TRAVELLING_UP → SURFACE_ARRIVAL → UNLOADING → TRAVELLING_DOWN → (BOTTOM_EMPTY | LOADING)
 import { CFG } from './config';
 import { S, type CartState } from './state';
-import { cartCapacity, loadRate, moveLoad, travelTime } from './economy';
+import { cartCapacity, loadRate, moveLoad, storageCap, travelTime } from './economy';
 
 export type CartEventType = 'loaded' | 'ready' | 'depart' | 'arrive' | 'unloadStart' | 'unloaded' | 'returnStart' | 'back';
 export interface CartEvent { type: CartEventType; qty?: number }
@@ -48,6 +48,10 @@ export function sendCart(): boolean {
 }
 
 /** Advance the cart by dt seconds. Consumes leftover time across transitions so large offline steps stay exact. */
+/** True while the cart is stuck at the top because surface storage is full. */
+export const cartBlocked = () =>
+  S.cart.state === 'UNLOADING' && S.cart.load.qty > EPS && S.surface.qty >= storageCap(S) - EPS;
+
 export function updateCart(dt: number, out: CartEvent[] = []): CartEvent[] {
   const c = S.cart;
   let left = dt;
@@ -99,22 +103,27 @@ export function updateCart(dt: number, out: CartEvent[] = []): CartEvent[] {
         const need = c.dur - c.t;
         if (left < need) { c.t += left; left = 0; break; }
         left -= need;
-        enter('UNLOADING', C.unloadSecs);
+        enter('UNLOADING', Math.max(0.5, C.unloadSecs * Math.min(1, c.load.qty / cartCapacity(S))));
         out.push({ type: 'unloadStart', qty: c.load.qty });
         break;
       }
       case 'UNLOADING': {
-        // dump at a steady rate so the whole load lands in unloadSecs (Phase 3C: blocked when storage is full)
+        // dump at a steady rate; if surface storage is full the cart WAITS holding its load (never destroys material).
+        // c.t only advances while rubble actually moves, so the tip animation pauses too.
+        const room = Math.max(0, storageCap(S) - S.surface.qty);
         const rate = Math.max(c.load.qty, EPS) / Math.max(EPS, c.dur - c.t);
-        const need = c.dur - c.t;
-        const step = Math.min(left, need);
-        const moved = moveLoad(c.load, S.surface, rate * step);
-        c.t += step; left -= step;
-        if (c.t >= c.dur - EPS || c.load.qty <= EPS) {
-          moveLoad(c.load, S.surface, c.load.qty); // never leave a remainder behind
-          out.push({ type: 'unloaded', qty: moved });
+        if (room <= EPS && c.load.qty > EPS) { left = 0; break; }
+        const want = Math.min(rate * left, room);
+        const moved = moveLoad(c.load, S.surface, want);
+        const used = moved > 0 ? moved / rate : left;
+        c.t = Math.min(c.dur, c.t + used); left -= used;
+        if (c.load.qty <= 1e-4) {
+          moveLoad(c.load, S.surface, c.load.qty); // never leave a crumb behind
+          out.push({ type: 'unloaded' });
           enter('TRAVELLING_DOWN', travelTime(S, S.depth));
           out.push({ type: 'returnStart' });
+        } else if (storageCap(S) - S.surface.qty <= EPS) {
+          left = 0; // storage just filled: wait
         }
         break;
       }

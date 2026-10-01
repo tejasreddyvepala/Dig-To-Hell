@@ -30,7 +30,9 @@ export interface State {
   cart: CartSave;
   surface: Load; // unloaded at the surface (sold in Phase 3C)
   upg: Record<UpgradeId, number>;
-  flags: { dispatched: boolean; arrived: boolean };
+  stall: boolean; // Scrap Stall built (the permanent seller)
+  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean };
+  stats: { earned: number; sold: number }; // lifetime cash from sales, units sold
 }
 
 export const emptyLoad = (): Load => ({ qty: 0, val: 0 });
@@ -42,8 +44,10 @@ export function fresh(): State {
     rubble: emptyLoad(),
     cart: { state: 'BOTTOM_EMPTY', t: 0, dur: 0, from: 0, load: emptyLoad() },
     surface: emptyLoad(),
-    upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0 },
-    flags: { dispatched: false, arrived: false },
+    upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0, sellSpeed: 0, sellValue: 0, storage: 0 },
+    stall: false,
+    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false },
+    stats: { earned: 0, sold: 0 },
   };
 }
 
@@ -72,6 +76,11 @@ export function sanitize(o: any): State | null {
   for (const u of UPGRADES) s.upg[u.id] = Math.floor(num(o.upg?.[u.id], 0, u.maxLevel, 0));
   s.flags.dispatched = !!o.flags?.dispatched;
   s.flags.arrived = !!o.flags?.arrived;
+  s.flags.sold = !!o.flags?.sold;
+  s.flags.storageSeen = !!o.flags?.storageSeen;
+  s.stall = !!o.stall;
+  s.stats.earned = num(o.stats?.earned, 0, 1e18, 0);
+  s.stats.sold = num(o.stats?.sold, 0, 1e15, 0);
   const c = o.cart;
   if (c && CART_STATES.includes(c.state)) {
     s.cart = {

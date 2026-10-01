@@ -7,13 +7,14 @@ import { initSim, offlineAdvance, pendingFinds, updateCrew, workers } from './si
 import { cartDepth, sendCart, updateCart, type CartEvent } from './cart';
 import { updateFace } from './digface';
 import { miner, minerClick, minerKeyStrike, updateMiner } from './miner';
-import { present, presentCart } from './juice';
+import { SV, present, presentCart, presentLandings, presentSurface, say } from './juice';
+import { updateSurface, type SurfaceEvent } from './surface';
 import { FX, clearFx, popup, updateFx } from './fx';
 import { audioState, unlockAudio } from './audio';
 import { canvas, toLogical, updateCamera, view } from './view';
 import { render } from './render';
-import { buildPanel, isModalOpen, showModal, updatePanel } from './panel';
-import { fmt } from './util';
+import { buildPanel, isModalOpen, showModal, tickCash, updatePanel } from './panel';
+import { fmt, money } from './util';
 
 // ---- load + offline ----
 const away = loadState();
@@ -26,6 +27,10 @@ addEventListener('beforeunload', saveState);
 addEventListener('pagehide', saveState);
 
 let lastMat = materialAt(S.depth).id;
+// presentation state that depends on the loaded save
+SV.buildT = S.stall ? 1 : 0;
+SV.buyerGone = S.stall ? 1 : 0;
+if (S.flags.sold && !S.stall) say("I won't stay here all day. Build a stall.", true);
 
 // ---- input ----
 const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
@@ -38,12 +43,13 @@ canvas.addEventListener('pointerdown', (e) => {
     if (sendCart()) popup(px, py - 20, 'Sent!', '#ffd84a', 16, { life: 0.8 });
     return;
   }
-  if (view.scrollOff < 0) { view.scrollOff = 0; return; } // a click while exploring the shaft returns to the dig site
+  if (view.scrollOff < -0.5) { view.glide = 'dig'; return; } // a click while exploring the shaft returns to the dig site
   const p = toLogical(px, py);
   minerClick(p.x, p.y);
 });
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  view.glide = null;
   view.scrollOff = Math.min(0, view.scrollOff + (e.deltaY / CFG.ppm) * CFG.scrollSpeed);
   view.scrollOff = Math.max(-S.depth - CFG.scrollAboveM, view.scrollOff);
 }, { passive: false });
@@ -54,6 +60,21 @@ addEventListener('keydown', (e) => {
     minerKeyStrike();
   }
 });
+
+// ---- minimal navigation prompt (full Surface / Dig Site navigation is Phase 3D) ----
+const navBtn = document.getElementById('navBtn') as HTMLButtonElement;
+navBtn.onclick = () => { unlockAudio(); view.glide = navBtn.dataset.to as 'surface' | 'dig'; };
+function updateNav() {
+  const away = view.scrollOff < -3;
+  const cartUp = ['TRAVELLING_UP', 'SURFACE_ARRIVAL', 'UNLOADING'].includes(S.cart.state);
+  let label = '', to = '';
+  if (away) { label = '▼ Back to the dig site'; to = 'dig'; }
+  else if (cartUp && !S.flags.sold) { label = '▲ Follow the cart to the surface'; to = 'surface'; }
+  else if (S.flags.sold && !S.stall) { label = '▲ Surface: the buyer is waiting'; to = 'surface'; }
+  navBtn.hidden = !label || !!view.glide;
+  if (navBtn.textContent !== label) navBtn.textContent = label;
+  navBtn.dataset.to = to;
+}
 
 // ---- panel ----
 buildPanel();
@@ -66,6 +87,7 @@ document.getElementById('reset')!.onclick = () => {
   clearFx();
   view.camDepth = 0;
   view.scrollOff = 0;
+  SV.buildT = 0; SV.buyerGone = 0; SV.speech = null; SV.cashAcc = 0;
   lastMat = materialAt(0).id;
   initSim();
   saveState();
@@ -75,13 +97,14 @@ if (offline) {
   const h = Math.floor(offline.secs / 3600), m = Math.floor((offline.secs % 3600) / 60);
   showModal(
     `<p>While you were away for ${h ? h + 'h ' : ''}${m}m</p><div class="big">Your crew dug ${fmt(offline.dm)} m</div>` +
-    `<p>${fmt(offline.dug)} rubble dug, ${fmt(offline.delivered)} hauled to the surface</p>`,
+    `<p>${fmt(offline.dug)} rubble dug, ${fmt(offline.delivered)} hauled up, ${money(offline.earned)} earned at the stall</p>`,
     'Get back to digging',
   );
 }
 
 // ---- loop ----
 const cartEvents: CartEvent[] = [];
+const surfEvents: SurfaceEvent[] = [];
 let last = performance.now(), panelT = 0;
 function frame(now: number) {
   const realDt = Math.min(CFG.maxDt, (now - last) / 1000);
@@ -95,6 +118,10 @@ function frame(now: number) {
   cartEvents.length = 0;
   updateCart(dt, cartEvents);
   presentCart(cartEvents, dt);
+  surfEvents.length = 0;
+  updateSurface(dt, surfEvents);
+  presentSurface(surfEvents, dt);
+  presentLandings();
   updateFace(dt, CFG.cameraFollow);
   updateCamera(dt);
   updateFx(dt);
@@ -113,8 +140,9 @@ function frame(now: number) {
   }
 
   render();
+  tickCash(realDt);
   panelT -= realDt;
-  if (panelT <= 0) { updatePanel(); panelT = CFG.panelRefreshSecs; }
+  if (panelT <= 0) { updatePanel(); updateNav(); panelT = CFG.panelRefreshSecs; }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -124,7 +152,7 @@ if (import.meta.env.DEV) {
   (window as any).__dig = {
     state: () => JSON.parse(JSON.stringify({ ...S, parts: FX.parts.length, audio: audioState() })),
     setCritChance: (v: number) => { CFG.critChance = v; },
-    scrollTo: (m: number) => { view.scrollOff = Math.min(0, m - S.depth); },
+    scrollTo: (m: number) => { view.glide = null; view.scrollOff = Math.min(0, m - view.camDepth); },
     save: () => saveState(),
     cartDepth: () => cartDepth(),
   };

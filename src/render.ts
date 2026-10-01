@@ -1,13 +1,14 @@
 // Draws the world, the destructible dig face, miner/crew, FX and HUD overlays. Reads state; never mutates sim.
-import { CFG, FINDS, MATERIALS, MAX_DEPTH, RESOURCES, type Find } from './config';
+import { CFG, FINDS, MATERIALS, MAX_DEPTH, RESOURCES, TOOLS, type Find, type Tool } from './config';
 import { S } from './state';
-import { cartCapacity, materialAt, tierOf } from './economy';
-import { cartDepth, cartFill } from './cart';
+import { cartCapacity, materialAt, storageCap, tierOf } from './economy';
+import { cartBlocked, cartDepth, cartFill } from './cart';
+import { SV } from './juice';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { workers } from './sim';
 import { miner, minerSwingAngle, swingAngle } from './miner';
 import { FX, drawPopups, drawWorldFx } from './fx';
-import { cartScreen, ctx, faceOrigin, faceScale, faceY, shaftW, toScreen, view, viewTop, yOf } from './view';
+import { cartScreen, ctx, faceOrigin, faceScale, faceY, shaftW, surfaceLayout, toScreen, view, viewTop, yOf } from './view';
 import { fmt, hash, rgb, rgba } from './util';
 
 const FONT_DISPLAY = "'Bungee',Impact,sans-serif";
@@ -191,10 +192,9 @@ function drawFace(s: number) {
 }
 
 // ---------- figures ----------
-type ToolKind = 'pick' | 'jackhammer';
 
 /** Miner in logical face units, feet at (x, 0). angle from swingAngle(). */
-function drawWorker(x: number, dir: number, angle: number, tool: ToolKind, shirt: string, scale: number, player: boolean) {
+function drawWorker(x: number, dir: number, angle: number, tool: Tool, shirt: string, scale: number, player: boolean, lamp = true) {
   ctx.save();
   ctx.translate(x, 0); ctx.scale(dir * scale, scale);
   const lean = Math.max(0, angle) * 0.12 - 0.04;
@@ -217,13 +217,15 @@ function drawWorker(x: number, dir: number, angle: number, tool: ToolKind, shirt
   // head + helmet + lamp
   ctx.fillStyle = '#f0c79a'; ctx.beginPath(); ctx.arc(1, -34, 5.5, 0, 6.283); ctx.fill();
   ctx.fillStyle = player ? '#ffd83a' : '#c9a443'; ctx.beginPath(); ctx.arc(1, -36, 6.5, Math.PI, 0); ctx.fill(); ctx.fillRect(-6, -37, 14, 2.5);
-  ctx.fillStyle = player ? '#ffffff' : '#bfb68a'; ctx.fillRect(6, -39.5, 3, 3);
-  if (tool === 'pick') {
+  ctx.fillStyle = !lamp ? '#6b6550' : player ? '#ffffff' : '#e8dfa8'; ctx.fillRect(6, -39.5, 3, 3);
+  if (tool.kind === 'pick') {
+    const hs = tool.headScale;
     ctx.save(); ctx.translate(0, -27); ctx.rotate(angle);
     ctx.strokeStyle = '#f0c79a'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12, 0); ctx.stroke();
-    ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(35, 0); ctx.stroke();
-    ctx.strokeStyle = '#aab3bd'; ctx.lineWidth = 3.2;
-    ctx.beginPath(); ctx.moveTo(31, -9); ctx.quadraticCurveTo(39, 0, 33, 10); ctx.stroke();
+    ctx.strokeStyle = tool.handle; ctx.lineWidth = 2.2 + hs * 0.5; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(35, 0); ctx.stroke();
+    ctx.strokeStyle = tool.head; ctx.lineWidth = 2.6 * hs;
+    ctx.beginPath(); ctx.moveTo(33 - 2 * hs, -9 * hs); ctx.quadraticCurveTo(33 + 6 * hs, 0, 33 - hs, 10 * hs); ctx.stroke();
+    if (hs > 1.3) { ctx.fillStyle = tool.head; ctx.fillRect(30, -4, 7, 8); } // heavy head block
     ctx.restore();
   } else {
     const plunge = Math.max(0, Math.min(1, (angle + 0.5) / 1.55));
@@ -270,21 +272,48 @@ function drawReserve() {
   ctx.restore();
 }
 
+const pileHeight = (qty: number, max: number, unit: number) => (3 + 24 * Math.min(1.3, qty / max)) * unit;
+
 function drawFaceAndCrew() {
   const o = faceOrigin(), s = faceScale();
   if (o.y < -160 || o.y > view.H + 160) return;
   ctx.save();
   ctx.translate(o.x, o.y); ctx.scale(s, s);
   drawFace(s);
-  drawPile(CFG.cart.pileX, 0, S.rubble.qty, CFG.rubble.pileVisualMax, 1, 17);
+  // rubble waiting at the dig site, with its count right on the pile
+  drawPile(C.pileX, 0, S.rubble.qty, CFG.rubble.pileVisualMax, 1, 17);
+  if (S.rubble.qty >= 1) pileLabel(C.pileX, -pileHeight(S.rubble.qty, CFG.rubble.pileVisualMax, 1) - 5, Math.floor(S.rubble.qty), 9, S.rubble.qty > CFG.rubble.pileVisualMax);
   let di = 0;
+  const ropeTop = -(o.y + 30) / s;
   for (const w of workers) {
+    if (w.arrive > 0) { drawArrival(w.x, w.dir, 1 - w.arrive / CFG.crewArriveSecs, ropeTop, SHIRTS[di++ % SHIRTS.length]); continue; }
     const a = workerAngle(w.timer, w.since);
     if (w.id === 'exc') drawExcavator(w.x, w.dir, a);
-    else drawWorker(w.x, w.dir, a, 'pick', SHIRTS[di++ % SHIRTS.length], CFG.crewScale, false);
+    else drawWorker(w.x, w.dir, a, TOOLS[0], SHIRTS[di++ % SHIRTS.length], CFG.crewScale, false);
   }
   drawReserve();
-  drawWorker(miner.x, miner.dir, minerSwingAngle(), S.tool >= 1 ? 'jackhammer' : 'pick', '#d0532c', CFG.playerScale, true);
+  drawWorker(miner.x, miner.dir, minerSwingAngle(), TOOLS[S.tool], '#d0532c', CFG.playerScale, true);
+  ctx.restore();
+}
+
+/** Small count label sitting on a rubble pile. */
+function pileLabel(x: number, y: number, n: number, size: number, warn: boolean) {
+  ctx.font = `700 ${size}px ${FONT_UI}`; ctx.textAlign = 'center';
+  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(20,12,6,.7)'; ctx.lineJoin = 'round';
+  ctx.strokeText(String(n), x, y);
+  ctx.fillStyle = warn ? '#ffb38a' : '#f3e6cf'; ctx.fillText(String(n), x, y);
+}
+
+/** Rope drops from above, the digger slides down it, lands, the lamp clicks on (then normal digging resumes). */
+function drawArrival(x: number, dir: number, p: number, ropeTop: number, shirt: string) {
+  const ropeIn = Math.min(1, p / 0.25);
+  ctx.strokeStyle = 'rgba(210,180,120,.85)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(x + 4, ropeTop); ctx.lineTo(x + 4, ropeTop + (0 - ropeTop) * ropeIn); ctx.stroke();
+  if (p < 0.25) return;
+  const slide = Math.min(1, (p - 0.25) / 0.5), ease = slide * slide;
+  const y = ropeTop * (1 - ease);
+  ctx.save(); ctx.translate(0, y);
+  drawWorker(x, dir, -1.6, TOOLS[0], shirt, CFG.crewScale, false, p > 0.85);
   ctx.restore();
 }
 
@@ -382,7 +411,7 @@ function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, 
   const w = b.w * s, h = b.h * s, r = b.wheel * s;
   ctx.save();
   ctx.translate(x, y);
-  ctx.translate(-w / 2, -r); ctx.rotate(tip); ctx.translate(w / 2, r); // tips over its left wheel
+  ctx.translate(w / 2, -r); ctx.rotate(tip); ctx.translate(-w / 2, r); // tips over its right wheel, toward the stockpile
   // load: rocks heap up over the rim as it fills
   if (fill > 0.001) {
     const col = RESOURCES.rubble.color, n = Math.max(2, Math.round(fill * 14));
@@ -419,7 +448,7 @@ function drawCart() {
   if (st === 'SURFACE_ARRIVAL') bump = Math.sin(Math.min(1, cs.t / cs.dur) * Math.PI) * 3 * s;
   if (st === 'UNLOADING') {
     const p = Math.min(1, cs.t / cs.dur);
-    tip = -0.95 * (p < 0.75 ? Math.sin(Math.min(1, p / 0.3) * Math.PI / 2) : (1 - p) / 0.25);
+    tip = 0.95 * (p < 0.75 ? Math.sin(Math.min(1, p / 0.3) * Math.PI / 2) : (1 - p) / 0.25);
   }
   const roll = cartDepth() * 1.6;
   // cable from the headframe pulley to the cart
@@ -436,24 +465,135 @@ function drawCart() {
     ctx.fillStyle = 'rgba(255,255,255,.8)';
     ctx.fillText(`${Math.floor(cs.load.qty)}/${cap}`, c.x, c.y - (b.h + b.wheel * 2 + 6) * s);
   }
+  if (cartBlocked()) bubble(c.x - 30, c.y - (b.h + b.wheel * 2 + 14) * s, 'STORAGE FULL', '#ff9a7a');
 }
 
-/** Surface: headframe over the shaft opening + the stockpile where the cart dumps. */
+/** Speech/status bubble with a pointer, centred at (x, y). */
+function bubble(x: number, y: number, text: string, col = '#2a2420', pulse = false) {
+  ctx.font = `700 12px ${FONT_UI}`;
+  const w = ctx.measureText(text).width + 16, h = 22;
+  const a = pulse ? 0.85 + 0.15 * Math.sin(view.t * 5) : 1;
+  ctx.globalAlpha = a;
+  ctx.fillStyle = col === '#2a2420' ? '#fffaf0' : 'rgba(40,16,10,.92)';
+  ctx.beginPath(); ctx.roundRect(x - w / 2, y - h, w, h, 6); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 6); ctx.fill();
+  ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.fillText(text, x, y - 7);
+  ctx.globalAlpha = 1;
+}
+
+/** A rough stick figure that is clearly not a miner: flat cap, overalls. */
+function drawCivilian(x: number, y: number, u: number, cap: string, body: string, arm: number) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(u, u); ctx.lineCap = 'round';
+  ctx.strokeStyle = '#2b2219'; ctx.lineWidth = 3.4;
+  ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-4, 0); ctx.moveTo(0, -12); ctx.lineTo(4, 0); ctx.stroke();
+  ctx.strokeStyle = body; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -25); ctx.stroke();
+  ctx.strokeStyle = '#f0c79a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, -23); ctx.lineTo(-8 + arm * 4, -16 - arm * 6); ctx.stroke();
+  ctx.fillStyle = '#f0c79a'; ctx.beginPath(); ctx.arc(0, -30, 5, 0, 6.283); ctx.fill();
+  ctx.fillStyle = cap; ctx.fillRect(-6, -36, 12, 3); ctx.fillRect(-1, -35, 9, 2);
+  ctx.restore();
+}
+
+/** Surface: headframe over the right-hand rail, the stockpile beside it, then the buyer or the Scrap Stall. */
 function drawSurface(gy: number) {
-  if (gy < -60 || gy > view.H + 260) return;
+  if (gy < -80 || gy > view.H + 260) return;
   const s = faceScale(), x = toScreen(C.railX, 0).x, topY = yOf(-C.surfaceLiftM - 3.2);
+  const L = surfaceLayout(), u = Math.max(1, s * 0.85);
+  const SFC = CFG.surface;
+  // deck bridging the shaft opening when the layout has to overlap it (narrow screens)
+  const deckFrom = L.stockX - 44 * u;
+  if (deckFrom < L.right) {
+    ctx.fillStyle = '#6b4a2c'; ctx.fillRect(deckFrom, gy - 4, L.right - deckFrom, 7);
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    for (let px = deckFrom; px < L.right; px += 10) ctx.fillRect(px, gy - 4, 1, 7);
+  }
   // headframe: two timber legs, crossbeam, pulley
   ctx.strokeStyle = '#5b3d22'; ctx.lineWidth = 3.2 * s / 1.5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(x - 16 * s, gy - 2); ctx.lineTo(x - 4 * s, topY); ctx.moveTo(x + 18 * s, gy - 2); ctx.lineTo(x + 4 * s, topY);
-  ctx.moveTo(x - 12 * s, (gy + topY) / 2); ctx.lineTo(x + 14 * s, (gy + topY) / 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - 18 * s, gy - 2); ctx.lineTo(x - 4 * s, topY); ctx.moveTo(x + 16 * s, gy - 2); ctx.lineTo(x + 4 * s, topY);
+  ctx.moveTo(x - 14 * s, (gy + topY) / 2); ctx.lineTo(x + 12 * s, (gy + topY) / 2); ctx.stroke();
   ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.arc(x, topY, 5 * s, 0, 6.283); ctx.fill();
   ctx.fillStyle = '#9aa3ad'; ctx.beginPath(); ctx.arc(x, topY, 2 * s, 0, 6.283); ctx.fill();
-  // stockpile (surfaceStock) beside the opening
-  const px = view.W / 2 - shaftW() / 2 - CFG.surface.stockOffsetPx;
-  drawPile(px, gy - 4, S.surface.qty, CFG.surface.stockVisualMax, s * 1.15, 91);
-  if (S.surface.qty > 0.5) {
-    ctx.font = `700 11px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.85)';
-    ctx.fillText(`${Math.floor(S.surface.qty)} rubble`, px, gy + 16);
+  // chute from the cart's dump point down to the stockpile
+  ctx.strokeStyle = '#6b4a2c'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x + 10 * s, yOf(-C.surfaceLiftM) - 8 * s); ctx.lineTo(L.stockX - 10, gy - 14); ctx.stroke();
+
+  // storage tiers: loose pile -> wooden bin -> fenced yard
+  const cap = storageCap(S), st = tierOf(S.upg.storage, SFC.storageTiers);
+  if (st >= 1) { ctx.fillStyle = '#5b3d22'; ctx.fillRect(L.stockX - 34 * u, gy - 16 * u, 4 * u, 16 * u); ctx.fillRect(L.stockX + 30 * u, gy - 16 * u, 4 * u, 16 * u); ctx.fillRect(L.stockX - 34 * u, gy - 4 * u, 68 * u, 4 * u); }
+  if (st >= 2) {
+    ctx.strokeStyle = '#8a6a44'; ctx.lineWidth = 1.5;
+    for (let i = -4; i <= 4; i++) { const fx = L.stockX + i * 10 * u; ctx.beginPath(); ctx.moveTo(fx, gy); ctx.lineTo(fx, gy - 22 * u); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(L.stockX - 40 * u, gy - 16 * u); ctx.lineTo(L.stockX + 40 * u, gy - 16 * u); ctx.stroke();
+  }
+  drawPile(L.stockX, gy - 3, S.surface.qty, cap, u, 91);
+  if (S.surface.qty >= 1 || S.flags.arrived) {
+    const full = S.surface.qty >= cap - 0.5;
+    pileLabel(L.stockX, gy - 3 - pileHeight(S.surface.qty, cap, u) - 6, Math.floor(S.surface.qty), 12, full);
+    ctx.font = `600 10px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = full ? '#ffb38a' : 'rgba(255,255,255,.75)';
+    ctx.fillText(full ? `STORAGE FULL (${cap})` : `stock / ${cap}`, L.stockX, gy + 16);
+  }
+
+  // scrap buyer (tutorial) until the stall is built and he has driven off
+  if (SV.buyerGone < 1) {
+    const off = SV.buyerGone * 220;
+    ctx.save(); ctx.globalAlpha = 1 - SV.buyerGone;
+    const tx = L.stallX + 26 * u + off;
+    ctx.fillStyle = '#8c4a2c'; ctx.fillRect(tx - 16 * u, gy - 18 * u, 26 * u, 12 * u); // truck bed
+    ctx.fillStyle = '#a65b33'; ctx.fillRect(tx + 10 * u, gy - 22 * u, 12 * u, 16 * u); // cab
+    ctx.fillStyle = '#8fc6e8'; ctx.fillRect(tx + 14 * u, gy - 20 * u, 6 * u, 6 * u);
+    ctx.fillStyle = '#1c1c1c'; ctx.beginPath(); ctx.arc(tx - 8 * u, gy - 4 * u, 4 * u, 0, 6.283); ctx.arc(tx + 14 * u, gy - 4 * u, 4 * u, 0, 6.283); ctx.fill();
+    ctx.font = `700 ${Math.round(5.5 * u)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9c0';
+    ctx.fillText('BUYING SCRAP', tx - 3 * u, gy - 10 * u);
+    const buying = !S.flags.sold && S.flags.arrived && S.surface.qty > 0;
+    drawCivilian(L.stallX - 10 * u + off, gy - 1, u, '#3d5a3a', '#55703f', buying ? (Math.sin(view.t * 9) + 1) / 2 : 0.2);
+    ctx.restore();
+  }
+  // the Scrap Stall: boards go up, then the seller steps in and works the stock
+  if (S.stall) drawStall(L.stallX, gy, u);
+  // speech bubble from the buyer (or the seller once the stall exists)
+  if (SV.speech) bubble(L.stallX - 10 * u, gy - 52 * u, SV.speech.text, '#2a2420', SV.speech.hold);
+}
+
+function drawStall(x: number, gy: number, u: number) {
+  const b = SV.buildT, SFC = CFG.surface;
+  const vt = tierOf(S.upg.sellValue, SFC.sellValueTiers), sp = tierOf(S.upg.sellSpeed, SFC.sellSpeedTiers);
+  const w = 40 * u, h = 30 * u, left = x - w / 2;
+  const posts = Math.min(1, b / 0.35), counter = Math.min(1, Math.max(0, (b - 0.35) / 0.25));
+  const roof = Math.min(1, Math.max(0, (b - 0.6) / 0.25)), sign = Math.min(1, Math.max(0, (b - 0.85) / 0.15));
+  ctx.fillStyle = '#5b3d22';
+  ctx.fillRect(left, gy - h * posts, 3 * u, h * posts); ctx.fillRect(left + w - 3 * u, gy - h * posts, 3 * u, h * posts);
+  // seller behind the counter (after construction), working faster with Sell Speed
+  if (b >= 1) {
+    const working = S.surface.qty > 0.01;
+    const arm = working ? (Math.sin(view.t * (5 + 2.5 * S.upg.sellSpeed)) + 1) / 2 : 0.15;
+    drawCivilian(x - 4 * u, gy - 2, u, '#7a2f2a', '#3d5a8a', arm);
+    if (sp >= 2) drawCivilian(x + 12 * u, gy - 2, u * 0.85, '#4a4a4a', '#6a6a3a', working ? (Math.sin(view.t * 7 + 1) + 1) / 2 : 0.2); // helper
+  }
+  if (counter > 0) {
+    ctx.fillStyle = vt >= 3 ? '#8a5a34' : '#7a5233';
+    ctx.fillRect(left, gy - 12 * u * counter, w, 12 * u * counter);
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(left, gy - 12 * u * counter, w, 2);
+    if (sp >= 1 && counter >= 1) { ctx.fillStyle = '#9aa3ad'; ctx.fillRect(left + 4 * u, gy - 15 * u, 12 * u, 3 * u); } // sorting tray
+  }
+  if (roof > 0) {
+    const ry = gy - h - 4 * u;
+    if (vt >= 3) { // striped awning
+      for (let i = 0; i < 5; i++) { ctx.fillStyle = i % 2 ? '#f2e6c9' : '#c0532f'; ctx.fillRect(left - 4 * u + i * (w + 8 * u) / 5, ry, (w + 8 * u) / 5 * roof, 7 * u); }
+    } else { ctx.fillStyle = '#6b4a2c'; ctx.fillRect(left - 4 * u, ry, (w + 8 * u) * roof, 6 * u); }
+  }
+  if (sign > 0) {
+    ctx.globalAlpha = sign;
+    const sy = gy - h - 16 * u;
+    ctx.fillStyle = vt >= 1 ? '#2f3a2f' : '#a4793f';
+    ctx.fillRect(x - 17 * u, sy, 34 * u, 10 * u);
+    ctx.font = `${Math.round(7 * u)}px ${FONT_DISPLAY}`; ctx.textAlign = 'center';
+    ctx.fillStyle = vt >= 1 ? '#ffe08a' : '#2b1a0c';
+    ctx.fillText(vt >= 1 ? 'SCRAP $' : 'SCRAP', x, sy + 8 * u);
+    if (vt >= 2) { // weigh station
+      ctx.fillStyle = '#6f7780'; ctx.fillRect(left - 14 * u, gy - 8 * u, 10 * u, 8 * u);
+      ctx.fillStyle = '#c9d2dc'; ctx.fillRect(left - 16 * u, gy - 10 * u, 14 * u, 2 * u);
+    }
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -477,6 +617,28 @@ function drawWorld() {
     const m = m0 + i; if (m < 0) continue;
     const y = yOf(m), L = materialAt(m);
     ctx.fillStyle = rgb(L.wall, 0.9 + hash(m) * 0.2); ctx.fillRect(-10, y, W + 20, PPM + 1);
+    // break the perfectly straight strata: lumps of the stratum above bulge across this boundary
+    if (m > 0) {
+      const U = materialAt(m - 1);
+      ctx.fillStyle = rgb(U.wall, 0.9 + hash(m - 1) * 0.2);
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        ctx.ellipse(hash(m * 13.1 + k) * W, y, 18 + hash(m * 7.7 + k) * 54, 1.5 + hash(m * 3.3 + k) * 3.5, 0, 0, 6.283);
+        ctx.fill();
+      }
+      // near a material change, fingers and pockets of the old material reach down a few metres
+      const prev = materialAt(m - 6);
+      if (prev.id !== L.id) {
+        const depthIn = m - L.from;
+        ctx.fillStyle = rgb(prev.wall, 0.85 + hash(m * 2.1) * 0.2);
+        for (let k = 0; k < 3; k++) {
+          if (hash(m * 5.3 + k) < depthIn / 7) continue;
+          ctx.beginPath();
+          ctx.ellipse(hash(m * 17.3 + k) * W, y + PPM * 0.5, 10 + hash(m * 9.1 + k) * 40, 3 + hash(m * 4.7 + k) * 6, 0, 0, 6.283);
+          ctx.fill();
+        }
+      }
+    }
     if (hash(m * 3.1) < 0.5) { ctx.fillStyle = rgb(L.wall, 0.75); ctx.fillRect(hash(m * 5.7) * W, y, 6 + hash(m) * 20, 3); }
     if (m >= CFG.face.redFleckDepth && hash(m * 8.1) < 0.4) { ctx.fillStyle = 'rgba(110,14,12,.7)'; ctx.fillRect(hash(m * 2.9) * W, y + 4, 3, 2); }
   }
@@ -505,7 +667,7 @@ function drawWorld() {
     ctx.restore();
     ctx.font = `600 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.55)';
     const stepM = S.depth > 80 ? 25 : 10;
-    for (let m = Math.ceil(Math.max(0, top) / stepM) * stepM; m < Math.min(view.camDepth, top + rows); m += stepM) {
+    for (let m = Math.max(stepM, Math.ceil(Math.max(0, top) / stepM) * stepM); m < Math.min(view.camDepth, top + rows); m += stepM) {
       const y = yOf(m);
       ctx.fillRect(cx + sw / 2 - 24, y, 16, 2); ctx.fillText(fmt(m) + ' m', cx + sw / 2 + 6, y + 4);
     }
@@ -565,10 +727,7 @@ function drawOverlays() {
     ctx.textAlign = 'center'; ctx.font = `600 14px ${FONT_UI}`; ctx.fillStyle = 'rgba(255,190,180,.9)';
     ctx.fillText('300 m: digging deeper arrives in a later build.', W / 2, H - 38);
   }
-  if (view.scrollOff < 0) {
-    ctx.textAlign = 'center'; ctx.font = `600 14px ${FONT_UI}`; ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillText('Viewing the shaft. Click the rock area to return to the dig site', W / 2, H - 16);
-  }
+
 }
 
 export function render() {

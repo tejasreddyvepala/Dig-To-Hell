@@ -50,7 +50,8 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - **Resource:** `rubble` (data-driven `RESOURCES` table). Quantities carry accumulated value `{qty, val}`; value per unit = `baseValue × valueAt(depth)`, `valueAt(d) = (1 + d/valueDiv)^valueExp`.
 - **Extraction:** chunk breaks add `rubblePerBreak` to the dig-site pile (×2 on a crit break) and advance depth by the material's `metersPerBreak`. Chunk HP = `stages × hpPerStage` per material; pickaxe = 1 power ≈ one visible stage per hit. Excess damage carries into the fresh chunk.
 - **Transport:** one permanent cart. `capacity`, `loadRate`, `cartSpeed`, `railMult` from upgrade levels; `travelTime(d) = baseTravel + d / (cartSpeed × railMult)`.
-- **Surface:** unloaded rubble accumulates in `surfaceStock`. Selling (the only cash source) arrives in Phase 3C — until then no income exists except the dev-only debug button.
+- **Surface:** unloaded rubble accumulates in `surfaceStock` (capped by Storage; a full surface makes the cart wait, never destroys material). A tutorial Scrap Buyer buys the first load; after that the Scrap Stall's seller sells `sellRate` units/s at `price × carried value`. **`surface.ts` is the only code that adds cash.**
+- **Extraction purchases:** tool ladder (Pickaxe → Iron → Heavy → Jackhammer) and Digger hiring.
 - **Upgrades** cost cash with geometric growth per level; groups EXTRACTION / TRANSPORT / SURFACE revealed progressively.
 - *(Superseded: hardness `(1 + d/20)^2`, value per meter paid per click, Mine Cart as a repeatedly purchased crew unit, find cash bonuses.)*
 
@@ -60,7 +61,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 2.5. Readability / core-loop polish — DONE
 3A. Rubble economy — digging produces rubble, no cash from hits, visible bottom pile, save migration
 3B. Physical cart loop — one permanent cart, loading, real travel through the shaft, unloading, return, transport upgrades
-3C. Surface economy — surface scene, tutorial first-load buyer, seller, sell speed/value/storage, visible stock
+3C. Surface economy + restored extraction ladder — DONE (Scrap Buyer, Scrap Stall, seller, sell speed/value/storage, tool ladder, Digger hiring, panel restructure)
 3D. Navigation + world — Surface / Dig Site controls, smooth camera, manual scroll (wheel + touch), deterministic irregular geology, persistent rails/history rendering, unlimited depth
 → HUMAN PLAYTEST
 4. Animated Finds
@@ -79,6 +80,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Step 2.5 (polish the click loop): `72800ed` (hash recorded in `3c30846`)
 - Design update (physical economy, unbounded depth): `6ea5c2b`
 - Phase 3A + 3B (rubble economy + physical cart loop): `b4a2c08`
+- Phase 3C (surface economy + restored extraction ladder): `PHASE3C_HASH`
 
 ### Phase 3A + 3B — rubble economy + physical cart loop
 - **Files:** new `src/cart.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `sim.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `miner.ts`, `index.html`, `style.css`.
@@ -103,8 +105,31 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Save/reload in every cart state (LOADING, READY, TRAVELLING_UP, SURFACE_ARRIVAL, UNLOADING, TRAVELLING_DOWN): material totals conserved exactly across three consecutive reloads.
 - Frame work at the 700-particle cap (8 diggers, all crits, cart running): p99 2.7 ms desktop, 10.5 ms at 4× CPU throttle, 13.3 ms at 6×. Isolated spikes (up to ~150 ms at 6×) still unexplained (suspected GC).
 
+### Phase 3C — surface economy + restored extraction progression: `PHASE3C_HASH`
+- **Why:** the 3A/3B playtest dead-ended (surface stock with no buyer), extraction progression was effectively absent (only "Pickaxe. Something heavier arrives deeper down."), and four transport cards dominated the panel. This pass adds the missing economy layer without undoing the physical economy.
+- **Files:** new `src/surface.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `cart.ts`, `sim.ts`, `miner.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `index.html`, `style.css`.
+- **Bootstrap:** Scrap Buyer + truck waits at the surface; on the first delivery he buys the whole stockpile (30 units/s, visible drain, pieces hop to him, HUD cash counts up), big "+$X / SOLD N RUBBLE" popup + sting, then "I won't stay here all day. Build a stall." → Build Scrap Stall $80 (only purchase offered until built). Safety net: while there is no stall and cash < $80, the buyer keeps buying (no soft-lock).
+- **Scrap Stall:** 1.6 s construction (posts, counter, roof, sign, hammer knocks), seller steps in, buyer drives off. Seller drains stock at `sellRate`; cash popups aggregated (≤ 1 per 0.9 s) with a coin sound at the stall. Visual tiers for Sell Speed / Sell Value / Storage (see Spec §7).
+- **Storage:** 120 units base (+50%/level). Cart UNLOADING only advances while rubble actually moves; when storage is full it waits holding the load (`cartBlocked()`), STORAGE FULL shown on the pile and cart.
+- **Tools:** Pickaxe 1 → Iron 1.5 ($75) → Heavy 2.25 ($260, 25 m) → Jackhammer 4×1.4 burst ($1,800, 75 m). Each tier changes the head/handle drawn, debris intensity (`fx`), and adds a low `playThud`; the jackhammer queues 4 impacts 45 ms apart per click with a BRRRT.
+- **Diggers:** $80 ×1.28, dps 0.6, available from the start of the stall era (no depth gate). New visible diggers rappel in (`crewArriveSecs` 1.2: rope, slide, dust, lamp on); `syncWorkers` now keeps existing workers' phases. Max 3 visible; extras in the "+N crew" row.
+- **Layout mirrored:** transport (rails, cart, loading pile, headframe) is on the RIGHT wall; miners on the left/centre; surface stockpile, chute, buyer/stall right of the shaft opening (a deck bridges the opening on narrow screens). Both piles show their count on the pile.
+- **Panel:** cards for the next action (next tool, Hire Digger, Build Scrap Stall); compact rows for transport and surface upgrades; group headers with live summaries; progressive reveal (Sell Value after 120 sold, Storage at 50% stock). HUD cash counts up.
+- **Navigation (minimal, not 3D):** a contextual prompt button — "▲ Follow the cart to the surface" (first trip), "▲ Surface: the buyer is waiting", "▼ Back to the dig site" — with a smooth camera glide; while scrolled away the view holds still in absolute depth.
+- **Geology polish (temporary, not 3D):** strata edges bulge with hashed lumps; fingers of the previous material reach a few metres below a material change. Undamaged face chunks switch to the new material when the geology changes.
+- **Save:** still v3, additive fields with defaults: `stall`, `flags.sold`, `flags.storageSeen`, `stats {earned, sold}`, `upg.sellSpeed/sellValue/storage`. 3A/3B saves with a dead stockpile get the buyer; v2 saves keep their cash.
+- **Tuning changes:** loadRate 2 → 3.5/s; cart capacity 40 → 50 (+45%/level); cart speed 6 → 8 m/s (+25%/level); crew cost growth 1.15 → 1.28; transport upgrade costs lowered (see Spec §10).
+
+### Measurements (Phase 3C)
+- Headless bot, 4 clicks/s, buys the cheapest affordable option every ~3 s: first break 0.5 s · depart 15.8 s · arrival 19.5 s · first cash 21.6 s · first sale $164 · stall 24.2 s · first tool 51.4 s · first digger 75.7 s · @1:00 depth 29 m, earned $285, pile 50, surface 20 · @3:00 depth 106 m, earned $2,202, pile 369, surface 65, Iron Pickaxe, 4 diggers, cart cap 2 / speed 2 / load 4, sell speed 3 / value 1.
+- 3 clicks/s: first sale $169 at ~28 s, stall 33 s, first tool 60 s, earned $2,015 by 3:00.
+- Real browser bot (~6 clicks/s incl. clicking the real panel and the nav prompt): depart 15.7 s · arrival 20.9 s · first cash 22.9 s ($175) · stall 27.2 s · first tool 52.4 s · first digger 87.4 s · @3:00 depth 169 m, earned $1,663.
+- Purchase choices: after the stall, the player typically sees 5–9 options with 2–5 affordable but cash for one; longest gap without an affordable purchase ≈ 24 s.
+- Frame work at the 700-particle cap (8 diggers, crits, cart, seller): p99 2.8 ms desktop, 10.4 ms at 4× CPU throttle.
+- Verified: digging/crew/cart never add cash; material conserved through storage-full waits and reloads mid-sale; seller runs with the camera underground; crew dig with the camera at the surface; v2 and 3B saves migrate.
+
 ### Recommended next task
-Phase 3C: surface scene, tutorial first-load buyer, Seller (sell rate/value), Surface Storage, visible stock consumption and cash popups at the seller. Rebalance the first minutes once income exists (loading speed is currently the dominant bottleneck from ~30 s).
+Human playtest of 3C. Then Phase 3D (navigation + deterministic geology + unlimited depth). Balance watch-items: transport still dominates (dig-site pile grows to 300–1,000 by 3:00); Rail Quality is rarely bought; the Heavy Pickaxe at $260 competes poorly with cheaper options.
 
 ### Step 2 — summary
 Destructible face (8 chunks, per-material stages), miner swing scheduling with impact-frame resolution, crew strikes, impact hierarchy with crit hit-stop/star/ring, synthesized audio, economy retuned to ~12 m at 25 s / 45 m at 85 s (4 clicks/s), save v2.
@@ -129,14 +154,17 @@ Destructible face (8 chunks, per-material stages), miner swing scheduling with i
 - Geology is still a clean layer cake until Phase 3D.
 - Sounds verified only as error-free, not by ear.
 - Offline progression design is unresolved (interim: conservative chain simulation, stops before the next find).
-- No income exists until Phase 3C; upgrades can only be tested with the dev debug button.
+- Transport dominates: the dig-site pile grows to several hundred by 3:00 because depth makes trips longer while capacity/loading upgrades lag. The surface stock stays modest (seller rarely the bottleneck before ~2:00).
+- Depth runs fast with active clicking (~106 m at 3:00 at 4 clicks/s, 169 m at ~6/s) — finds/interruptions will absorb time later.
+- Surface buildings are small on screen (stall ≈ 70 px wide on desktop); on mobile the stockpile/stall overlap the shaft opening on a deck.
+- The Scrap Buyer speech uses a real-time `setTimeout` (cosmetic).
 - Pile at the dig site grows without limit when transport lags (by design for now; a "RUBBLE FULL" nav alert comes in 3D).
 - The cart rides a vertical rail on a cable (a hoisted skip); it reads as a cart but is not physically "rolling" on a slope.
 - The "n/cap" cart label and the headframe overlap at very shallow depth (< 5 m).
 - Panel status text ("No buyer yet") is placeholder copy for 3C.
 
 ## CURRENT IMPLEMENTATION TASK
-Phase 3A + 3B are DONE — awaiting human playtest. Next (only after approval): Phase 3C (surface economy). Still out of scope: find cinematics, interruptions, Red Door, multiple carts, elevators, leaderboards, prestige, new resources, music; nav buttons and procedural geology are 3D.
+Phase 3C is DONE — awaiting human playtest. Next (only after approval): Phase 3D (navigation + deterministic geology + unlimited depth). Still out of scope: find cinematics, interruptions, Red Door, multiple carts, elevators, conveyors, leaderboards, prestige, new resources, music.
 
 ## HOW TO WORK WITH TEJAS
 - Be opinionated. Say when an idea is weak.

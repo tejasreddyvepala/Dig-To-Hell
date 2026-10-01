@@ -58,3 +58,10 @@ export const cartSpeed = (s: State) => C.speed.base * (1 + C.speed.perLevel * s.
 export const travelTime = (s: State, d: number) => C.baseTravel + (d + C.surfaceLiftM) / cartSpeed(s);
 /** Highest threshold index reached by `level` (visual tier). */
 export const tierOf = (level: number, tiers: number[]) => tiers.reduce((t, at, i) => (level >= at ? i : t), 0);
+
+// ---- surface (selling is the only cash source) ----
+const SF = CFG.surface;
+export const storageCap = (s: State) => Math.round(SF.storage.base * (1 + SF.storage.perLevel * s.upg.storage));
+export const sellRate = (s: State) => SF.sellRate.base * (1 + SF.sellRate.perLevel * s.upg.sellSpeed);
+/** $ per unit of accumulated material value. */
+export const sellPrice = (s: State) => SF.price.base * (1 + SF.price.perLevel * s.upg.sellValue);

@@ -69,23 +69,39 @@ export const RESOURCES: Record<ResourceId, Resource> = {
   rubble: { id: 'rubble', name: 'Rubble', baseValue: 1, color: [128, 96, 66], rarity: 'common' },
 };
 
-// ---- transport upgrades (the cart itself is permanent; these improve it) ----
-export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail';
-export interface Upgrade { id: UpgradeId; name: string; ic: string; ds: string; baseCost: number; growth: number; maxLevel: number }
+// ---- level upgrades (the cart and the stall are permanent; these improve them) ----
+export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail' | 'sellSpeed' | 'sellValue' | 'storage';
+export type UpgradeGroup = 'transport' | 'surface';
+export interface Upgrade { id: UpgradeId; group: UpgradeGroup; name: string; ic: string; baseCost: number; growth: number; maxLevel: number }
 export const UPGRADES: Upgrade[] = [
-  { id: 'cartCap', name: 'Cart Capacity', ic: '🛒', ds: 'Bigger cart, more rubble per trip', baseCost: 60, growth: 1.55, maxLevel: 30 },
-  { id: 'cartSpeed', name: 'Cart Speed', ic: '💨', ds: 'Faster trips up and down the shaft', baseCost: 80, growth: 1.6, maxLevel: 30 },
-  { id: 'loadSpeed', name: 'Loading Speed', ic: '🪣', ds: 'Shovel rubble into the cart faster', baseCost: 50, growth: 1.5, maxLevel: 30 },
-  { id: 'rail', name: 'Rail Quality', ic: '🛤️', ds: 'Better track, faster travel', baseCost: 150, growth: 1.75, maxLevel: 20 },
+  { id: 'cartCap', group: 'transport', name: 'Cart Capacity', ic: '🛒', baseCost: 80, growth: 1.6, maxLevel: 30 },
+  { id: 'cartSpeed', group: 'transport', name: 'Cart Speed', ic: '💨', baseCost: 100, growth: 1.6, maxLevel: 30 },
+  { id: 'loadSpeed', group: 'transport', name: 'Loading Speed', ic: '🪣', baseCost: 50, growth: 1.55, maxLevel: 30 },
+  { id: 'rail', group: 'transport', name: 'Rail Quality', ic: '🛤️', baseCost: 200, growth: 1.8, maxLevel: 20 },
+  { id: 'sellSpeed', group: 'surface', name: 'Sell Speed', ic: '⏩', baseCost: 75, growth: 1.6, maxLevel: 30 },
+  { id: 'sellValue', group: 'surface', name: 'Sell Value', ic: '💲', baseCost: 140, growth: 1.75, maxLevel: 30 },
+  { id: 'storage', group: 'surface', name: 'Storage', ic: '📦', baseCost: 110, growth: 1.65, maxLevel: 30 },
 ];
 
-// ---- tools & crew ----
-export interface Tool { name: string; ic: string; pow: number; cost: number; unlockDepth: number }
+// ---- player tools: a short early ladder, then the Jackhammer changes how digging works ----
+export type ToolKind = 'pick' | 'jack';
+export interface Tool {
+  name: string; ic: string; kind: ToolKind;
+  pow: number; // dig power per impact (pickaxe = 1 = one dirt stage)
+  burst: number; // impacts per click (jackhammer rattles several)
+  cost: number; unlockDepth: number;
+  head: string; headScale: number; handle: string; // look in hand
+  fx: number; // chip/debris intensity multiplier
+  thud: number; // extra low-end weight in the impact sound (0..1)
+}
 export const TOOLS: Tool[] = [
-  { name: 'Pickaxe', ic: '⛏️', pow: 1, cost: 0, unlockDepth: 0 },
-  { name: 'Jackhammer', ic: '🔨', pow: 3, cost: 2500, unlockDepth: 105 },
+  { name: 'Pickaxe', ic: '⛏️', kind: 'pick', pow: 1, burst: 1, cost: 0, unlockDepth: 0, head: '#aab3bd', headScale: 1, handle: '#8a5a2b', fx: 1, thud: 0 },
+  { name: 'Iron Pickaxe', ic: '⛏️', kind: 'pick', pow: 1.5, burst: 1, cost: 75, unlockDepth: 0, head: '#6f7882', headScale: 1.18, handle: '#6b4423', fx: 1.25, thud: 0.35 },
+  { name: 'Heavy Pickaxe', ic: '⚒️', kind: 'pick', pow: 2.25, burst: 1, cost: 260, unlockDepth: 25, head: '#4a5058', headScale: 1.5, handle: '#4e3320', fx: 1.5, thud: 0.8 },
+  { name: 'Jackhammer', ic: '🔨', kind: 'jack', pow: 1.4, burst: 4, cost: 1800, unlockDepth: 75, head: '#ffcf3a', headScale: 1, handle: '#3b3f45', fx: 1.3, thud: 0.5 },
 ];
 
+// ---- crew ----
 export type CrewId = 'dig' | 'exc';
 export interface Crew {
   id: CrewId; name: string; ic: string; ds: string; cost: number; unlockDepth: number;
@@ -93,7 +109,7 @@ export interface Crew {
   swingSecs: number; // visible strike cadence per worker
 }
 export const CREW: Crew[] = [
-  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Swings a pick all day', cost: 240, unlockDepth: 20, dps: 0.4, swingSecs: 1.1 },
+  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Rappels in and digs all day', cost: 80, unlockDepth: 0, dps: 0.6, swingSecs: 1.1 },
   { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'A bucket the size of a car', cost: 30000, unlockDepth: 235, dps: 14, swingSecs: 1.8 },
 ];
 
@@ -115,7 +131,7 @@ export const CFG = {
   // ---- economy ----
   valueDiv: 40, // material value per unit V(d) = (1 + d/div)^exp (realised only when sold, Phase 3C)
   valueExp: 1.3,
-  crewCostGrowth: 1.15,
+  crewCostGrowth: 1.28,
   findMultBonus: 0.1, // +10% digging per find (finds give no cash)
   overflowCarry: 0.99, // fraction of a stage that excess damage may carry into the fresh chunk
   critChance: 0.07,
@@ -131,9 +147,9 @@ export const CFG = {
 
   // ---- cart (one permanent cart; transport) ----
   cart: {
-    capacity: { base: 40, perLevel: 0.4 }, // units = base × (1 + perLevel × L)
-    loadRate: { base: 2, perLevel: 0.35 }, // units/s pile -> cart
-    speed: { base: 6, perLevel: 0.2 }, // m/s along the shaft
+    capacity: { base: 50, perLevel: 0.45 }, // units = base × (1 + perLevel × L)
+    loadRate: { base: 3.5, perLevel: 0.35 }, // units/s pile -> cart
+    speed: { base: 8, perLevel: 0.25 }, // m/s along the shaft
     railPerLevel: 0.15, // travel speed multiplier per Rail Quality level
     railTiers: [0, 2, 4, 7], // Rail Quality levels where the track visibly upgrades
     bodyTiers: [0, 2, 5, 9], // Cart Capacity levels where the cart body visibly upgrades
@@ -142,16 +158,29 @@ export const CFG = {
     arriveSecs: 0.5, // brake + bump at the surface
     unloadSecs: 1.6, // tip and dump
     surfaceLiftM: 2.4, // the cart parks this far above ground in the headframe
-    railX: 9, // logical face x of the rail (left wall)
-    cartX: 22, // logical x of the cart centre
-    pileX: 62, // logical x of the rubble pile centre
+    railX: 211, // logical face x of the rail (right wall: transport side)
+    cartX: 198, // logical x of the cart centre
+    pileX: 156, // logical x of the rubble pile centre (between the miners and the cart)
     loadArcSecs: 0.16, // a piece arcs from pile to cart this often while loading
     clackEveryM: 2.5, // rail clack spacing
     soundRangeScreens: 1.5, // off-screen cart sounds fade to silence over this many screen heights
   },
+  // ---- surface: stockpile, tutorial scrap buyer, scrap stall (the only cash source) ----
   surface: {
-    stockVisualMax: 160, // units at which the surface stockpile reads as huge
-    stockOffsetPx: 74, // stockpile sits this far left of the shaft opening
+    stockOffsetPx: 46, // stockpile centre, px right of the shaft opening (clamped on screen)
+    stallOffsetPx: 128, // stall / buyer, px right of the shaft opening
+    storage: { base: 120, perLevel: 0.5 }, // units the surface can hold; a full surface makes the cart wait
+    storageTiers: [0, 2, 4], // loose pile -> bin -> fenced yard
+    sellRate: { base: 1.7, perLevel: 0.35 }, // units/s the seller processes
+    price: { base: 3, perLevel: 0.25 }, // $ per unit of material value
+    sellSpeedTiers: [0, 3, 6], // seller gets a sorting tray, then a helper bench
+    sellValueTiers: [0, 2, 4, 6], // crude sign -> price board -> scale -> proper stall
+    stallCost: 80,
+    stallBuildSecs: 1.6,
+    buyerRate: 30, // units/s the tutorial buyer takes the first load
+    cashPopupSecs: 0.9, // seller cash is aggregated into one popup at most this often
+    revealSellValueAt: 120, // units sold before Sell Value shows
+    revealStorageFrac: 0.5, // stock fraction of capacity that reveals Storage
   },
 
   // ---- offline ----
@@ -184,15 +213,17 @@ export const CFG = {
     recoverMs: 120,
     moveSpeed: 26, // 1/s lerp toward target chunk
     reach: 19, // logical px from miner's feet to where the pick tip lands
-    queueMax: 3, // pending strikes before extra clicks are dropped
+    queueMax: 8, // pending strikes before extra clicks are dropped (jackhammer bursts queue several)
     chainGapMs: 55, // min gap between queued impacts when clicking very fast
     keyboardSpread: 70, // keyboard dig picks a chunk within this logical px of the miner
   },
   crewVisibleMax: 3, // animated diggers on the face; the rest still dig at full DPS, shown as a helmet row
   crewVisibleWithExc: 2, // the excavator takes one digger's space
-  crewSlots: { dig: [212, 182, 96], exc: [196] } as Record<CrewId, number[]>, // left side is the loading area
-  crewSlotsWithExc: [96, 150],
-  minerStartX: 140,
+  crewSlots: { dig: [20, 56, 118], exc: [24] } as Record<CrewId, number[]>, // right side is the loading area
+  crewSlotsWithExc: [70, 118],
+  minerStartX: 86,
+  crewArriveSecs: 1.2, // rope drop -> slide down -> land -> lamp on -> dig
+  jackBurstGapMs: 45, // jackhammer impacts within one click
   reserveHelmetsMax: 8,
   playerScale: 1.12, // player miner is drawn larger + rim + lamp beam so it reads first
   crewScale: 0.85,
@@ -223,6 +254,8 @@ export const CFG = {
   light: { fadeSpan: 0.75, shaftDark: 0.45, radius: 0.75, glow: 0.14 }, // shaft vignette + warm work light
   scrollSpeed: 0.6,
   scrollAboveM: 14, // how far above ground the camera may scroll (sky + headframe)
+  surfaceGroundFrac: 0.6, // when viewing the surface, the ground sits at this fraction of the screen height
+  cameraGlide: 5, // 1/s ease when the camera is sent somewhere
   findTeaseM: 40,
   maxDt: 0.1,
   panelRefreshSecs: 0.12,
@@ -251,4 +284,11 @@ export const AUDIO = {
   brake: { freq: [1500, 2600] as Range, secs: 0.32, vibrato: 28, gain: 0.07 },
   dump: { secs: 0.55, lp: 1200, gain: 0.4 },
   loadTick: { freq: [180, 420] as Range, gain: 0.07 },
+  // surface / purchases
+  coin: { f0: 880, f1: 1320, secs: 0.12, gain: 0.14 },
+  sting: { notes: [523, 659, 784, 1047], gap: 0.08, gain: 0.16 },
+  purchase: { notes: [440, 660, 880], gap: 0.06, gain: 0.12 },
+  knock: { freq: 140, gain: 0.3 },
+  jack: { pulse: [55, 70] as Range, rate: 20, gain: 0.32 },
+  thud: { freq: 58, decay: 0.16, gain: 0.7 },
 };

@@ -211,3 +211,47 @@ export function playLoadTick(vol = 1) {
   const A = AUDIO.loadTick, t = ac!.currentTime + 0.3, f = rndr(A.freq);
   tone('triangle', f, f * 0.7, t, A.gain * vol, 0.001, 0.03);
 }
+
+// ---- surface / purchases / tools ----
+function notes(freqs: readonly number[], gap: number, gain: number, type: OscillatorType = 'sine', len = 0.12) {
+  if (!ready()) return;
+  const t0 = ac!.currentTime;
+  freqs.forEach((f, i) => tone(type, f, f * 1.01, t0 + i * gap, gain, 0.005, len));
+}
+
+/** Coin: two quick sine tones. Used for seller cash popups. */
+export function playCoin(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.coin, t = ac!.currentTime, j = jitter();
+  tone('sine', A.f0 * j, A.f0 * j, t, A.gain * vol, 0.003, A.secs * 0.5);
+  tone('sine', A.f1 * j, A.f1 * j, t + A.secs * 0.45, A.gain * vol, 0.003, A.secs);
+}
+
+/** Discovery-style sting: the first sale, the first stall. */
+export function playSting() { notes(AUDIO.sting.notes, AUDIO.sting.gap, AUDIO.sting.gain, 'triangle', 0.22); }
+/** Three ascending tones for any purchase. */
+export function playPurchase() { notes(AUDIO.purchase.notes, AUDIO.purchase.gap, AUDIO.purchase.gain, 'sine', 0.1); }
+
+/** Hammer knock while the stall is being built. */
+export function playKnock(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const t = ac!.currentTime, f = AUDIO.knock.freq * jitter();
+  tone('triangle', f, f * 0.6, t, AUDIO.knock.gain * vol, 0.001, 0.07);
+  noise(white, 'bandpass', 1800, 1.5, t, AUDIO.knock.gain * vol * 0.4, 0.001, 0.03);
+}
+
+/** Jackhammer BRRRT: rapid low impulses + filtered noise for `secs`. */
+export function playJack(secs: number) {
+  if (!ready()) return;
+  const A = AUDIO.jack, t0 = ac!.currentTime;
+  const n = Math.max(2, Math.round(secs * A.rate));
+  for (let i = 0; i < n; i++) tone('square', rndr(A.pulse), 40, t0 + i / A.rate, A.gain * 0.5, 0.002, 0.03);
+  noise(white, 'bandpass', 900 * jitter(), 0.9, t0, A.gain * 0.35, 0.01, secs);
+}
+
+/** Extra low weight under heavier tools' impacts (amount 0..1). */
+export function playThud(amount: number) {
+  if (!ready() || amount <= 0.01) return;
+  const A = AUDIO.thud, t = ac!.currentTime, f = A.freq * jitter();
+  tone('sine', f, f * 0.6, t, A.gain * amount, 0.003, A.decay);
+}

@@ -13,6 +13,7 @@
 <div id="app">
   <div id="stage">
     <canvas id="c" aria-label="Mine shaft. Click to dig."></canvas>
+    <div id="nav"><button id="navBtn" hidden></button></div>
     <div id="modal"><div class="card" id="card"></div></div>
   </div>
   <div id="panel">
@@ -22,18 +23,19 @@
     </div>
     <div class="scroll">
       <section id="g-ext">
-        <h2>Extraction</h2>
+        <div class="sh"><h2>Extraction</h2><span class="stat" id="extStat"></span></div>
+        <div class="status" id="extHint"></div>
         <div id="tool"></div>
         <div id="crew"></div>
       </section>
       <section id="g-tr" hidden>
-        <h2>Transport</h2>
-        <div class="status" id="cartStatus"></div>
+        <div class="sh"><h2>Transport</h2><span class="stat" id="trStat"></span></div>
         <div id="transport"></div>
       </section>
       <section id="g-surf" hidden>
-        <h2>Surface</h2>
-        <div class="status" id="surfStatus"></div>
+        <div class="sh"><h2>Surface</h2><span class="stat" id="surfStat"></span></div>
+        <div id="stall"></div>
+        <div id="surface"></div>
       </section>
       <h2>Finds</h2>
       <div id="finds"></div>

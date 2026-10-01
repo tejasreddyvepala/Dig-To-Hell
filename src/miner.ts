@@ -1,9 +1,10 @@
 // Player miner: turns clicks into scheduled strikes. Swing anticipation -> accelerated downswing -> impact.
 // The strike is resolved by the simulation exactly when the pick lands, so animation and sim stay in sync.
-import { CFG } from './config';
+import { CFG, TOOLS } from './config';
+import { S } from './state';
 import { chunkAtX, clampHitX, face } from './digface';
 import { playerStrike, type HitResult } from './sim';
-import { playSwing } from './audio';
+import { playJack, playSwing } from './audio';
 import { clamp, rnd } from './util';
 
 const M = CFG.miner;
@@ -24,7 +25,8 @@ const impactAt = () => (M.windupMs + M.downswingMs) / 1000;
 
 /** Queue a strike aimed at logical face point (x, y). */
 export function minerClick(x: number, y: number) {
-  if (miner.pending.length >= M.queueMax) return;
+  const tool = TOOLS[S.tool];
+  if (miner.pending.length + tool.burst > M.queueMax) return;
   const idx = chunkAtX(x);
   const hx = clampHitX(idx, x);
   const hy = clamp(y, CFG.face.hitYMin, CFG.face.hitYMax);
@@ -39,7 +41,10 @@ export function minerClick(x: number, y: number) {
   miner.standX = clamp(stand, 12, W - 12);
   const last = miner.pending[miner.pending.length - 1];
   const at = Math.max(miner.clock + impactAt(), last ? last.at + M.chainGapMs / 1000 : 0);
-  miner.pending.push({ idx, x: hx, y: hy, at, swung: false });
+  // a pickaxe lands once; the jackhammer rattles a burst of quick impacts into the same spot
+  for (let k = 0; k < tool.burst; k++) {
+    miner.pending.push({ idx, x: hx + (k ? rnd(-3, 3) : 0), y: hy + (k ? rnd(-2, 2) : 0), at: at + (k * CFG.jackBurstGapMs) / 1000, swung: k > 0 });
+  }
 }
 
 /** Keyboard dig: strike a chunk near the miner. */
@@ -60,7 +65,12 @@ export function updateMiner(dt: number): HitResult[] {
   }
   // whoosh at the start of each downswing
   for (const p of miner.pending) {
-    if (!p.swung && p.at - miner.clock <= M.downswingMs / 1000) { p.swung = true; playSwing(); }
+    if (!p.swung && p.at - miner.clock <= M.downswingMs / 1000) {
+      p.swung = true;
+      const tool = TOOLS[S.tool];
+      if (tool.kind === 'jack') playJack((tool.burst * CFG.jackBurstGapMs) / 1000 + 0.05);
+      else playSwing();
+    }
   }
   return out;
 }

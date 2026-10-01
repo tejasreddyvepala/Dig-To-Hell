@@ -38,6 +38,19 @@ h2{font-family:'Bungee',Impact,sans-serif;font-weight:400;font-size:16px;margin:
 .card p{color:var(--muted);margin:0 0 6px}
 .card button{margin-top:16px;font:700 16px 'Rubik',system-ui,sans-serif;background:var(--hat);color:#2a2100;border:0;border-radius:6px;padding:12px 22px;cursor:pointer}
 .card button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:16px 6px 8px}
+.sh h2{margin:0}
+.stat{color:var(--muted);font-size:12px;text-align:right}
+section{border-bottom:1px solid var(--line);padding-bottom:6px}
+.row{width:100%;display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:8px;background:transparent;border:0;border-bottom:1px solid rgba(255,255,255,.05);color:var(--ink);padding:7px 8px;cursor:pointer;font:inherit;font-size:14px;text-align:left;border-radius:6px}
+.row:hover:not(:disabled){background:var(--panel2)}
+.row:disabled{opacity:.5;cursor:default}
+.row .ic{font-size:17px}
+.row small{color:var(--muted);font-size:12px;margin-left:4px}
+.rp{font-family:'Bungee',Impact,sans-serif;font-size:13px;color:var(--hat)}
+#nav{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:4}
+#navBtn{font:700 14px 'Rubik',system-ui,sans-serif;background:rgba(25,22,18,.85);color:#ffe08a;border:1px solid #ffcf3a;border-radius:20px;padding:8px 16px;cursor:pointer}
+#navBtn:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .status{color:var(--muted);font-size:13px;padding:0 6px 8px}
 .dbg{background:#3a2f2f;border:1px dashed #8a5a5a;color:#f0c9c9;font:inherit;font-size:12px;border-radius:6px;padding:6px 8px;margin:0 6px 6px 0;cursor:pointer}
 .reset{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;margin:18px 6px 0;cursor:pointer;text-decoration:underline}
