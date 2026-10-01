@@ -78,7 +78,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Step 2 (destructible face, juice, Web Audio, economy retune): `fc51a70`
 - Step 2.5 (polish the click loop): `72800ed` (hash recorded in `3c30846`)
 - Design update (physical economy, unbounded depth): `6ea5c2b`
-- Phase 3A + 3B (rubble economy + physical cart loop): `PHASE3AB_HASH`
+- Phase 3A + 3B (rubble economy + physical cart loop): `b4a2c08`
 
 ### Phase 3A + 3B — rubble economy + physical cart loop
 - **Files:** new `src/cart.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `sim.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `miner.ts`, `index.html`, `style.css`.
