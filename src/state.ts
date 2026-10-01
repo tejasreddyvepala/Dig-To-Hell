@@ -1,6 +1,8 @@
-import { CFG, CREW, FINDS, LAYERS, TOOLS, type CrewId, type Find, type Layer } from './config';
+// Persistent game state + save/load. The only module that touches localStorage.
+import { CFG, CREW, FINDS, MAX_DEPTH, TOOLS, type CrewId } from './config';
 
 export interface State {
+  version: number;
   cash: number;
   depth: number;
   tool: number;
@@ -11,94 +13,56 @@ export interface State {
 }
 
 export function fresh(): State {
-  return { cash: 0, depth: 0, tool: 0, crew: { dig: 0, cart: 0, exc: 0, bore: 0, mole: 0 }, found: 0, last: Date.now(), clicks: 0 };
+  return {
+    version: CFG.saveVersion, cash: 0, depth: 0, tool: 0,
+    crew: { dig: 0, cart: 0, exc: 0 }, found: 0, last: Date.now(), clicks: 0,
+  };
 }
 
 export const S: State = fresh();
 
-// ---- economy ----
-export const hardAt = (d: number) => Math.pow(1 + d / CFG.hardnessDepthDiv, CFG.hardnessExp);
-export const valAt = (d: number) => hardAt(d) * (1 + d / CFG.valueDepthDiv);
-export const layerAt = (d: number): Layer => {
-  let L = LAYERS[0];
-  for (const l of LAYERS) if (d >= l.from) L = l;
-  return L;
-};
-export const mult = () => 1 + CFG.findMultBonus * S.found;
-export const clickVal = () => TOOLS[S.tool].pow * mult() * (1 + S.depth / CFG.valueDepthDiv);
-export const crewCost = (id: CrewId) => {
-  const c = CREW.find((x) => x.id === id)!;
-  return Math.ceil(c.cost * Math.pow(CFG.crewCostGrowth, S.crew[id]));
-};
-export const crewMps = () => CREW.reduce((s, c) => s + c.rate * S.crew[c.id], 0) * mult();
-export const incomePerSec = () => crewMps() * (1 + S.depth / CFG.valueDepthDiv);
+const num = (v: unknown, lo: number, hi: number, dflt: number) =>
+  typeof v === 'number' && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt;
 
-// ---- simulation ----
-export interface FindEvent { f: Find; bonus: number }
-export const pendingFinds: FindEvent[] = [];
-
-export function checkFinds(silent: boolean) {
-  while (S.found < FINDS.length && S.depth >= FINDS[S.found].d) {
-    const f = FINDS[S.found];
-    const b = CFG.findBonus;
-    const bonus = Math.max(b.min, incomePerSec() * b.incomeSecs, clickVal() * b.clicks);
-    S.found++;
-    S.cash += bonus;
-    if (!silent) pendingFinds.push({ f, bonus });
-  }
+/** Validate a parsed save. Anything from another version is discarded (fresh run). */
+export function sanitize(o: any): State | null {
+  if (!o || typeof o !== 'object' || o.version !== CFG.saveVersion) return null;
+  const s = fresh();
+  s.cash = num(o.cash, 0, 1e15, 0);
+  s.depth = num(o.depth, 0, MAX_DEPTH, 0);
+  s.tool = Math.floor(num(o.tool, 0, TOOLS.length - 1, 0));
+  for (const c of CREW) s.crew[c.id] = Math.floor(num(o.crew?.[c.id], 0, 1e4, 0));
+  s.found = Math.floor(num(o.found, 0, FINDS.length, 0));
+  s.last = num(o.last, 0, Date.now(), Date.now());
+  s.clicks = Math.floor(num(o.clicks, 0, 1e9, 0));
+  return s;
 }
 
-/** Crew digging for dt seconds. */
-export function crewTick(dt: number) {
-  const m = (crewMps() / hardAt(S.depth)) * dt;
-  S.cash += m * valAt(S.depth);
-  S.depth += m;
-}
-
-/** Integrate crew digging in steps so hardness changes are respected. */
-export function advance(secs: number) {
-  let left = secs;
-  while (left > 0) {
-    const dt = Math.min(left, CFG.offlineStepSecs);
-    crewTick(dt);
-    left -= dt;
-    checkFinds(true);
-  }
-}
-
-// ---- persistence ----
-export interface OfflineReport { secs: number; dm: number; dc: number }
-
-export function load(): OfflineReport | null {
+/** Load into S. Returns seconds elapsed since the last save (0 if none). */
+export function loadState(): number {
   try {
+    for (const k of CFG.legacySaveKeys) localStorage.removeItem(k);
     const raw = localStorage.getItem(CFG.saveKey);
-    if (!raw) return null;
-    const o = JSON.parse(raw);
-    const base = fresh();
-    Object.assign(S, base, o);
-    S.crew = Object.assign(base.crew, o.crew || {});
-    const secs = Math.min(CFG.offlineCapSecs, Math.max(0, (Date.now() - (o.last || Date.now())) / 1000));
-    if (secs > CFG.offlineMinSecs && crewMps() > 0) {
-      const d0 = S.depth, c0 = S.cash;
-      advance(secs);
-      return { secs, dm: S.depth - d0, dc: S.cash - c0 };
-    }
+    if (!raw) return 0;
+    const s = sanitize(JSON.parse(raw));
+    if (!s) return 0;
+    Object.assign(S, s);
+    return Math.max(0, (Date.now() - s.last) / 1000);
   } catch (e) {
-    console.warn('Save load failed', e);
+    console.warn('Save load failed; starting fresh', e);
+    return 0;
   }
-  return null;
 }
 
-export function save() {
+export function saveState() {
   S.last = Date.now();
   try {
     localStorage.setItem(CFG.saveKey, JSON.stringify(S));
-  } catch (e) {
+  } catch {
     /* storage unavailable: play on without saving */
   }
 }
 
 export function resetState() {
   Object.assign(S, fresh());
-  pendingFinds.length = 0;
 }

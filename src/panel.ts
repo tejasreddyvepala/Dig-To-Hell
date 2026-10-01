@@ -1,6 +1,10 @@
+// DOM side panel + modal. Buying lives here; arrival cinematics are Step 4.
 import { CFG, CREW, FINDS, TOOLS } from './config';
-import { S, clickVal, crewCost, incomePerSec, save } from './state';
-import { V, addText, burst, faceY } from './view';
+import { S, saveState } from './state';
+import { crewCost, crewIncome, hitCash, clickPower } from './economy';
+import { syncWorkers } from './sim';
+import { FX, popup } from './fx';
+import { faceY, view } from './view';
 import { fmt, money } from './util';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -15,37 +19,40 @@ export function buildPanel() {
   document.querySelectorAll<HTMLButtonElement>('[data-crew]').forEach((b) => {
     b.onclick = () => {
       const c = CREW.find((x) => x.id === b.dataset.crew)!;
-      const cost = crewCost(c.id);
-      if (S.cash < cost) return;
+      const cost = crewCost(S, c.id);
+      if (S.cash < cost || S.depth < c.unlockDepth) return;
       S.cash -= cost;
       S.crew[c.id]++;
-      save();
-      addText(V.W / 2, faceY() - 80, c.name + ' hired', '#7ee08a', true);
+      syncWorkers();
+      saveState();
+      popup(view.W / 2, faceY() - 70, c.name + ' hired', '#7ee08a', 20, 1.4);
     };
   });
 }
 
 function buyTool() {
   const n = TOOLS[S.tool + 1];
-  if (!n || S.cash < n.cost) return;
+  if (!n || S.cash < n.cost || S.depth < n.unlockDepth) return;
   S.cash -= n.cost;
   S.tool++;
-  save();
-  burst(V.W / 2, faceY(), '#ffcf3a', CFG.burst.tool.n, CFG.burst.tool.speed);
-  V.banner = { s: 'New tool: ' + n.name, sub: 'Every click now earns about ' + money(clickVal()), t: 0 };
+  saveState();
+  FX.banner = { s: 'New tool: ' + n.name, sub: 'Every hit now earns about ' + money(hitCash(clickPower(S), S.depth)), t: 0 };
 }
 
 export function updatePanel() {
   $('cash').textContent = money(S.cash);
-  $('depth').textContent = fmt(S.depth) + ' m';
-  $('rate').textContent = money(incomePerSec()) + '/s';
+  $('depth').textContent = (S.depth < 100 ? S.depth.toFixed(1) : fmt(S.depth)) + ' m';
+  $('rate').textContent = money(crewIncome(S)) + '/s';
 
   const nt = TOOLS[S.tool + 1], cur = TOOLS[S.tool];
-  const th = nt
-    ? `<button class="btn" id="up"${S.cash < nt.cost ? ' disabled' : ''}><span class="ic" aria-hidden="true">${nt.ic}</span>` +
-      `<span><div class="nm">Upgrade to ${nt.name}</div><div class="ds">Dig ${(nt.pow / cur.pow).toFixed(1)}× deeper per click</div></span>` +
-      `<span><div class="pr">${money(nt.cost)}</div></span></button>`
-    : `<div class="ds" style="padding:0 6px">${cur.ic} ${cur.name}. Nothing digs harder.</div>`;
+  let th: string;
+  if (nt && S.depth >= nt.unlockDepth) {
+    th = `<button class="btn" id="up"${S.cash < nt.cost ? ' disabled' : ''}><span class="ic" aria-hidden="true">${nt.ic}</span>` +
+      `<span><div class="nm">Upgrade to ${nt.name}</div><div class="ds">Hits ${(nt.pow / cur.pow).toFixed(0)}× harder</div></span>` +
+      `<span><div class="pr">${money(nt.cost)}</div></span></button>`;
+  } else {
+    th = `<div class="ds" style="padding:0 6px">${cur.ic} ${cur.name}${nt ? '. Something heavier arrives deeper down.' : '.'}</div>`;
+  }
   const tool = $('tool');
   if (tool.dataset.k !== th) {
     tool.innerHTML = th;
@@ -56,9 +63,8 @@ export function updatePanel() {
 
   document.querySelectorAll<HTMLButtonElement>('[data-crew]').forEach((b, i) => {
     const c = CREW[i];
-    const cost = crewCost(c.id);
-    const unlocked = i === 0 || S.crew[CREW[i - 1].id] > 0 || S.cash >= c.cost * CFG.crewUnlockFrac;
-    b.style.display = unlocked ? '' : 'none';
+    const cost = crewCost(S, c.id);
+    b.hidden = S.depth < c.unlockDepth && S.crew[c.id] === 0;
     b.disabled = S.cash < cost;
     b.querySelector('.pr')!.textContent = money(cost);
     b.querySelector('.ct')!.textContent = S.crew[c.id] ? 'Own ' + S.crew[c.id] : '';
@@ -95,5 +101,6 @@ export function showModal(html: string, btn: string) {
   ok.onclick = () => {
     $('modal').classList.remove('show');
     modalOpen = false;
+    ok.blur();
   };
 }

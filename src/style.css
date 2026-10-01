@@ -6,6 +6,7 @@
   padding-bottom:env(safe-area-inset-bottom,0px);
 }
 *,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:#191c20;color:var(--ink);font-family:'Rubik',system-ui,'Segoe UI',sans-serif;overflow:hidden}
 #app{display:flex;height:100%}

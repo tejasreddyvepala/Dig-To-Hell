@@ -1,9 +1,17 @@
 import type { RGB } from './config';
 
 export const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+/** Random integer in [a, b] inclusive. */
+export const rndi = (a: number, b: number) => Math.floor(a + Math.random() * (b - a + 1));
+export const rndr = (r: readonly [number, number]) => rnd(r[0], r[1]);
+export const rndri = (r: readonly [number, number]) => rndi(r[0], r[1]);
+export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export const rgb = (c: RGB, k: number) =>
   'rgb(' + c.map((v) => Math.max(0, Math.min(255, Math.round(v * k)))).join(',') + ')';
+
+export const rgba = (c: RGB, k: number, a: number) =>
+  'rgba(' + c.map((v) => Math.max(0, Math.min(255, Math.round(v * k)))).join(',') + ',' + a + ')';
 
 /** Deterministic 0..1 noise for stable per-meter texture. */
 export const hash = (n: number) => {
