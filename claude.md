@@ -80,7 +80,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Step 2.5 (polish the click loop): `72800ed` (hash recorded in `3c30846`)
 - Design update (physical economy, unbounded depth): `6ea5c2b`
 - Phase 3A + 3B (rubble economy + physical cart loop): `b4a2c08`
-- Phase 3C (surface economy + restored extraction ladder): `PHASE3C_HASH`
+- Phase 3C (surface economy + restored extraction ladder): `ce168ca`
 
 ### Phase 3A + 3B — rubble economy + physical cart loop
 - **Files:** new `src/cart.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `sim.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `miner.ts`, `index.html`, `style.css`.
@@ -105,7 +105,7 @@ The player digs one continuous vertical shaft and builds an increasingly absurd 
 - Save/reload in every cart state (LOADING, READY, TRAVELLING_UP, SURFACE_ARRIVAL, UNLOADING, TRAVELLING_DOWN): material totals conserved exactly across three consecutive reloads.
 - Frame work at the 700-particle cap (8 diggers, all crits, cart running): p99 2.7 ms desktop, 10.5 ms at 4× CPU throttle, 13.3 ms at 6×. Isolated spikes (up to ~150 ms at 6×) still unexplained (suspected GC).
 
-### Phase 3C — surface economy + restored extraction progression: `PHASE3C_HASH`
+### Phase 3C — surface economy + restored extraction progression: `ce168ca`
 - **Why:** the 3A/3B playtest dead-ended (surface stock with no buyer), extraction progression was effectively absent (only "Pickaxe. Something heavier arrives deeper down."), and four transport cards dominated the panel. This pass adds the missing economy layer without undoing the physical economy.
 - **Files:** new `src/surface.ts`; changed `config.ts`, `state.ts`, `economy.ts`, `cart.ts`, `sim.ts`, `miner.ts`, `juice.ts`, `audio.ts`, `render.ts`, `view.ts`, `panel.ts`, `main.ts`, `index.html`, `style.css`.
 - **Bootstrap:** Scrap Buyer + truck waits at the surface; on the first delivery he buys the whole stockpile (30 units/s, visible drain, pieces hop to him, HUD cash counts up), big "+$X / SOLD N RUBBLE" popup + sting, then "I won't stay here all day. Build a stall." → Build Scrap Stall $80 (only purchase offered until built). Safety net: while there is no stall and cash < $80, the buyer keeps buying (no soft-lock).
