@@ -239,42 +239,29 @@ const exhaust = (x: number, y: number, n: number) => {
 };
 
 /** Truck pose on the road (virtual px), derived only from the sim's truck state + timer (presentation; the sim's
- *  states and timings are untouched). The truck always faces its direction of travel:
- *    ARRIVING  : drives in cab-first from the right, turns, reverses the last stretch into the bay
- *    TO_SITE   : drives forward (cab right) to the plot      UNLOADING: parked at the plot, cab right
- *    RETURNING : turns at the plot, drives back cab-first, turns short of the bay, reverses in
- *  `face` is the horizontal facing in [-1, 1] (a turn sweeps it through 0 — the side-view turnaround);
- *  `cx` is the truck's centre; `bed` is the world x-range of the cargo bed. */
+ *  states and timings are untouched). There is ONE truck and it never turns around: the front always points toward
+ *  the construction site. It drives forward to BUILD and reverses back toward the mine / yard bay.
+ *    ARRIVING  : backs in from the right into the bay      TO_SITE  : drives forward to the plot
+ *    UNLOADING : parked at the plot                        RETURNING: reverses back to the bay
+ *  `bed` is the world x-range of the cargo bed (rear 66%). */
 export const TRUCK_LEN_U = 4.5;
 export function truckPose() {
   const L = surfaceLayout(), u = L.u, tr = S.truck;
-  const len = TRUCK_LEN_U * u, park = L.bayX, site = L.siteTruckX, turnX = park + 1.4 * u;
+  const len = TRUCK_LEN_U * u, park = L.bayX, site = L.siteTruckX;
   const offRight = Math.max(view.vx1, L.plotX1) + 0.6 * u;
   const sm = (k: number) => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k); };
-  const seg = (k: number, a: number, b: number) => (k - a) / (b - a);
-  let x0 = park, face = 1, speed = 0; // speed: px/s along +x (wheel roll + pitch)
+  let x0 = park, speed = 0; // speed: direction of travel along +x (wheel roll + pitch)
   const k = tr.dur > 0 ? Math.min(1, tr.t / tr.dur) : 0;
   switch (tr.state) {
-    case 'ARRIVING':
-      if (k < 0.62) { x0 = offRight + (turnX - offRight) * (1 - Math.pow(1 - seg(k, 0, 0.62), 2)); face = -1; speed = -1; }
-      else if (k < 0.76) { x0 = turnX; face = -Math.cos(Math.PI * sm(seg(k, 0.62, 0.76))); }
-      else { x0 = turnX + (park - turnX) * sm(seg(k, 0.76, 1)); face = 1; speed = -1; }
-      break;
+    case 'ARRIVING': x0 = offRight + (park - offRight) * sm(k); speed = k < 1 ? -1 : 0; break;
     case 'TO_SITE': x0 = park + (site - park) * sm(k); speed = k < 1 ? 1 : 0; break;
     case 'UNLOADING': x0 = site; break;
-    case 'RETURNING':
-      if (k < 0.12) { x0 = site; face = Math.cos(Math.PI * sm(seg(k, 0, 0.12))); }
-      else if (k < 0.72) { x0 = site + (turnX - site) * sm(seg(k, 0.12, 0.72)); face = -1; speed = -1; }
-      else if (k < 0.84) { x0 = turnX; face = -Math.cos(Math.PI * sm(seg(k, 0.72, 0.84))); }
-      else { x0 = turnX + (park - turnX) * sm(seg(k, 0.84, 1)); face = 1; speed = -1; }
-      break;
+    case 'RETURNING': x0 = site + (park - site) * sm(k); speed = k < 1 ? -1 : 0; break;
     case 'NONE': x0 = offRight + len * 2; break;
   }
   const cx = x0 + len / 2;
-  // bed occupies the rear 66% of the truck: behind the cab on whichever side the truck faces
-  const bedW = len * 0.66 * Math.max(0.05, Math.abs(face));
-  const bed: [number, number] = face >= 0 ? [cx - len / 2 * Math.abs(face), cx - len / 2 * Math.abs(face) + bedW] : [cx + len / 2 * Math.abs(face) - bedW, cx + len / 2 * Math.abs(face)];
-  return { x0, cx, len, y: L.roadY, u, face, speed, moving: speed !== 0, bed, visible: tr.state !== 'NONE', rear: face >= 0 ? x0 : x0 + len, front: face >= 0 ? x0 + len : x0 };
+  const bed: [number, number] = [x0, x0 + len * 0.66];
+  return { x0, cx, len, y: L.roadY, u, face: 1, speed, moving: speed !== 0, bed, visible: tr.state !== 'NONE', rear: x0, front: x0 + len };
 }
 
 export function presentSurface(events: SurfaceEvent[], dt: number) {

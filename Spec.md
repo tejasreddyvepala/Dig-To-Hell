@@ -200,7 +200,7 @@ INPUT HOPPER → CRUSHER → AUGER → PRESS / FORMING → FINISHED BUILDING MAT
 - The cart parks over the hopper in the headframe and tips straight in; large chunks tumble in and settle. The hopper has a **visible fill level** (cut-away window) and raw count.
 - The crusher visibly consumes material (pieces drop from the hopper throat into the drums); the auger visibly carries smaller pieces; the press: anticipation → THUMP → dust → a block slides out; the finished stack visibly grows. Dust during crushing/pressing in the source colour.
 - Upgrades: Processing Speed (Basic → Rock → Rotary → Twin Crusher → Industrial Pulverizer tiers), Block Quality (value of the material the blocks carry into construction), Raw Storage (hopper → bigger hopper → overflow bunker).
-- **The delivery truck lives at the yard:** it parks at the loading bay, loads blocks when enough are stacked, drives along the road to the construction site, unloads, and returns. Truck colour per delivery: `hue = (deliveryIndex × 137.508) mod 360`, saturation 42–54%, lightness 44% (cab) / 31% (bed). Exhaust puffs on start/stop. Truck size: cab ≈1.5 worker heights, length ≈3.6, wheels ≈ a torso wide.
+- **The delivery truck lives at the yard:** it parks at the loading bay, loads blocks when enough are stacked, drives forward along the road to the construction site, unloads, and **reverses** back to the bay. It is **one company truck: always red, always facing the construction site** (front toward BUILD, back toward the mine) — it never turns around or flips. Heavy cab-forward flatbed: length ≈4.5 worker heights, cab ≈1.6, wheels ≈0.62 across, one front axle + tandem rear axles; cargo is the actual blocks, stacked. Exhaust puffs on start/stop.
 
 ---
 
@@ -423,6 +423,7 @@ Deepest depth (primary), fastest milestone times, highest production, event reco
 - 300 m / the Red Door as the end of the game (original slice).
 - Scrap Buyer + Scrap Stall seller turning surface stock into a cash drip (Phase 3C).
 - **Truck departure paying cash** as the main income (Phase 3C.5) — trucks now deliver blocks to Construction; cash comes from milestones and sales.
+- Per-delivery truck colours (golden-angle hues) and a truck that turns around: there is one red truck that always faces the building.
 - One universal upgrade panel showing everything (pre-V2) — panels are contextual per site.
 - Player drawn ~1.25× a worker with a dark "rim" silhouette behind them (3C.5) — player is ~1.1× with only a contact shadow.
 - Central spiral staircase (rejected): worker access runs along the left wall.

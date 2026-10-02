@@ -281,8 +281,9 @@ export function drawTruckLayer(gy: number) {
 // ---- heavy delivery truck (cab-forward, one front axle, tandem rear axles, steel flatbed) ----
 // Drawn facing +x in worker units u with x = 0 at the rear and y = 0 on the road; mirrored by the pose's `face`.
 // Scale: length 4.5u, cab roof 1.6u, wheels 0.62u across (a worker's waist), bed deck ~0.9u up.
-// Only the cab takes the per-delivery colour; tyres, chassis, steel and glass stay neutral.
+// One company truck: red cab; tyres, chassis, steel and glass neutral.
 const TYRE = '#1b1b1d', SIDEWALL = '#2b2c2f', RIM = '#8f969e', RIM_D = '#646a72', FRAME = '#26282c', STEEL_DECK = '#5d646d';
+const TRUCK_RED = '#b8322a', TRUCK_RED_D = '#7e2019', TRUCK_RED_L = '#d24a3e'; // the one company truck
 const susp = { qty: 0, kick: 0, pitch: 0, lastT: 0, lastSpeed: 0 };
 const TRUCK_COLS = 7, TRUCK_ROWS = 4; // 28 visible blocks = a full 60-block load
 
@@ -296,65 +297,29 @@ function truckWheel(x: number, r: number, roll: number) {
   for (let i = 0; i < 6; i++) { const a = roll + (i / 6) * 6.283; ctx.beginPath(); ctx.arc(x + Math.cos(a) * r * 0.31, -r + Math.sin(a) * r * 0.31, r * 0.045, 0, 6.283); ctx.fill(); }
 }
 
-/** Mid-turnaround: the truck seen from the front (it swings round toward the camera), so it never collapses. */
-function drawTruckFront(cx: number, y: number, u: number, n: number, fill: number, col: [number, number, number]) {
-  const body = truckColor(n), bodyL = truckColor(n, 1.18), bodyD = truckColor(n, 0.72);
-  ctx.save(); ctx.translate(cx, y);
-  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.95 * u, 0.08 * u, 0, 0, 6.283); ctx.fill();
-  // cargo stack showing above the cab when loaded, headboard rack behind the cab
-  const rows = Math.ceil(fill * 4);
-  ctx.fillStyle = '#4a5058'; ctx.fillRect(-0.62 * u, -1.87 * u, 1.24 * u, 0.1 * u);
-  for (let r = 0; r < rows; r++) { const yy = -0.95 * u - (r + 1) * 0.2 * u; if (yy < -1.6 * u) for (let c = 0; c < 4; c++) { ctx.fillStyle = rgb(col, 0.9 + hash(r * 4 + c) * 0.15); ctx.fillRect(-0.62 * u + c * 0.31 * u + 1, yy, 0.31 * u - 2, 0.2 * u - 1); } }
-  // tyres (rear pair darker, set in), chassis
-  ctx.fillStyle = '#121214'; ctx.beginPath(); ctx.roundRect(-0.8 * u, -0.6 * u, 0.2 * u, 0.6 * u, 0.06 * u); ctx.roundRect(0.6 * u, -0.6 * u, 0.2 * u, 0.6 * u, 0.06 * u); ctx.fill();
-  ctx.fillStyle = TYRE; ctx.beginPath(); ctx.roundRect(-0.74 * u, -0.62 * u, 0.2 * u, 0.62 * u, 0.06 * u); ctx.roundRect(0.54 * u, -0.62 * u, 0.2 * u, 0.62 * u, 0.06 * u); ctx.fill();
-  ctx.fillStyle = FRAME; ctx.fillRect(-0.55 * u, -0.72 * u, 1.1 * u, 0.2 * u);
-  // exhaust stack beside the cab
-  ctx.fillStyle = '#9aa2ab'; ctx.fillRect(0.64 * u, -1.95 * u, 0.07 * u, 1.25 * u);
-  // cab front
-  const g = ctx.createLinearGradient(0, -1.6 * u, 0, -0.46 * u); g.addColorStop(0, bodyL); g.addColorStop(0.5, body); g.addColorStop(1, bodyD);
-  ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-0.62 * u, -1.6 * u, 1.24 * u, 1.14 * u, [0.12 * u, 0.12 * u, 0.03 * u, 0.03 * u]); ctx.fill();
-  ctx.fillStyle = '#3e5866'; ctx.beginPath(); ctx.roundRect(-0.52 * u, -1.5 * u, 1.04 * u, 0.42 * u, 0.04 * u); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(-0.4 * u, -1.46 * u, 0.12 * u, 0.36 * u);
-  ctx.fillStyle = 'rgba(30,30,30,.45)'; ctx.beginPath(); ctx.arc(-0.22 * u, -1.27 * u, 0.1 * u, 0, 6.283); ctx.fill(); // driver
-  ctx.fillStyle = '#2a2d31'; ctx.fillRect(-0.3 * u, -0.98 * u, 0.6 * u, 0.42 * u); // grille
-  ctx.fillStyle = '#8a9198'; for (let i = 0; i < 5; i++) ctx.fillRect(-0.28 * u, -0.94 * u + i * 0.08 * u, 0.56 * u, 0.025 * u);
-  ctx.fillStyle = '#ffe9a8'; ctx.fillRect(-0.56 * u, -0.7 * u, 0.16 * u, 0.1 * u); ctx.fillRect(0.4 * u, -0.7 * u, 0.16 * u, 0.1 * u);
-  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.roundRect(-0.7 * u, -0.5 * u, 1.4 * u, 0.15 * u, 0.03 * u); ctx.fill(); // bumper
-  ctx.fillStyle = '#f0b33a'; for (let i = -1; i <= 1; i++) ctx.fillRect(i * 0.25 * u - 0.04 * u, -1.65 * u, 0.08 * u, 0.04 * u);
-  ctx.fillStyle = '#2f3237'; ctx.fillRect(-0.82 * u, -1.5 * u, 0.07 * u, 0.3 * u); ctx.fillRect(0.75 * u, -1.5 * u, 0.07 * u, 0.3 * u); // mirrors
-  ctx.fillRect(-0.75 * u, -1.36 * u, 0.13 * u, 0.025 * u); ctx.fillRect(0.62 * u, -1.36 * u, 0.13 * u, 0.025 * u);
-  ctx.restore();
-}
-
 function drawTruck(night: number) {
   const p = truckPose(), u = p.u, tr = S.truck, len = p.len;
-  if (Math.abs(p.face) < 0.32) { // middle of a turnaround
-    drawTruckFront(p.cx, p.y, u, tr.n, Math.min(1, tr.load.qty / Y.truck.capacity), blockRGB(tr.load));
-    if (night > 0.05) glow(p.cx, p.y - u * 0.65, u * 0.9, 0.35 * night);
-    return;
-  }
   // suspension: settles lower over the rear axles as the load grows; a small dip each time blocks land on it;
   // a subtle pitch when it pulls away or stops
   const dt = Math.min(0.1, Math.max(0, view.t - susp.lastT)); susp.lastT = view.t;
   if (tr.load.qty > susp.qty + 0.5) susp.kick = Math.min(1, susp.kick + 0.35);
   susp.qty = tr.load.qty;
   susp.kick *= Math.exp(-dt * 6);
-  if (p.speed !== susp.lastSpeed) { susp.pitch = (p.speed - susp.lastSpeed) * (p.face >= 0 ? 1 : -1); susp.lastSpeed = p.speed; }
+  if (p.speed !== susp.lastSpeed) { susp.pitch = p.speed - susp.lastSpeed; susp.lastSpeed = p.speed; }
   susp.pitch *= Math.exp(-dt * 4);
   const fill = Math.min(1, tr.load.qty / Y.truck.capacity);
   const sag = (fill * 0.045 + susp.kick * 0.02) * u; // rear drop
   const pitch = -susp.pitch * 0.014; // squats at the rear on pull-away, dips the nose when stopping
   const r = 0.31 * u, rearA = 0.62 * u, rearB = 1.3 * u, frontA = 3.62 * u;
-  const roll = -(p.cx / r) * (p.face >= 0 ? 1 : -1);
+  const roll = p.cx / r; // wheels turn with the distance travelled (forward or reverse)
 
   ctx.save();
-  ctx.translate(p.cx, p.y); ctx.scale(Math.sign(p.face) * Math.max(0.55, Math.abs(p.face)), 1); ctx.translate(-len / 2, 0);
+  ctx.translate(p.x0, p.y); // always faces the construction site (+x)
   // shadow on the road
   ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(len * 0.5, 0, len * 0.5, u * 0.07, 0, 0, 6.283); ctx.fill();
   ctx.save(); // everything above the wheels rides on the suspension
   ctx.translate(frontA, -r); ctx.rotate(-Math.atan2(sag, frontA - rearA) + pitch); ctx.translate(-frontA, r); // negative = rear down
-  const body = truckColor(tr.n), bodyD = truckColor(tr.n, 0.72), bodyL = truckColor(tr.n, 1.18);
+  const body = TRUCK_RED, bodyD = TRUCK_RED_D, bodyL = TRUCK_RED_L;
   // ---- chassis: frame rail, axle hangers, springs, fuel tank, mudguards ----
   ctx.fillStyle = FRAME; ctx.fillRect(0.12 * u, -0.8 * u, len - 0.35 * u, 0.15 * u);
   ctx.fillStyle = '#34373c'; ctx.fillRect(0.12 * u, -0.8 * u, len - 0.35 * u, 0.03 * u);
@@ -450,7 +415,7 @@ function drawTruck(night: number) {
   ctx.restore(); // suspension
   for (const wx of [rearA, rearB, frontA]) truckWheel(wx, r, roll); // wheels stay on the road, in front of arches/hangers
   ctx.restore();
-  if (night > 0.05 && Math.abs(p.face) > 0.5) glow(p.cx + p.face * (len / 2 + u * 0.3), p.y - u * 0.6, u * 0.9, 0.4 * night);
+  if (night > 0.05) glow(p.x0 + len + u * 0.3, p.y - u * 0.6, u * 0.9, 0.4 * night);
 }
 
 function drawContractor(L: ReturnType<typeof surfaceLayout>) {
