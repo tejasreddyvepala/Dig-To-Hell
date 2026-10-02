@@ -187,6 +187,11 @@ if (import.meta.env.DEV) {
     tireAll: () => { for (const w of workers) w.fatigue = 0; },
     setSpeed: (k: number) => { devSpeed = k; },
     ladderDemo: () => ladderDemo(-(faceOrigin().y - yOf(0)) / faceScale()),
+    setTruck: (state: typeof S.truck.state, k: number, qty: number) => { // visual testing: pose the truck exactly
+      const T = CFG.yard.truck, dur = state === 'ARRIVING' ? T.arriveSecs : state === 'TO_SITE' || state === 'RETURNING' ? T.driveSecs : 0;
+      S.truck.state = state; S.truck.dur = dur; S.truck.t = dur * k;
+      S.truck.load.qty = qty; S.truck.load.val = qty * 2; S.truck.load.mix = qty ? { clay: qty * 0.6, dirt: qty * 0.4 } : {};
+    },
     forceYard: () => { S.tut = Math.max(S.tut, 3); S.flags.dispatched = true; navigate('yard'); },
     miner: () => ({ x: miner.x, standX: miner.standX }),
     landings: () => landings.length,

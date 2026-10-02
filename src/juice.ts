@@ -238,22 +238,43 @@ const exhaust = (x: number, y: number, n: number) => {
   for (let i = 0; i < n; i++) addPart({ kind: 'dust', x: x + rnd(-3, 3), y: y + rnd(-2, 2), vx: rnd(20, 50), vy: rnd(-30, -12), size: rnd(4, 7) * fxk(), col: 'rgba(150,150,150,1)', life: rnd(0.7, 1.2), floor: Infinity, bounce: 0 });
 };
 
-/** Truck pose on the road (virtual px): left end `x0`, length, facing `dir` (cab end). Shared by juice + renderer.
- *  Route: yard bay -> road -> construction plot -> back. It drives back cab-first (mirrored). */
+/** Truck pose on the road (virtual px), derived only from the sim's truck state + timer (presentation; the sim's
+ *  states and timings are untouched). The truck always faces its direction of travel:
+ *    ARRIVING  : drives in cab-first from the right, turns, reverses the last stretch into the bay
+ *    TO_SITE   : drives forward (cab right) to the plot      UNLOADING: parked at the plot, cab right
+ *    RETURNING : turns at the plot, drives back cab-first, turns short of the bay, reverses in
+ *  `face` is the horizontal facing in [-1, 1] (a turn sweeps it through 0 — the side-view turnaround);
+ *  `cx` is the truck's centre; `bed` is the world x-range of the cargo bed. */
+export const TRUCK_LEN_U = 4.5;
 export function truckPose() {
-  const L = surfaceLayout(), u = L.u, tr = S.truck, T = CFG.yard.truck;
-  const len = 3.6 * u, park = L.bayX, site = L.siteTruckX;
+  const L = surfaceLayout(), u = L.u, tr = S.truck;
+  const len = TRUCK_LEN_U * u, park = L.bayX, site = L.siteTruckX, turnX = park + 1.4 * u;
   const offRight = Math.max(view.vx1, L.plotX1) + 0.6 * u;
-  const ease = (k: number) => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k); };
-  let x0 = park, rock = 0, dir = 1, moving = false;
+  const sm = (k: number) => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k); };
+  const seg = (k: number, a: number, b: number) => (k - a) / (b - a);
+  let x0 = park, face = 1, speed = 0; // speed: px/s along +x (wheel roll + pitch)
+  const k = tr.dur > 0 ? Math.min(1, tr.t / tr.dur) : 0;
   switch (tr.state) {
-    case 'ARRIVING': x0 = offRight + (park - offRight) * (1 - Math.pow(1 - Math.min(1, tr.t / T.arriveSecs), 3)); moving = true; break;
-    case 'TO_SITE': x0 = park + (site - park) * ease(tr.t / T.driveSecs); moving = true; rock = tr.t < 0.3 ? Math.sin(tr.t * 30) : 0; break;
+    case 'ARRIVING':
+      if (k < 0.62) { x0 = offRight + (turnX - offRight) * (1 - Math.pow(1 - seg(k, 0, 0.62), 2)); face = -1; speed = -1; }
+      else if (k < 0.76) { x0 = turnX; face = -Math.cos(Math.PI * sm(seg(k, 0.62, 0.76))); }
+      else { x0 = turnX + (park - turnX) * sm(seg(k, 0.76, 1)); face = 1; speed = -1; }
+      break;
+    case 'TO_SITE': x0 = park + (site - park) * sm(k); speed = k < 1 ? 1 : 0; break;
     case 'UNLOADING': x0 = site; break;
-    case 'RETURNING': x0 = site + (park - site) * ease(tr.t / T.driveSecs); dir = -1; moving = true; break;
+    case 'RETURNING':
+      if (k < 0.12) { x0 = site; face = Math.cos(Math.PI * sm(seg(k, 0, 0.12))); }
+      else if (k < 0.72) { x0 = site + (turnX - site) * sm(seg(k, 0.12, 0.72)); face = -1; speed = -1; }
+      else if (k < 0.84) { x0 = turnX; face = -Math.cos(Math.PI * sm(seg(k, 0.72, 0.84))); }
+      else { x0 = turnX + (park - turnX) * sm(seg(k, 0.84, 1)); face = 1; speed = -1; }
+      break;
     case 'NONE': x0 = offRight + len * 2; break;
   }
-  return { x0, rear: x0, len, y: L.roadY, u, rock, dir, moving, visible: tr.state !== 'NONE' };
+  const cx = x0 + len / 2;
+  // bed occupies the rear 66% of the truck: behind the cab on whichever side the truck faces
+  const bedW = len * 0.66 * Math.max(0.05, Math.abs(face));
+  const bed: [number, number] = face >= 0 ? [cx - len / 2 * Math.abs(face), cx - len / 2 * Math.abs(face) + bedW] : [cx + len / 2 * Math.abs(face) - bedW, cx + len / 2 * Math.abs(face)];
+  return { x0, cx, len, y: L.roadY, u, face, speed, moving: speed !== 0, bed, visible: tr.state !== 'NONE', rear: face >= 0 ? x0 : x0 + len, front: face >= 0 ? x0 + len : x0 };
 }
 
 export function presentSurface(events: SurfaceEvent[], dt: number) {
@@ -278,11 +299,11 @@ export function presentSurface(events: SurfaceEvent[], dt: number) {
       while (SV.blocksIn >= 2) { // one flying block per couple of units
         SV.blocksIn -= 2;
         const p = truckPose();
-        arc(L.stackX + rnd(-L.u * 0.3, L.u * 0.3), L.gy - L.u * 0.5, p.x0 + p.len * rnd(0.12, 0.5), p.y - L.u * 0.85, rnd(0.35, 0.5), rubbleCol(S.truck.load), L.u * 0.12);
+        arc(L.stackX + rnd(-L.u * 0.3, L.u * 0.3), L.gy - L.u * 0.5, p.bed[0] + (p.bed[1] - p.bed[0]) * rnd(0.1, 0.9), p.y - L.u * 1.05, rnd(0.35, 0.5), rubbleCol(S.truck.load), L.u * 0.12);
       }
     } else if (e.type === 'truckDepart') {
       const p = truckPose();
-      exhaust(p.x0 - 4, p.y - L.u * 0.25, 4);
+      exhaust(p.cx - p.face * p.len * 0.17, p.y - L.u * 1.95, 4); // the stack behind the cab
       playRoll(near * 0.8);
     } else if (e.type === 'truckAtSite') {
       playBrake(near * 0.6);
@@ -291,14 +312,14 @@ export function presentSurface(events: SurfaceEvent[], dt: number) {
       while (SV.blocksOut >= 2) { // blocks fly from the bed onto the plot's material stack
         SV.blocksOut -= 2;
         const p = truckPose();
-        arc(p.x0 + p.len * rnd(0.1, 0.55), p.y - L.u * 0.85, L.plotX0 + L.u * rnd(0.6, 1.5), L.gy - L.u * 0.3, rnd(0.35, 0.5), rubbleCol(S.build.material), L.u * 0.12);
+        arc(p.bed[0] + (p.bed[1] - p.bed[0]) * rnd(0.1, 0.9), p.y - L.u * 1.05, L.plotX0 + L.u * rnd(0.6, 1.5), L.gy - L.u * 0.3, rnd(0.35, 0.5), rubbleCol(S.build.material), L.u * 0.12);
       }
     } else if (e.type === 'truckReturned') {
       playBrake(near * 0.4);
     }
   }
   // exhaust puffs while the truck slows into the bay
-  if (S.truck.state === 'ARRIVING' && S.truck.t > S.truck.dur * 0.6 && Math.random() < dt * 3) { const p = truckPose(); exhaust(p.x0 + p.len - 4, p.y - L.u * 0.25, 1); }
+  if (S.truck.state === 'ARRIVING' && S.truck.t > S.truck.dur * 0.6 && Math.random() < dt * 3) { const p = truckPose(); exhaust(p.cx - p.face * p.len * 0.17, p.y - L.u * 1.95, 1); }
   // machines turn only while there is material to process
   const working = S.yard && SV.buildT >= 1 && S.raw.qty > 0.01;
   if (working) SV.spin += dt * (2.4 + 0.5 * S.upg.processSpeed);

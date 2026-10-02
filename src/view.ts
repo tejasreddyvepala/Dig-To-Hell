@@ -91,7 +91,7 @@ function target(site: Site): { s: number; z: number; p: number } {
   }
   const L = surfaceLayout();
   // YARD: from just left of the headframe to the end of the truck bay; BUILD: from the bay to the end of the plot
-  const left = site === 'yard' ? L.right - L.u * 1.2 : L.plotX0 - L.u * 1.4; // BUILD: the plot fills the view; the truck drives in
+  const left = site === 'yard' ? L.right - L.u * 1.2 : L.plotX0 - L.u * 1.9; // BUILD: the plot + the parked truck fill the view
   const right = site === 'yard' ? L.needRight + L.u * 0.5 : L.plotX1 + L.u * 1.9;
   const span = right - left;
   const z = Math.max(Z.surfaceMin, Math.min(site === 'build' ? Z.buildMax : Z.surfaceMax, (view.W * 0.96) / span));
@@ -160,9 +160,9 @@ export function surfaceLayout() {
   const bayX = right + 4.25 * u; // truck's rear stops here
   const roadY = gy + 0.32 * u; // the road runs in front of the yard
   const hopperTop = yOf(-CFG.cart.surfaceLiftM + 0.6); // hopper mouth sits just under the cart's dump point
-  const needRight = bayX + 3.75 * u;
+  const needRight = bayX + 4.85 * u; // room for the parked truck (4.5 worker heights long)
   const plotX0 = needRight + CFG.build.plotOffsetU * u; // construction plot (left edge)
   const plotX1 = plotX0 + 7.2 * u;
-  const siteTruckX = plotX0 - 0.2 * u; // the truck's rear stops here to unload at the plot
+  const siteTruckX = plotX0 - 1.7 * u; // the truck's rear stops here: its bed lines up with the plot's block stack
   return { gy, right, u, hopperX, hopperTop, pressX, stackX, bayX, roadY, needRight, plotX0, plotX1, siteTruckX };
 }

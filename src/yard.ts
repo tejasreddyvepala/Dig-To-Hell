@@ -278,44 +278,179 @@ export function drawTruckLayer(gy: number) {
   drawTruck(nightness());
 }
 
-function drawTruck(night: number) {
-  const p = truckPose(), u = p.u, tr = S.truck;
-  const len = p.len, y = p.y + p.rock * 1.5;
-  // drawn facing right from x = 0; mirrored about its centre when driving back to the yard
-  ctx.save();
-  ctx.translate(p.x0 + (p.dir < 0 ? len : 0), 0); ctx.scale(p.dir, 1);
-  const x = 0;
-  const body = truckColor(tr.n), dark = truckColor(tr.n, 0.7);
-  const wr = u * 0.27; // wheels roughly a worker's torso width
-  const bedTop = y - u * 0.82, bedEnd = x + len * 0.68;
-  // chassis + wheels (spokes turn while driving)
-  ctx.fillStyle = '#2a2c30'; ctx.fillRect(x + u * 0.1, y - u * 0.42, len - u * 0.2, u * 0.16);
-  const roll = p.moving ? view.t * 9 : 0;
-  for (const wx of [x + u * 0.45, x + u * 1.05, x + len - u * 0.55]) {
-    ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(wx, y - wr, wr, 0, 6.283); ctx.fill();
-    ctx.fillStyle = '#8a9198'; ctx.beginPath(); ctx.arc(wx, y - wr, wr * 0.45, 0, 6.283); ctx.fill();
-    ctx.strokeStyle = '#3b3f45'; ctx.lineWidth = Math.max(1, u * 0.03);
-    ctx.beginPath(); ctx.moveTo(wx + Math.cos(roll) * wr * 0.4, y - wr + Math.sin(roll) * wr * 0.4); ctx.lineTo(wx - Math.cos(roll) * wr * 0.4, y - wr - Math.sin(roll) * wr * 0.4); ctx.stroke();
-  }
-  // flatbed with side rails
-  ctx.fillStyle = dark; ctx.fillRect(x, y - u * 0.5, bedEnd - x, u * 0.1);
-  ctx.fillStyle = body; ctx.fillRect(x, bedTop, u * 0.06, u * 0.36); ctx.fillRect(bedEnd - u * 0.06, bedTop, u * 0.06, u * 0.36);
-  // load on the bed (rows of blocks)
-  const fill = tr.load.qty / Y.truck.capacity, n = Math.round(fill * 15), cols = 5, bw = (bedEnd - x - u * 0.16) / cols;
-  for (let i = 0; i < n; i++) {
-    const c = i % cols, r = Math.floor(i / cols);
-    block(x + u * 0.08 + c * bw + bw / 2, y - u * 0.5 - r * u * 0.16, u, lastBlock, hash(i * 1.7));
-  }
-  // cab
-  const cx = bedEnd + u * 0.04, cw = len - (bedEnd - x) - u * 0.04, ch = u * 1.5;
-  ctx.fillStyle = body; ctx.beginPath(); ctx.roundRect(cx, y - ch + u * 0.26, cw, ch - u * 0.5, [u * 0.12, u * 0.2, 2, 2]); ctx.fill();
-  ctx.fillStyle = '#9fd0ea'; ctx.beginPath(); ctx.roundRect(cx + cw * 0.38, y - ch + u * 0.4, cw * 0.5, u * 0.42, 3); ctx.fill();
-  ctx.fillStyle = 'rgba(40,40,40,.6)'; ctx.beginPath(); ctx.arc(cx + cw * 0.58, y - ch + u * 0.6, u * 0.1, 0, 6.283); ctx.fill(); // driver
-  ctx.fillStyle = dark; ctx.fillRect(cx, y - u * 0.5, cw, u * 0.08); // bumper line
-  ctx.fillStyle = '#ffe9a8'; ctx.fillRect(cx + cw - u * 0.08, y - u * 0.62, u * 0.08, u * 0.1); // headlight
-  ctx.fillStyle = '#3b3f45'; ctx.fillRect(cx - u * 0.05, y - ch + u * 0.15, u * 0.06, u * 0.5); // exhaust stack
+// ---- heavy delivery truck (cab-forward, one front axle, tandem rear axles, steel flatbed) ----
+// Drawn facing +x in worker units u with x = 0 at the rear and y = 0 on the road; mirrored by the pose's `face`.
+// Scale: length 4.5u, cab roof 1.6u, wheels 0.62u across (a worker's waist), bed deck ~0.9u up.
+// Only the cab takes the per-delivery colour; tyres, chassis, steel and glass stay neutral.
+const TYRE = '#1b1b1d', SIDEWALL = '#2b2c2f', RIM = '#8f969e', RIM_D = '#646a72', FRAME = '#26282c', STEEL_DECK = '#5d646d';
+const susp = { qty: 0, kick: 0, pitch: 0, lastT: 0, lastSpeed: 0 };
+const TRUCK_COLS = 7, TRUCK_ROWS = 4; // 28 visible blocks = a full 60-block load
+
+function truckWheel(x: number, r: number, roll: number) {
+  ctx.fillStyle = TYRE; ctx.beginPath(); ctx.arc(x, -r, r, 0, 6.283); ctx.fill();
+  ctx.fillStyle = SIDEWALL; ctx.beginPath(); ctx.arc(x, -r, r * 0.84, 0, 6.283); ctx.fill();
+  ctx.fillStyle = RIM; ctx.beginPath(); ctx.arc(x, -r, r * 0.58, 0, 6.283); ctx.fill();
+  ctx.strokeStyle = RIM_D; ctx.lineWidth = Math.max(1, r * 0.07); ctx.beginPath(); ctx.arc(x, -r, r * 0.42, 0, 6.283); ctx.stroke();
+  ctx.fillStyle = '#4a4f55'; ctx.beginPath(); ctx.arc(x, -r, r * 0.2, 0, 6.283); ctx.fill();
+  ctx.fillStyle = '#c4cad1';
+  for (let i = 0; i < 6; i++) { const a = roll + (i / 6) * 6.283; ctx.beginPath(); ctx.arc(x + Math.cos(a) * r * 0.31, -r + Math.sin(a) * r * 0.31, r * 0.045, 0, 6.283); ctx.fill(); }
+}
+
+/** Mid-turnaround: the truck seen from the front (it swings round toward the camera), so it never collapses. */
+function drawTruckFront(cx: number, y: number, u: number, n: number, fill: number, col: [number, number, number]) {
+  const body = truckColor(n), bodyL = truckColor(n, 1.18), bodyD = truckColor(n, 0.72);
+  ctx.save(); ctx.translate(cx, y);
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0, 0, 0.95 * u, 0.08 * u, 0, 0, 6.283); ctx.fill();
+  // cargo stack showing above the cab when loaded, headboard rack behind the cab
+  const rows = Math.ceil(fill * 4);
+  ctx.fillStyle = '#4a5058'; ctx.fillRect(-0.62 * u, -1.87 * u, 1.24 * u, 0.1 * u);
+  for (let r = 0; r < rows; r++) { const yy = -0.95 * u - (r + 1) * 0.2 * u; if (yy < -1.6 * u) for (let c = 0; c < 4; c++) { ctx.fillStyle = rgb(col, 0.9 + hash(r * 4 + c) * 0.15); ctx.fillRect(-0.62 * u + c * 0.31 * u + 1, yy, 0.31 * u - 2, 0.2 * u - 1); } }
+  // tyres (rear pair darker, set in), chassis
+  ctx.fillStyle = '#121214'; ctx.beginPath(); ctx.roundRect(-0.8 * u, -0.6 * u, 0.2 * u, 0.6 * u, 0.06 * u); ctx.roundRect(0.6 * u, -0.6 * u, 0.2 * u, 0.6 * u, 0.06 * u); ctx.fill();
+  ctx.fillStyle = TYRE; ctx.beginPath(); ctx.roundRect(-0.74 * u, -0.62 * u, 0.2 * u, 0.62 * u, 0.06 * u); ctx.roundRect(0.54 * u, -0.62 * u, 0.2 * u, 0.62 * u, 0.06 * u); ctx.fill();
+  ctx.fillStyle = FRAME; ctx.fillRect(-0.55 * u, -0.72 * u, 1.1 * u, 0.2 * u);
+  // exhaust stack beside the cab
+  ctx.fillStyle = '#9aa2ab'; ctx.fillRect(0.64 * u, -1.95 * u, 0.07 * u, 1.25 * u);
+  // cab front
+  const g = ctx.createLinearGradient(0, -1.6 * u, 0, -0.46 * u); g.addColorStop(0, bodyL); g.addColorStop(0.5, body); g.addColorStop(1, bodyD);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-0.62 * u, -1.6 * u, 1.24 * u, 1.14 * u, [0.12 * u, 0.12 * u, 0.03 * u, 0.03 * u]); ctx.fill();
+  ctx.fillStyle = '#3e5866'; ctx.beginPath(); ctx.roundRect(-0.52 * u, -1.5 * u, 1.04 * u, 0.42 * u, 0.04 * u); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(-0.4 * u, -1.46 * u, 0.12 * u, 0.36 * u);
+  ctx.fillStyle = 'rgba(30,30,30,.45)'; ctx.beginPath(); ctx.arc(-0.22 * u, -1.27 * u, 0.1 * u, 0, 6.283); ctx.fill(); // driver
+  ctx.fillStyle = '#2a2d31'; ctx.fillRect(-0.3 * u, -0.98 * u, 0.6 * u, 0.42 * u); // grille
+  ctx.fillStyle = '#8a9198'; for (let i = 0; i < 5; i++) ctx.fillRect(-0.28 * u, -0.94 * u + i * 0.08 * u, 0.56 * u, 0.025 * u);
+  ctx.fillStyle = '#ffe9a8'; ctx.fillRect(-0.56 * u, -0.7 * u, 0.16 * u, 0.1 * u); ctx.fillRect(0.4 * u, -0.7 * u, 0.16 * u, 0.1 * u);
+  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.roundRect(-0.7 * u, -0.5 * u, 1.4 * u, 0.15 * u, 0.03 * u); ctx.fill(); // bumper
+  ctx.fillStyle = '#f0b33a'; for (let i = -1; i <= 1; i++) ctx.fillRect(i * 0.25 * u - 0.04 * u, -1.65 * u, 0.08 * u, 0.04 * u);
+  ctx.fillStyle = '#2f3237'; ctx.fillRect(-0.82 * u, -1.5 * u, 0.07 * u, 0.3 * u); ctx.fillRect(0.75 * u, -1.5 * u, 0.07 * u, 0.3 * u); // mirrors
+  ctx.fillRect(-0.75 * u, -1.36 * u, 0.13 * u, 0.025 * u); ctx.fillRect(0.62 * u, -1.36 * u, 0.13 * u, 0.025 * u);
   ctx.restore();
-  if (night > 0.05) glow(p.dir > 0 ? p.x0 + len + u * 0.3 : p.x0 - u * 0.3, y - u * 0.58, u * 0.8, 0.4 * night);
+}
+
+function drawTruck(night: number) {
+  const p = truckPose(), u = p.u, tr = S.truck, len = p.len;
+  if (Math.abs(p.face) < 0.32) { // middle of a turnaround
+    drawTruckFront(p.cx, p.y, u, tr.n, Math.min(1, tr.load.qty / Y.truck.capacity), blockRGB(tr.load));
+    if (night > 0.05) glow(p.cx, p.y - u * 0.65, u * 0.9, 0.35 * night);
+    return;
+  }
+  // suspension: settles lower over the rear axles as the load grows; a small dip each time blocks land on it;
+  // a subtle pitch when it pulls away or stops
+  const dt = Math.min(0.1, Math.max(0, view.t - susp.lastT)); susp.lastT = view.t;
+  if (tr.load.qty > susp.qty + 0.5) susp.kick = Math.min(1, susp.kick + 0.35);
+  susp.qty = tr.load.qty;
+  susp.kick *= Math.exp(-dt * 6);
+  if (p.speed !== susp.lastSpeed) { susp.pitch = (p.speed - susp.lastSpeed) * (p.face >= 0 ? 1 : -1); susp.lastSpeed = p.speed; }
+  susp.pitch *= Math.exp(-dt * 4);
+  const fill = Math.min(1, tr.load.qty / Y.truck.capacity);
+  const sag = (fill * 0.045 + susp.kick * 0.02) * u; // rear drop
+  const pitch = -susp.pitch * 0.014; // squats at the rear on pull-away, dips the nose when stopping
+  const r = 0.31 * u, rearA = 0.62 * u, rearB = 1.3 * u, frontA = 3.62 * u;
+  const roll = -(p.cx / r) * (p.face >= 0 ? 1 : -1);
+
+  ctx.save();
+  ctx.translate(p.cx, p.y); ctx.scale(Math.sign(p.face) * Math.max(0.55, Math.abs(p.face)), 1); ctx.translate(-len / 2, 0);
+  // shadow on the road
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(len * 0.5, 0, len * 0.5, u * 0.07, 0, 0, 6.283); ctx.fill();
+  ctx.save(); // everything above the wheels rides on the suspension
+  ctx.translate(frontA, -r); ctx.rotate(-Math.atan2(sag, frontA - rearA) + pitch); ctx.translate(-frontA, r); // negative = rear down
+  const body = truckColor(tr.n), bodyD = truckColor(tr.n, 0.72), bodyL = truckColor(tr.n, 1.18);
+  // ---- chassis: frame rail, axle hangers, springs, fuel tank, mudguards ----
+  ctx.fillStyle = FRAME; ctx.fillRect(0.12 * u, -0.8 * u, len - 0.35 * u, 0.15 * u);
+  ctx.fillStyle = '#34373c'; ctx.fillRect(0.12 * u, -0.8 * u, len - 0.35 * u, 0.03 * u);
+  for (const wx of [rearA, rearB, frontA]) {
+    ctx.fillStyle = '#3a3d42'; ctx.fillRect(wx - 0.32 * u, -0.7 * u, 0.64 * u, 0.06 * u); // leaf spring
+    ctx.fillStyle = FRAME; ctx.fillRect(wx - 0.05 * u, -0.66 * u, 0.1 * u, 0.36 * u); // hanger to the axle
+  }
+  ctx.fillStyle = '#3a3d42'; ctx.fillRect(rearA, -0.42 * u, rearB - rearA, 0.07 * u); // tandem walking beam
+  // fuel tank + toolbox between the axles
+  const ft = ctx.createLinearGradient(0, -0.66 * u, 0, -0.32 * u); ft.addColorStop(0, '#b9c0c8'); ft.addColorStop(1, '#6d747c');
+  ctx.fillStyle = ft; ctx.beginPath(); ctx.roundRect(2.6 * u, -0.66 * u, 0.62 * u, 0.32 * u, 0.12 * u); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(2.74 * u, -0.66 * u, 0.04 * u, 0.32 * u); ctx.fillRect(3.04 * u, -0.66 * u, 0.04 * u, 0.32 * u);
+  ctx.fillStyle = '#2f3237'; ctx.fillRect(1.8 * u, -0.64 * u, 0.55 * u, 0.26 * u); // toolbox
+  ctx.fillStyle = '#4a4e54'; ctx.fillRect(1.84 * u, -0.6 * u, 0.47 * u, 0.03 * u);
+  // rear mudguard over the tandem + mud flap, underride bar
+  ctx.fillStyle = FRAME; ctx.beginPath(); ctx.roundRect(0.22 * u, -0.7 * u, 1.5 * u, 0.08 * u, 0.04 * u); ctx.fill();
+  ctx.fillRect(0.12 * u, -0.66 * u, 0.06 * u, 0.5 * u);
+  ctx.fillStyle = '#3a3d42'; ctx.fillRect(0.05 * u, -0.34 * u, 0.32 * u, 0.06 * u); ctx.fillRect(0.12 * u, -0.66 * u, 0.04 * u, 0.32 * u);
+  // ---- steel flatbed: deck, headboard rack, stake pockets, tail lights ----
+  const bedL = 0.05 * u, bedR = 2.95 * u, deck = -0.95 * u;
+  ctx.fillStyle = STEEL_DECK; ctx.fillRect(bedL, deck, bedR - bedL, 0.15 * u);
+  ctx.fillStyle = '#7d858f'; ctx.fillRect(bedL, deck, bedR - bedL, 0.03 * u);
+  ctx.fillStyle = '#454b52'; for (let x = bedL + 0.25 * u; x < bedR; x += 0.42 * u) ctx.fillRect(x, deck + 0.04 * u, 0.05 * u, 0.09 * u); // stake pockets
+  ctx.fillStyle = '#c0392b'; ctx.fillRect(bedL - 0.02 * u, deck + 0.02 * u, 0.05 * u, 0.1 * u); // tail light
+  ctx.fillStyle = '#e8a23a'; ctx.fillRect(bedL + 0.06 * u, deck + 0.05 * u, 0.04 * u, 0.05 * u);
+  // headboard: steel rack protecting the cab
+  ctx.fillStyle = '#4a5058'; ctx.fillRect(bedR - 0.1 * u, deck - 0.92 * u, 0.1 * u, 0.92 * u);
+  ctx.strokeStyle = '#6b737c'; ctx.lineWidth = Math.max(1, 0.035 * u);
+  for (let i = 1; i <= 3; i++) { const yy = deck - i * 0.23 * u; ctx.beginPath(); ctx.moveTo(bedR - 0.1 * u, yy); ctx.lineTo(bedR, yy); ctx.stroke(); }
+  // side stakes (low rails) at the ends of the deck
+  ctx.fillStyle = '#6b737c'; ctx.fillRect(bedL + 0.02 * u, deck - 0.3 * u, 0.05 * u, 0.3 * u);
+  // ---- cargo: the player's actual blocks, stacked row by row (rear first), colour from the load's geology ----
+  const n = Math.round(fill * TRUCK_COLS * TRUCK_ROWS);
+  const bw = (bedR - bedL - 0.16 * u) / TRUCK_COLS, bh = 0.2 * u, col = blockRGB(tr.load);
+  for (let i = 0; i < n; i++) {
+    const c = i % TRUCK_COLS, rw = Math.floor(i / TRUCK_COLS);
+    const jx = (hash(i * 3.7 + tr.n) - 0.5) * 0.03 * u;
+    const x = bedL + 0.06 * u + c * bw + jx, y = deck - (rw + 1) * bh;
+    ctx.fillStyle = rgb(col, 0.88 + hash(i * 1.9 + tr.n) * 0.18); ctx.fillRect(x + 1, y + 1, bw - 2, bh - 1.5);
+    ctx.fillStyle = 'rgba(255,255,255,.17)'; ctx.fillRect(x + 1, y + 1, bw - 2, bh * 0.2);
+    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(x + 1, y + bh - 2, bw - 2, 1.5);
+  }
+  if (n > 0) { // ratchet straps over a loaded stack
+    ctx.strokeStyle = 'rgba(230,170,40,.85)'; ctx.lineWidth = Math.max(1, 0.025 * u);
+    const top = deck - Math.ceil(n / TRUCK_COLS) * bh;
+    for (const sx of [bedL + 0.7 * u, bedL + 1.9 * u]) { ctx.beginPath(); ctx.moveTo(sx, deck); ctx.lineTo(sx, top); ctx.stroke(); }
+  }
+  // ---- exhaust stack + air intake behind the cab ----
+  ctx.fillStyle = '#9aa2ab'; ctx.fillRect(3.02 * u, -1.95 * u, 0.07 * u, 1.2 * u);
+  ctx.fillStyle = '#5b6168'; ctx.fillRect(3.0 * u, -1.98 * u, 0.11 * u, 0.06 * u);
+  ctx.fillStyle = '#6d747c'; ctx.beginPath(); ctx.roundRect(2.98 * u, -1.35 * u, 0.12 * u, 0.4 * u, 0.04 * u); ctx.fill();
+  // ---- cab (cab-forward): body colour panels, big glass, grille, bumper, lights ----
+  const cx0 = 3.12 * u, cx1 = len, roof = -1.6 * u, floor = -0.46 * u;
+  const cab = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx0, floor); ctx.lineTo(cx0, roof + 0.08 * u); ctx.quadraticCurveTo(cx0, roof, cx0 + 0.1 * u, roof);
+    ctx.lineTo(cx1 - 0.34 * u, roof); ctx.quadraticCurveTo(cx1 - 0.24 * u, roof, cx1 - 0.2 * u, roof + 0.1 * u);
+    ctx.lineTo(cx1 - 0.06 * u, -1.0 * u); ctx.lineTo(cx1 - 0.04 * u, floor); ctx.closePath();
+  };
+  cab();
+  const cg = ctx.createLinearGradient(0, roof, 0, floor); cg.addColorStop(0, bodyL); cg.addColorStop(0.45, body); cg.addColorStop(1, bodyD);
+  ctx.fillStyle = cg; ctx.fill();
+  ctx.save(); cab(); ctx.clip();
+  // wheel arch cut around the front wheel
+  ctx.fillStyle = '#16171a'; ctx.beginPath(); ctx.arc(frontA, -r, r * 1.16, Math.PI, 0); ctx.lineTo(frontA + r * 1.16, 0); ctx.lineTo(frontA - r * 1.16, 0); ctx.fill();
+  // side window + windshield edge (blue-grey glass with a highlight)
+  ctx.fillStyle = '#3e5866';
+  ctx.beginPath(); ctx.moveTo(cx0 + 0.42 * u, -1.47 * u); ctx.lineTo(cx1 - 0.36 * u, -1.47 * u); ctx.lineTo(cx1 - 0.3 * u, -1.08 * u); ctx.lineTo(cx0 + 0.42 * u, -1.08 * u); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx1 - 0.25 * u, -1.5 * u); ctx.lineTo(cx1 - 0.13 * u, -1.05 * u); ctx.lineTo(cx1 - 0.07 * u, -1.05 * u); ctx.lineTo(cx1 - 0.2 * u, -1.52 * u); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.beginPath(); ctx.moveTo(cx0 + 0.55 * u, -1.45 * u); ctx.lineTo(cx0 + 0.72 * u, -1.45 * u); ctx.lineTo(cx0 + 0.6 * u, -1.1 * u); ctx.lineTo(cx0 + 0.45 * u, -1.1 * u); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(30,30,30,.45)'; ctx.beginPath(); ctx.arc(cx1 - 0.62 * u, -1.27 * u, 0.1 * u, 0, 6.283); ctx.fill(); // driver
+  // door seam, handle, step, panel shading
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.fillRect(cx0 + 0.36 * u, -1.5 * u, Math.max(1, 0.02 * u), 1.04 * u); ctx.fillRect(cx1 - 0.3 * u, -1.0 * u, Math.max(1, 0.02 * u), 0.54 * u);
+  ctx.fillRect(cx0 + 0.36 * u, -0.98 * u, cx1 - cx0 - 0.66 * u, Math.max(1, 0.015 * u));
+  ctx.fillStyle = '#c9ced4'; ctx.fillRect(cx0 + 0.46 * u, -0.92 * u, 0.13 * u, 0.035 * u);
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(cx0 + 0.05 * u, roof + 0.03 * u, cx1 - cx0 - 0.35 * u, 0.04 * u);
+  ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(cx0, floor - 0.12 * u, cx1 - cx0, 0.12 * u);
+  ctx.restore();
+  // front fascia: grille, bumper, headlights, step
+  ctx.fillStyle = '#2a2d31'; ctx.beginPath(); ctx.roundRect(cx1 - 0.13 * u, -0.98 * u, 0.12 * u, 0.42 * u, 0.02 * u); ctx.fill();
+  ctx.fillStyle = '#8a9198'; for (let i = 0; i < 5; i++) ctx.fillRect(cx1 - 0.12 * u, -0.94 * u + i * 0.08 * u, 0.1 * u, 0.025 * u);
+  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.roundRect(cx1 - 0.3 * u, -0.5 * u, 0.36 * u, 0.15 * u, 0.03 * u); ctx.fill(); // bumper
+  ctx.fillStyle = '#ffe9a8'; ctx.fillRect(cx1 - 0.05 * u, -0.66 * u, 0.06 * u, 0.1 * u); // headlight
+  ctx.fillStyle = '#e8a23a'; ctx.fillRect(cx1 - 0.06 * u, -0.54 * u, 0.05 * u, 0.04 * u); // indicator
+  ctx.fillStyle = '#2f3237'; ctx.fillRect(cx0 + 0.4 * u, -0.46 * u, 0.32 * u, 0.06 * u); // entry step
+  // roof marker lights + side mirror
+  ctx.fillStyle = '#f0b33a'; for (let i = 0; i < 3; i++) ctx.fillRect(cx0 + 0.45 * u + i * 0.28 * u, roof - 0.04 * u, 0.08 * u, 0.04 * u);
+  ctx.strokeStyle = '#2f3237'; ctx.lineWidth = Math.max(1, 0.03 * u);
+  ctx.beginPath(); ctx.moveTo(cx1 - 0.2 * u, -1.32 * u); ctx.lineTo(cx1 + 0.08 * u, -1.38 * u); ctx.stroke();
+  ctx.fillStyle = '#2f3237'; ctx.beginPath(); ctx.roundRect(cx1 + 0.05 * u, -1.55 * u, 0.07 * u, 0.3 * u, 0.02 * u); ctx.fill();
+  ctx.restore(); // suspension
+  for (const wx of [rearA, rearB, frontA]) truckWheel(wx, r, roll); // wheels stay on the road, in front of arches/hangers
+  ctx.restore();
+  if (night > 0.05 && Math.abs(p.face) > 0.5) glow(p.cx + p.face * (len / 2 + u * 0.3), p.y - u * 0.6, u * 0.9, 0.4 * night);
 }
 
 function drawContractor(L: ReturnType<typeof surfaceLayout>) {
