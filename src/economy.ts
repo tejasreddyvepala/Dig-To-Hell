@@ -1,5 +1,5 @@
 // Pure economy formulas. No DOM, no rendering.
-import { CFG, CREW, MAX_DEPTH, RESOURCES, TOOLS, UPGRADES, type Crew, type CrewId, type UpgradeId } from './config';
+import { CFG, CREW, MAX_DEPTH, PROJECTS, RESOURCES, TOOLS, UPGRADES, WORKSITES, type Crew, type CrewId, type UpgradeId } from './config';
 import type { Load, State } from './state';
 import type { MaterialId } from './config';
 
@@ -22,12 +22,19 @@ export const crewCost = (s: State, id: CrewId) =>
 /** Raw dig power per second of one crew type (all units). */
 export const crewTypeDps = (s: State, id: CrewId) => crewDef(id).dps * s.crew[id] * mult(s);
 export const crewDps = (s: State) => CREW.reduce((a, c) => a + crewTypeDps(s, c.id), 0);
+/** Share of time a crew type is actually digging (diggers rest; machines don't). */
+const uptime = (id: CrewId) => (id === 'dig' ? CFG.rest.uptime : 1);
 /** Meters per second crew dig at depth d (analytic; used offline). */
 export const crewMps = (s: State, d = s.depth) =>
-  d >= MAX_DEPTH ? 0 : (crewDps(s) / chunkHp(d)) * materialAt(d).metersPerBreak;
-/** Rubble units per second crew produce (analytic). */
+  d >= MAX_DEPTH ? 0 : (CREW.reduce((a, c) => a + crewTypeDps(s, c.id) * uptime(c.id), 0) / chunkHp(d)) * materialAt(d).metersPerBreak;
+/** Rubble units per second crew produce (analytic): bigger machines yield more per break. */
 export const crewRubbleRate = (s: State, d = s.depth) =>
-  d >= MAX_DEPTH ? 0 : (crewDps(s) / chunkHp(d)) * CFG.rubble.perBreak;
+  d >= MAX_DEPTH ? 0 : CREW.reduce((a, c) => a + (crewTypeDps(s, c.id) * uptime(c.id) / chunkHp(d)) * CFG.rubble.perBreak * c.yield, 0);
+/** Can this crew type be hired now (depth, worksite tier, ownership cap)? */
+export const crewAvailable = (s: State, id: CrewId) => {
+  const c = crewDef(id);
+  return s.depth >= c.unlockDepth && s.worksite >= c.needsTier && s.crew[id] < c.max;
+};
 
 // ---- loads (quantity + value + material composition travel together) ----
 export function addTo(l: Load, qty: number, unitVal: number, mat: MaterialId) {
@@ -78,3 +85,22 @@ export const rawCap = (s: State) => Math.round(P.rawStorage.base * (1 + P.rawSto
 export const processRate = (s: State) => P.processRate.base * (1 + P.processRate.perLevel * s.upg.processSpeed);
 /** $ per unit of carried material value, paid when a loaded truck departs. */
 export const contractPrice = (s: State) => P.price.base * (1 + P.price.perLevel * s.upg.contractValue);
+
+// ---- construction (where value is created) ----
+/** Sale value of the current project's property (Block Quality raises it). */
+export const projectValue = (s: State, project = s.build.project) =>
+  Math.round(PROJECTS[project].value * (1 + P.price.perLevel * s.upg.contractValue));
+/** Milestone payment for completing one stage. */
+export const stagePayment = (s: State) => Math.round(projectValue(s) * CFG.build.stagePay);
+export const projectBlocks = (project: number) => PROJECTS[project].stages.reduce((a, st) => a + st.blocks, 0);
+/** 0..1 physical completion of the current project (drives the building drawing). */
+export function buildProgress(s: State) {
+  const p = PROJECTS[s.build.project];
+  if (s.build.done) return 1;
+  let used = 0;
+  for (let i = 0; i < s.build.stage; i++) used += p.stages[i].blocks;
+  return (used + s.build.used) / projectBlocks(s.build.project);
+}
+// ---- worksite ----
+export const nextWorksite = (s: State) => WORKSITES[s.worksite + 1];
+export const worksiteAvailable = (s: State) => !!nextWorksite(s) && s.crew.dig >= nextWorksite(s).unlockCrew;

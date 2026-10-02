@@ -76,11 +76,11 @@ Future locations (documented only): Fossil Lab / Museum, Second Mine, Deep Facil
 
 ## 5. Navigation
 
-A permanent, game-like navigation bar: **[⛏ MINE] [♻ YARD] [🏗 BUILD]** — desktop: bottom-centre over the game view; mobile: bottom bar. Each button: icon, short label, active state, attention state. Buttons appear as the tutorial unlocks them (MINE → YARD → BUILD).
+A permanent, game-like navigation bar: **[MINE] [YARD] [BUILD]** — as built in V2-1 it sits **top-centre over the game view** on desktop and mobile (the bottom of the mobile screen belongs to the panel), with keyboard shortcuts 1/2/3. Each button: short label, active state (filled yellow), attention badge. Buttons appear as the tutorial unlocks them (MINE → YARD at the first cart departure → BUILD when the first truck heads to the site) with a short pop animation. One "follow" hint pill under the bar (FOLLOW THE CART / FOLLOW THE TRUCK / BLOCKS ARRIVED / MORE BLOCKS NEEDED: DIG) points at the site that matters during the introduction.
 
 ### Attention indicators
 - **Red `!`** = "GO HERE. SOMETHING IS HAPPENING." Only for meaningful attention:
-  - MINE: worksite expansion ready, machine arrival ready, fossil discovered (future), cave-in (future), major discovery.
+  - MINE: worksite expansion ready and affordable; the whole chain is idle because nothing is being dug (no crew yet, nothing in the pipeline); fossil discovered (future), cave-in (future), major discovery.
   - YARD: raw storage full and the cart blocked (production stopped), Recycling Yard ready to build (tutorial), major machinery unlock.
   - BUILD: enough material to start the next stage, building complete / ready to sell, new project to choose, the first truck arriving (tutorial).
 - **Yellow dot** = an optional upgrade is affordable there. Subtle, no pulsing.
@@ -96,11 +96,11 @@ Short camera moves (≈0.3–0.8 s), no loading screens: **vertical** travel for
 1. **Land.** Calm landscape (mountains, trees, clouds, birds), almost no infrastructure. The player stands beside a tiny staked patch of ground. Text: **YOU BOUGHT THIS LAND FOR $1.** … *Someone said there's something valuable underneath it.* … **START DIGGING** (the patch glows; nothing else competes).
 2. **First dig.** WHACK, crack, material breaks loose, visible rubble, a small **+N RUBBLE** (never cash). After several breaks: **RUBBLE ISN'T MONEY.** … **GET IT TO THE SURFACE.**
 3. **Cart.** The headframe goes up, rails drop, the cart is lowered. It fills from the pile and starts up. **YARD `!`** appears: **FOLLOW THE CART.**
-4. **Yard.** The cart dumps raw rubble beside the headframe. A contractor drives up and inspects it: *"Raw rubble isn't worth much."* … *"But processed material is."* He buys this first load (seed money) → **BUILD RECYCLING YARD**.
+4. **Yard.** The cart dumps raw rubble beside the headframe. A contractor drives up and inspects it: *"Raw rubble isn't worth much."* … *"But processed material is."* He buys **only enough of it for seed money** (≈ the yard's cost + a little, `CFG.intro.seedCash`) — the rest stays on the ground so the brand-new yard has something to press immediately → **BUILD RECYCLING YARD**. (Safety net: while the player cannot afford the yard he keeps buying, so there is no soft-lock.)
 5. **Recycling.** Hopper, crusher, auger and press go up. Raw rubble visibly enters; the first finished block slides out: *"Now this is useful."* The delivery truck loads blocks. **BUILD `!`**: **FOLLOW THE TRUCK.**
 6. **Construction.** An empty plot. The truck drives in and unloads blocks. **BUILD SOMETHING.** → start the Tiny Cabin.
 
-After ~60–120 s the player understands **DIG → RECYCLE → BUILD → SELL → EXPAND**. Existing saves skip the parts they have already done.
+After ~60–120 s the player understands **DIG → RECYCLE → BUILD → SELL → EXPAND**. Existing saves skip the parts they have already done (a migrated save with a yard starts at step 6). No blocking modals anywhere in the introduction; even the legacy "finds" (coin, buried car) are non-blocking banners until discoveries are rebuilt in V2-2. While the chain is starved (blocks needed, nothing being dug) the hint says **MORE BLOCKS NEEDED: DIG ▼** and MINE gets the red `!`.
 
 ---
 
@@ -184,7 +184,7 @@ Every underground worker has a lamp that follows facing (soft gradients). Player
 ### 8.4 Fatigue and rest (lightweight, never micromanagement)
 States: WORKING → (tired) TO_REST → RESTING → RETURNING (→ ASSIGNED_SPECIAL later). Work ≈60–120 s, then finish the current action, walk to the left-wall stairs, climb to the rest platform, sit/drink ≈10–20 s, climb down, resume. Phases are **staggered** so the mine never stops; a tired worker keeps working if every seat is taken. The player has no fatigue. Fatigue exists to create movement, life, rest infrastructure, storytelling and upgrade choices — not to annoy. No hunger, bathrooms, disease, complex morale, sleep schedules or health.
 
-**Rest Platform** (first rest infrastructure): a wooden platform on the left wall above the work floor with a bench, water cooler, warm lamp and railing; label `REST 2/3`. Future: larger platform, better benches, water station, break room, canteen, underground rest station (capacity, recovery speed, travel efficiency).
+**Rest Platform** (first rest infrastructure): a wooden platform on the left wall above the work floor with a bench, water cooler, warm lamp and railing; label `REST 2/3`. As built: it is built into the wall once the shaft is ≥ 22 m deep (`CFG.rest.minDepth`; before that nobody tires); an access ladder on the left wall always connects the surface to the platform (or the floor while the shaft is shallow) and new hires climb down it. Future: larger platform, better benches, water station, break room, canteen, underground rest station (capacity, recovery speed, travel efficiency).
 
 ### 8.5 Population scaling / LOD
 - 1–8 workers: full individual characters.
@@ -339,6 +339,28 @@ Off-screen sources are attenuated by camera distance.
 | ~4:30–5:00 | first property completion, or close enough that the player strongly wants to finish |
 **The player should never spend a minute just watching numbers.** Any interval > 20 s with no decision, interaction, meaningful visual change, event, milestone or completing short-term goal is a **dead zone**; > 45 s is a serious problem.
 
+**Measured in V2-1** (real-time browser bot on a fresh save: ~4 clicks/s, follows every red `!`, buys majors first then the cheapest item; a human reading the intro lines adds ~5–10 s up front):
+
+| Beat | Target | Measured |
+|---|---|---|
+| first dig | 0:05 | 0:02 |
+| cart introduced ("GET IT TO THE SURFACE") | 0:20 | 0:03 (after 8 rubble) |
+| first cart departs / YARD unlocks | 0:30–0:50 | 0:21 |
+| contractor seed money | — | 0:32 |
+| Recycling Yard built + first block | 0:45–1:30 | 0:35 |
+| BUILD unlocks / first truck to the site | 1:15–1:45 | 0:41 |
+| first delivery on the plot | — | 0:45 |
+| construction begins (Foundation) | 1:30–2:00 | 1:22 |
+| first worker hired | ~2:00 | 1:32 |
+| first property complete / sold → Project #2 | 4:30–5:00 | 2:45 / 2:50 |
+| Work Chamber available / purchased | ~3:30 | 2:52 / 3:00 |
+| first worker rests | ~2:30 | 4:05 (the rest platform needs ≥ 22 m and 60–120 s of work) |
+| @1:00 | | 17 m, $15, no crew, Pickaxe, 18 blocks on the plot |
+| @3:00 | | 69 m, $437, 2 diggers, Iron Pickaxe, Work Chamber, Project #2 starting |
+| @5:00 | | 123 m, $6, 6 diggers, Iron Pickaxe, Work Chamber, Two-Story Home stage 3/7 |
+
+The loop is proven faster than the target (first sale at ~2:50 instead of ~4:30). The weakest stretch is 0:45 → 1:22: the first truck brings only ~18 blocks, the Foundation needs 30, and the player digs while the cart makes another trip (active clicking, but no new decision for ~35 s).
+
 ---
 
 ## 19. Long-Term Game Shape
@@ -370,13 +392,28 @@ Deepest depth (primary), fastest milestone times, highest production, event reco
 ## 23. Roadmap
 | Milestone | Scope |
 |---|---|
-| **V2-1 (current)** | macro loop (truck → construction → sale), navigation + attention, contextual panels, introduction, Construction V1 (Cabin + Two-Story Home), tool yield, character rig + personality idles, worker rest V1 (stairs + rest platform), Worksite Expansion V1 (Narrow Shaft → Work Chamber), Excavator space rule + rescale, recycling visibility, MusicManager |
+| **V2-1 (built; awaiting playtest)** | macro loop (truck → construction → sale), navigation + attention, contextual panels, introduction, Construction V1 (Cabin + Two-Story Home), tool yield, character rig + personality idles, worker rest V1 (stairs + rest platform), Worksite Expansion V1 (Narrow Shaft → Work Chamber), Excavator space rule + rescale, recycling visibility, MusicManager |
 | V2-2 | Fossil Excavation (discovery, MINE !, excavation team, worker assignment, gradual reveal, big dinosaur, cinematic, sell to collector, persistent site) |
 | V2-3 | Active mining events: Critical Vein, Cave-In, Side Cave |
 | V2-4 | Industrial progression: drill rig, Industrial Chamber, better logistics, named equipment tiers |
 | V2-5 | More construction projects + automation (Foreman, more lots) |
 | V2-6 | Deep mystery progression / the Red Door |
 | later | museum, second mine, research, prestige (possibly "Expeditions"), leaderboards, CrazyGames/Poki SDK |
+
+---
+
+## 24. V2-1 As Built (implementation notes for the next agent)
+- **Sites + camera** (`view.ts`, `nav.ts`): `view.site` + `S.site`; `goSite()` starts an eased tween (0.75 s, 0.35 s if repeated within 2.5 s) from the current camera to the site's live target. MINE target fits the work floor (zooms out and centres for the Work Chamber); YARD frames headframe → truck bay; BUILD frames the plot (zoom up to 1.3). Wheel scroll ("explore") only at the Mine. Canvas clicks only dig at the Mine.
+- **Attention** (`nav.ts`): `attention(site)` (red) and `optionalAffordable(site)` (yellow, in `panel.ts`); badges hidden for the current site; `chainStarved()` = yard built, no crew, nothing anywhere in the pipeline.
+- **Introduction** (`intro.ts`): `S.tut` 0 LAND · 1 DIG · 2 CART (the cart sim only runs from here) · 3 YARD · 4 RECYCLE · 5 BUILD · 6 DONE. Text lines are a DOM overlay; one follow-hint pill.
+- **Construction** (`construction.ts` sim, `site.ts` art): plot along the road right of the yard (`surfaceLayout().plotX0..plotX1`); material stack (left), builders (carry + hammer rigs), building drawn per stage progress (`cabin()` / `home()`), blueprint outline before the first stage, FOR SALE sign, SOLD → sink/dozer cleanup (`CFG.build.soldHoldSecs`, `clearSecs`). After the Two-Story Home is sold it repeats (no Project #3 in V2-1).
+- **Truck route** (`surface.ts` sim, `juice.truckPose()`): PARKED → LOADING (≥ 15 blocks) → TO_SITE → UNLOADING (blocks move onto `S.build.material`) → RETURNING (drawn mirrored, cab first) → PARKED. Drawn in front of the plot (`drawTruckLayer`).
+- **Workers** (`workers.ts`): per-worker fatigue/rest/idle state machine; paths along the left wall (ladder → stairs → platform); power is shared by whoever is working so resting never changes the analytic rate (`CFG.rest.uptime` is used offline). Visible crew capped per tier (3 / 5); the rest dig unseen ("+N more crew working").
+- **Worksite expansion** (`expansion.ts`): purchase saves `S.worksite` immediately; sequence WHISTLE 1.1 s → CLEAR 1.6 s → CHARGES 1.6 s → BOOM (`applyWorksite()` rebuilds the face 260 → 420 wide, 8 → 13 chunks) → SETTLE 2.6 s (supports rise, crew walk to new slots). Input blocked during CLEAR..early SETTLE. Layout positions on the work floor are relative to the centred 260-unit shaft (`layout.ts`: `shaftOff()`, `railX()`, `cartX()`, `pileX()`).
+- **Excavator**: `crewAvailable()` requires `worksite ≥ needsTier` (1) and `max` 1; drawn at `CFG.excavatorScale` 1.35 on its own station (`excX` 112, bucket bites at x ≈ 200; diggers at 262/352/392 never overlap it).
+- **CharacterRig** (`rig.ts`): `drawRig(x, y, scale, dir, look, pose)`; `lookFor(role, seed)`; poses stand/walk/climb/sit/swing/jack/wipe/helmet/drink/look/hammer/carry/cheer/gesture; LOD < 14 px silhouette, < 30 px medium. Player 1.15 vs crew 1.05 (≈ 1.1×).
+- **Music** (`music.ts`): three procedural scores (mine A-minor drone + pulse + bells 84 bpm; yard C pentatonic pads + plucks 72 bpm; build D major arpeggio + bass + shaker 96 bpm) on per-site gain layers, 2.5 s crossfade, duck on big moments; `MUSIC_FILES` asset slots; settings popover (♪ button) persisted in `dth_settings`. Audio buses: SFX (compressor) and music.
+- **Save v5** (`state.ts`): adds `site`, `tut`, `worksite`, `build {project, stage, active, used, material, done}`, `stats.sold`; truck states remapped from v4 (old DEPARTING → PARKED; its bed had already been paid for).
 
 ---
 
@@ -390,3 +427,5 @@ Deepest depth (primary), fastest milestone times, highest production, event reco
 - Player drawn ~1.25× a worker with a dark "rim" silhouette behind them (3C.5) — player is ~1.1× with only a contact shadow.
 - Central spiral staircase (rejected): worker access runs along the left wall.
 - "+N crew" as the only evidence of a large workforce.
+- The contractor buying the entire first load (V2 draft): he now buys only the seed money so the yard has material to press immediately.
+- Blocking "find" modals (pre-V2): finds are non-blocking banners until V2-2 rebuilds discoveries.

@@ -119,6 +119,25 @@ export function drawGeology(ctx: CanvasRenderingContext2D, centreX: number, yOf:
   const x0 = centreX - HALF_W_M * CFG.ppm, wPx = HALF_W_M * 2 * CFG.ppm, hPx = SEG_M * CFG.ppm;
   // blit only the visible horizontal span of each segment
   const a = Math.max(0, vx0 - x0 - 4), b = Math.min(wPx, vx1 - x0 + 4);
+  // beyond the painted span (far along the road: the construction site) the ground is a flat wall colour
+  if (vx0 < x0 || vx1 > x0 + wPx) {
+    for (let k = k0; k <= k1; k++) {
+      ctx.fillStyle = `rgb(${materialAt(k * SEG_M).wall.map((v) => Math.round(v * 0.97)).join(',')})`;
+      const y = yOf(k * SEG_M);
+      if (vx0 < x0) ctx.fillRect(vx0 - 4, y, x0 - vx0 + 6, hPx + 0.5);
+      if (vx1 > x0 + wPx) ctx.fillRect(x0 + wPx - 2, y, vx1 - x0 - wPx + 6, hPx + 0.5);
+    }
+  }
+  const fadeEdges = () => { // soften the seam between painted and flat ground
+    const yTop = yOf(k0 * SEG_M), yBot = yOf((k1 + 1) * SEG_M), F = 90;
+    for (const [ex, dir] of [[x0, 1], [x0 + wPx, -1]] as const) {
+      if (ex < vx0 - F || ex > vx1 + F) continue;
+      const g = ctx.createLinearGradient(ex, 0, ex + dir * F, 0);
+      const c = materialAt((k0 + 1) * SEG_M).wall.map((v) => Math.round(v * 0.97)).join(',');
+      g.addColorStop(0, `rgba(${c},1)`); g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g; ctx.fillRect(dir > 0 ? ex : ex - F, yTop, F, yBot - yTop);
+    }
+  };
   if (b <= a) return;
   const sa = a * CFG.geo.res, sw = (b - a) * CFG.geo.res;
   for (let k = k0; k <= k1; k++) {
@@ -128,6 +147,7 @@ export function drawGeology(ctx: CanvasRenderingContext2D, centreX: number, yOf:
     if (seg) { seg.used = frame; ctx.drawImage(seg.canvas, sa, 0, sw, seg.canvas.height, x0 + a, y, b - a, hPx + 0.5); }
     else { ctx.fillStyle = `rgb(${materialAt(k * SEG_M).wall.join(',')})`; ctx.fillRect(x0 + a, y, b - a, hPx + 0.5); }
   }
+  if (vx0 < x0 + 90 || vx1 > x0 + wPx - 90) fadeEdges();
   // prefetch the next segments below the view (one per frame) so digging deeper never stalls on painting
   if (builtThisFrame === 0) {
     for (let k = k1 + 1; k <= k1 + CFG.geo.prefetch; k++) if (!cache.has(k)) { cache.set(k, { canvas: paintSegment(k), used: frame }); break; }

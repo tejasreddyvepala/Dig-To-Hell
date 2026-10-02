@@ -1,5 +1,5 @@
 // Persistent game state + save/load/migration. The only module that touches localStorage.
-import { CFG, CREW, FINDS, MATERIALS, MAX_DEPTH, TOOLS, UPGRADES, type CrewId, type MaterialId, type UpgradeId } from './config';
+import { CFG, CREW, FINDS, MATERIALS, MAX_DEPTH, PROJECTS, TOOLS, UPGRADES, WORKSITES, type CrewId, type MaterialId, type UpgradeId } from './config';
 
 /** Material composition of a load (units per source material); sums to qty. */
 export type Mix = Partial<Record<MaterialId, number>>;
@@ -19,16 +19,30 @@ export interface CartSave {
   load: Load;
 }
 
-export type TruckState = 'NONE' | 'ARRIVING' | 'LOADING' | 'DEPARTING';
-export const TRUCK_STATES: TruckState[] = ['NONE', 'ARRIVING', 'LOADING', 'DEPARTING'];
+/** The delivery truck lives at the yard and drives blocks to the construction plot (no cash on departure). */
+export type TruckState = 'NONE' | 'ARRIVING' | 'PARKED' | 'LOADING' | 'TO_SITE' | 'UNLOADING' | 'RETURNING';
+export const TRUCK_STATES: TruckState[] = ['NONE', 'ARRIVING', 'PARKED', 'LOADING', 'TO_SITE', 'UNLOADING', 'RETURNING'];
+
+export type Site = 'mine' | 'yard' | 'build';
+export const SITES: Site[] = ['mine', 'yard', 'build'];
+
+/** Construction on the single plot: current project, stage, material on site. */
+export interface BuildState {
+  project: number; // index into PROJECTS
+  stage: number; // index of the next/active stage
+  active: boolean; // builders are working the current stage
+  used: number; // blocks consumed in the current stage
+  material: Load; // blocks stacked on the plot
+  done: boolean; // every stage complete: ready to sell
+}
 export interface TruckSave {
   state: TruckState;
   t: number;
   dur: number;
   load: Load; // finished blocks on the truck bed
   n: number; // deliveries so far (deterministic truck colour)
-  paid: number; // cash credited for the current departure (for the popup)
-  bed: number; // visual only: blocks drawn on a departing truck (already delivered + paid; not material)
+  paid: number; // legacy (v4); unused
+  bed: number; // legacy (v4); unused
 }
 
 export interface State {
@@ -47,8 +61,12 @@ export interface State {
   truck: TruckSave;
   upg: Record<UpgradeId, number>;
   yard: boolean; // Recycling Yard built
+  worksite: number; // index into WORKSITES (0 Narrow Shaft, 1 Work Chamber)
+  build: BuildState;
+  site: Site; // where the camera is (restored on load)
+  tut: number; // first-time introduction step (see intro.ts; TUT_DONE = finished)
   flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean };
-  stats: { earned: number; delivered: number; processed: number }; // lifetime cash, units delivered by truck, units processed
+  stats: { earned: number; delivered: number; processed: number; sold: number }; // lifetime cash, blocks delivered to the plot, units processed, properties sold
 }
 
 export const emptyLoad = (): Load => ({ qty: 0, val: 0, mix: {} });
@@ -64,8 +82,12 @@ export function fresh(): State {
     truck: { state: 'NONE', t: 0, dur: 0, load: emptyLoad(), n: 0, paid: 0, bed: 0 },
     upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0, processSpeed: 0, contractValue: 0, rawStorage: 0 },
     yard: false,
+    worksite: 0,
+    build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false },
+    site: 'mine',
+    tut: 0,
     flags: { dispatched: false, arrived: false, sold: false, storageSeen: false },
-    stats: { earned: 0, delivered: 0, processed: 0 },
+    stats: { earned: 0, delivered: 0, processed: 0, sold: 0 },
   };
 }
 
@@ -100,7 +122,7 @@ export function sanitize(o: any): State | null {
   s.found = Math.floor(num(o.found, 0, FINDS.length, 0));
   s.last = num(o.last, 0, Date.now(), Date.now());
   s.clicks = Math.floor(num(o.clicks, 0, 1e9, 0));
-  if (v === 2) return s; // v2 had no transport: cart starts empty at the bottom
+  if (v === 2) { s.tut = s.depth > 0 ? 1 : 0; return s; } // v2 had no transport: cart starts empty at the bottom
 
   s.rubble = load(o.rubble, s.depth);
   s.flags.dispatched = !!o.flags?.dispatched;
@@ -129,7 +151,9 @@ export function sanitize(o: any): State | null {
     s.upg.processSpeed = Math.floor(num(o.upg?.sellSpeed, 0, 30, 0));
     s.upg.contractValue = Math.floor(num(o.upg?.sellValue, 0, 30, 0));
     s.upg.rawStorage = Math.floor(num(o.upg?.storage, 0, 30, 0));
-    s.stats.delivered = num(o.stats?.sold, 0, 1e15, 0);
+    s.stats.delivered = 0;
+    if (s.yard) s.truck.state = 'PARKED';
+    s.tut = s.yard ? 5 : s.flags.sold ? 3 : s.flags.arrived ? 3 : s.flags.dispatched ? 2 : s.depth > 0 ? 1 : 0;
     return s;
   }
 
@@ -137,22 +161,40 @@ export function sanitize(o: any): State | null {
   s.goods = load(o.goods, s.depth * 0.6);
   for (const u of UPGRADES) s.upg[u.id] = Math.floor(num(o.upg?.[u.id], 0, u.maxLevel, 0));
   s.yard = !!o.yard;
-  s.stats.delivered = num(o.stats?.delivered, 0, 1e15, 0);
+  s.stats.delivered = v === 5 ? num(o.stats?.delivered, 0, 1e15, 0) : 0; // v4 "delivered" meant sold-by-truck
   s.stats.processed = num(o.stats?.processed, 0, 1e15, 0);
   const t = o.truck;
+  if (v === 4) {
+    // Phase 3C.5 trucks paid cash on departure; now they deliver to the plot. A departing (already paid) truck parks.
+    const st: TruckState = !s.yard ? 'NONE' : t?.state === 'LOADING' ? 'LOADING' : t?.state === 'ARRIVING' ? 'ARRIVING' : 'PARKED';
+    s.truck = { state: st, t: 0, dur: st === 'ARRIVING' ? num(t?.dur, 0, 60, 3.6) : 0, load: st === 'LOADING' ? load(t?.load, s.depth * 0.6) : emptyLoad(), n: Math.floor(num(t?.n, 0, 1e9, 0)), paid: 0, bed: 0 };
+    // introduction: a v4 player already has the yard (or is mid-tutorial); construction is new to them
+    s.tut = s.yard ? 5 : s.flags.sold ? 3 : s.flags.arrived ? 3 : s.flags.dispatched ? 2 : s.depth > 0 ? 1 : 0;
+    return s;
+  }
   if (t && TRUCK_STATES.includes(t.state)) {
-    // a truck saved mid-departure was already paid; it simply finishes driving off
     s.truck = {
       state: t.state, t: num(t.t, 0, 1e6, 0), dur: num(t.dur, 0, 1e6, 0), load: load(t.load, s.depth * 0.6),
-      n: Math.floor(num(t.n, 0, 1e9, 0)), paid: num(t.paid, 0, 1e15, 0), bed: num(t.bed, 0, 1e6, 0),
+      n: Math.floor(num(t.n, 0, 1e9, 0)), paid: 0, bed: 0,
     };
-    if (s.truck.state === 'DEPARTING' && s.truck.load.qty > 0) { s.truck.bed = s.truck.load.qty; s.truck.load = { qty: 0, val: 0, mix: {} }; } // pre-fix saves
   } else {
-    // unknown truck state: its blocks go back to the stack (never destroyed, never paid twice)
+    // unknown truck state: its blocks go back to the stack (never destroyed)
     const back = load(t?.load, s.depth * 0.6);
     s.goods.qty += back.qty; s.goods.val += back.val;
     for (const id of IDS) if (back.mix[id]) s.goods.mix[id] = (s.goods.mix[id] ?? 0) + back.mix[id]!;
+    if (s.yard) s.truck.state = 'PARKED';
   }
+  s.worksite = Math.floor(num(o.worksite, 0, WORKSITES.length - 1, 0));
+  const b = o.build;
+  s.build = {
+    project: Math.floor(num(b?.project, 0, PROJECTS.length - 1, 0)), stage: Math.floor(num(b?.stage, 0, 99, 0)),
+    active: !!b?.active, used: num(b?.used, 0, 1e9, 0), material: load(b?.material, s.depth * 0.6), done: !!b?.done,
+  };
+  const stages = PROJECTS[s.build.project].stages.length;
+  if (s.build.stage >= stages) { s.build.stage = stages; s.build.done = true; s.build.active = false; }
+  s.site = SITES.includes(o.site) ? o.site : 'mine';
+  s.tut = Math.floor(num(o.tut, 0, 99, 0));
+  s.stats.sold = Math.floor(num(o.stats?.sold, 0, 1e9, 0));
   return s;
 }
 

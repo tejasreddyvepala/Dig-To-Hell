@@ -5,14 +5,20 @@ import { AUDIO, CFG, TOOLS, type Material } from './config';
 import { rubbleRGB } from './geo';
 import { mixPick } from './economy';
 import type { Load } from './state';
-import { landings, type HitResult, type Worker } from './sim';
+import type { HitResult } from './sim';
+import { landings } from './workers';
+import { pileX } from './layout';
 import type { SurfaceEvent } from './surface';
 import type { Chunk } from './digface';
 import type { CartEvent } from './cart';
 import { cartDepth } from './cart';
 import { FX, addPart, hitStop, impulse, popup } from './fx';
-import { playBreak, playBrake, playClack, playCoin, playCrit, playDebris, playDump, playHit, playKnock, playLoadTick, playPurchase, playRoll, playSting, playThud } from './audio';
+import { playBeep, playBlast, playWhistle, playBreak, playBrake, playClack, playCrit, playDebris, playDump, playHit, playKnock, playLoadTick, playPurchase, playRoll, playSting, playThud } from './audio';
 import { cartScreen, faceScale, surfaceLayout, toScreen, view, yOf } from './view';
+import { face } from './digface';
+import { materialAt } from './geo';
+import { duckMusic } from './music';
+import type { ExpEvent } from './expansion';
 import { S } from './state';
 import { fmt, money, rgb, rnd, rndi, rndr, rndri } from './util';
 
@@ -92,7 +98,7 @@ function arc(x0: number, y0: number, x1: number, y1: number, t: number, col: str
 }
 
 /** Screen position of the rubble pile's top at the dig site. */
-const pileTop = () => toScreen(CFG.cart.pileX + rnd(-10, 10), -4);
+const pileTop = () => toScreen(pileX() + rnd(-10, 10), -4);
 /** A piece of rubble coloured by the load's material composition (stone looks gray, clay red-brown...). */
 const rubbleCol = (l: Load = S.rubble) => rgb(rubbleRGB(mixPick(l, Math.random())), rnd(0.8, 1.15));
 
@@ -129,7 +135,8 @@ export function present(r: HitResult) {
     playBreak(mat.id, vol);
     playDebris(vol);
     if (player && !r.crit) impulse(CFG.impulse.break * (0.85 + 0.15 * tool.fx), rnd(-0.2, 0.2), 1);
-    const n = Math.round(CFG.rubble.arcsPerBreak * (player ? 1 : 0.67) * (r.crit ? 1.5 : 1));
+    // more material per break (tool / machine yield) = visibly more pieces flying into the pile
+    const n = Math.round(CFG.rubble.arcsPerBreak * Math.sqrt(r.rubble / CFG.rubble.perBreak) * (player ? 1 : 0.67));
     for (let i = 0; i < n; i++) { const t = pileTop(); arc(p.x, p.y - 4, t.x, t.y, rnd(0.35, 0.55), rgb(rubbleRGB(mat.id), rnd(0.85, 1.15)), rnd(2.2, 3.6) * faceScale()); }
   } else if (player && !r.crit) {
     impulse(CFG.impulse.hit, rnd(-0.2, 0.2), 1);
@@ -138,7 +145,7 @@ export function present(r: HitResult) {
   // text: material + depth for the player's breaks only (crew progress shows in the pile, not in numbers)
   if (!player || !r.broke) return;
   const sub = r.meters > 0 ? '▼ ' + r.meters.toFixed(2) + ' m' : undefined;
-  const label = '+' + Math.round(r.rubble) + ' rubble';
+  const label = '+' + Math.round(r.rubble) + ' RUBBLE';
   if (r.crit) popup(p.x + rnd(-8, 8), p.y - 32, label + '!', '#ffd84a', T.crit.size * Math.sqrt(fxk()), { life: T.crit.life, pop: 0.6, sub });
   else popup(p.x + rnd(-8, 8), p.y - 26, label, '#ecdcc0', T.brk.size * Math.sqrt(fxk()), { life: T.brk.life, alpha: T.brk.alpha, pop: 0.2, sub });
 }
@@ -211,7 +218,6 @@ export function presentLandings() {
   }
   landings.length = 0;
 }
-export const arrivingWorkers = (ws: Worker[]) => ws.filter((w) => w.arrive > 0);
 
 // ---- surface: contractor (tutorial), Recycling Yard, delivery truck ----
 /** Presentation-only surface state (never saved). */
@@ -223,6 +229,7 @@ export const SV = {
   knockT: 0,
   spin: 0, // auger / crusher rotation (advances only while processing)
   blocksIn: 0, // blocks flying from the stack to the truck (visual count)
+  blocksOut: 0, // blocks flying from the truck onto the construction stack
 };
 
 export function say(text: string, hold = false) { SV.speech = { text, t: 0, hold }; }
@@ -231,29 +238,35 @@ const exhaust = (x: number, y: number, n: number) => {
   for (let i = 0; i < n; i++) addPart({ kind: 'dust', x: x + rnd(-3, 3), y: y + rnd(-2, 2), vx: rnd(20, 50), vy: rnd(-30, -12), size: rnd(4, 7) * fxk(), col: 'rgba(150,150,150,1)', life: rnd(0.7, 1.2), floor: Infinity, bounce: 0 });
 };
 
-/** Screen positions of the truck parts (shared by juice + renderer). */
+/** Truck pose on the road (virtual px): left end `x0`, length, facing `dir` (cab end). Shared by juice + renderer.
+ *  Route: yard bay -> road -> construction plot -> back. It drives back cab-first (mirrored). */
 export function truckPose() {
   const L = surfaceLayout(), u = L.u, tr = S.truck, T = CFG.yard.truck;
-  const len = 3.6 * u, park = L.bayX; // the truck's rear stops at the loading bay
-  const offRight = view.vx1 + 0.4 * u, ease = (k: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3);
-  let rear = park, rock = 0;
-  if (tr.state === 'ARRIVING') rear = offRight + (park - offRight) * ease(tr.t / T.arriveSecs);
-  else if (tr.state === 'DEPARTING') { const k = Math.min(1, tr.t / T.departSecs); rear = park + (offRight + len - park) * k * k; rock = Math.sin(tr.t * 18) * (k < 0.2 ? 1 : 0); }
-  else if (tr.state === 'NONE') rear = offRight + len * 2;
-  return { rear, len, y: L.roadY, u, rock, visible: tr.state !== 'NONE' };
+  const len = 3.6 * u, park = L.bayX, site = L.siteTruckX;
+  const offRight = Math.max(view.vx1, L.plotX1) + 0.6 * u;
+  const ease = (k: number) => { k = Math.min(1, Math.max(0, k)); return k * k * (3 - 2 * k); };
+  let x0 = park, rock = 0, dir = 1, moving = false;
+  switch (tr.state) {
+    case 'ARRIVING': x0 = offRight + (park - offRight) * (1 - Math.pow(1 - Math.min(1, tr.t / T.arriveSecs), 3)); moving = true; break;
+    case 'TO_SITE': x0 = park + (site - park) * ease(tr.t / T.driveSecs); moving = true; rock = tr.t < 0.3 ? Math.sin(tr.t * 30) : 0; break;
+    case 'UNLOADING': x0 = site; break;
+    case 'RETURNING': x0 = site + (park - site) * ease(tr.t / T.driveSecs); dir = -1; moving = true; break;
+    case 'NONE': x0 = offRight + len * 2; break;
+  }
+  return { x0, rear: x0, len, y: L.roadY, u, rock, dir, moving, visible: tr.state !== 'NONE' };
 }
 
 export function presentSurface(events: SurfaceEvent[], dt: number) {
   const L = surfaceLayout(), s = faceScale();
   const near = surfaceVol();
   for (const e of events) {
-    if (e.type === 'firstSaleStart') say("Rubble like this? I'll take it.");
+    if (e.type === 'firstSaleStart') { say("Raw rubble isn't worth much."); setTimeout(() => say('But processed material is.'), 1600); }
     else if (e.type === 'contractorSold') {
       if (Math.random() < Math.min(0.9, (e.qty ?? 0) * 0.6)) arc(L.hopperX + rnd(-10, 10), L.gy - 10, L.stackX + L.u * 0.6 + rnd(-8, 8), L.roadY - L.u * 0.7, rnd(0.35, 0.45), rubbleCol(S.raw), rnd(2, 3) * s);
     } else if (e.type === 'firstSaleDone') {
-      popup(L.stackX, L.gy - L.u * 2.2, '+' + money(e.cash ?? 0), '#ffd84a', 30 * Math.sqrt(fxk()), { life: 2.6, pop: 0.6, sub: `SOLD ${fmt(e.qty ?? 0)} RUBBLE`, rise: 0.4 });
+      popup(L.stackX, L.gy - L.u * 2.2, '+' + money(e.cash ?? 0), '#ffd84a', 30 * Math.sqrt(fxk()), { life: 2.6, pop: 0.6, sub: `SEED MONEY · ${fmt(e.qty ?? 0)} RUBBLE`, rise: 0.4 });
       playSting();
-      setTimeout(() => { if (!S.yard) say("I can't haul this forever. Build a recycling yard.", true); }, 1800);
+      setTimeout(() => { if (!S.yard) say('Here. Build a Recycling Yard and press it into blocks.', true); }, 1800);
     } else if (e.type === 'pressed') {
       SV.pressT = 0;
       playThud(0.5 * near);
@@ -265,17 +278,27 @@ export function presentSurface(events: SurfaceEvent[], dt: number) {
       while (SV.blocksIn >= 2) { // one flying block per couple of units
         SV.blocksIn -= 2;
         const p = truckPose();
-        arc(L.stackX + rnd(-L.u * 0.3, L.u * 0.3), L.gy - L.u * 0.5, p.rear + p.len * rnd(0.12, 0.5), p.y - L.u * 0.85, rnd(0.35, 0.5), rubbleCol(S.truck.load), L.u * 0.12);
+        arc(L.stackX + rnd(-L.u * 0.3, L.u * 0.3), L.gy - L.u * 0.5, p.x0 + p.len * rnd(0.12, 0.5), p.y - L.u * 0.85, rnd(0.35, 0.5), rubbleCol(S.truck.load), L.u * 0.12);
       }
     } else if (e.type === 'truckDepart') {
       const p = truckPose();
-      exhaust(p.rear - 4, p.y - L.u * 0.25, 4);
-      popup(p.rear + p.len * 0.5, p.y - L.u * 2.1, '+' + money(e.cash ?? 0), '#ffd84a', 26 * Math.sqrt(fxk()), { life: 2, pop: 0.5, sub: 'DELIVERY', rise: 0.5 });
-      playCoin(near); playRoll(near * 0.8);
+      exhaust(p.x0 - 4, p.y - L.u * 0.25, 4);
+      playRoll(near * 0.8);
+    } else if (e.type === 'truckAtSite') {
+      playBrake(near * 0.6);
+    } else if (e.type === 'siteUnload') {
+      SV.blocksOut += e.qty ?? 0;
+      while (SV.blocksOut >= 2) { // blocks fly from the bed onto the plot's material stack
+        SV.blocksOut -= 2;
+        const p = truckPose();
+        arc(p.x0 + p.len * rnd(0.1, 0.55), p.y - L.u * 0.85, L.plotX0 + L.u * rnd(0.6, 1.5), L.gy - L.u * 0.3, rnd(0.35, 0.5), rubbleCol(S.build.material), L.u * 0.12);
+      }
+    } else if (e.type === 'truckReturned') {
+      playBrake(near * 0.4);
     }
   }
   // exhaust puffs while the truck slows into the bay
-  if (S.truck.state === 'ARRIVING' && S.truck.t > S.truck.dur * 0.6 && Math.random() < dt * 3) { const p = truckPose(); exhaust(p.rear + p.len - 4, p.y - L.u * 0.25, 1); }
+  if (S.truck.state === 'ARRIVING' && S.truck.t > S.truck.dur * 0.6 && Math.random() < dt * 3) { const p = truckPose(); exhaust(p.x0 + p.len - 4, p.y - L.u * 0.25, 1); }
   // machines turn only while there is material to process
   const working = S.yard && SV.buildT >= 1 && S.raw.qty > 0.01;
   if (working) SV.spin += dt * (2.4 + 0.5 * S.upg.processSpeed);
@@ -297,7 +320,7 @@ export function presentSurface(events: SurfaceEvent[], dt: number) {
 /** Called by the panel when the Recycling Yard is bought. */
 export function yardPurchased() {
   SV.buildT = 0; SV.knockT = 0;
-  say('Now that is a proper operation.');
+  say("Now we're in business.");
   playPurchase();
 }
 
@@ -306,4 +329,31 @@ function surfaceVol() {
   const gy = yOf(0), H = view.H;
   const off = gy < 0 ? -gy : gy > H ? gy - H : 0;
   return Math.max(0.15, 1 - off / (H * 1.5));
+}
+
+// ---- worksite expansion: whistle, beeps, the BOOM ----
+export function presentExpansion(events: ExpEvent[]) {
+  for (const e of events) {
+    if (e === 'whistle') playWhistle();
+    else if (e === 'beep') playBeep();
+    else if (e === 'boom') {
+      playBlast(); duckMusic();
+      hitStop(90);
+      impulse(CFG.impulse.crit * 3.2, rnd(-0.4, 0.4), 1);
+      const mat = materialAt(S.depth), s = faceScale();
+      // dust fills the new chamber; rocks fly off the old walls
+      for (let i = 0; i < 70; i++) {
+        const p = toScreen(rnd(0, face.w), rnd(-140, 0));
+        addPart({ kind: 'dust', x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-60, 20), size: rnd(8, 18) * fxk(), col: mat.dust + '1)', life: rnd(1.2, 2.4), floor: Infinity, bounce: 0 });
+      }
+      for (const side of [0, face.w]) {
+        for (let i = 0; i < 26; i++) {
+          const p = toScreen(side + rnd(-30, 30), rnd(-130, -10));
+          const a = side ? rnd(-Math.PI * 0.9, -Math.PI * 0.55) : rnd(-Math.PI * 0.45, -Math.PI * 0.1), v = rnd(200, 460);
+          addPart({ kind: 'frag', x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vr: rnd(-14, 14), size: rnd(2.5, 5) * s, col: fragColor(mat), life: rnd(0.8, 1.3), floor: toScreen(0, 0).y + rnd(0, 6), bounce: 0.25, shape: true });
+        }
+      }
+      FX.banner = { s: 'WORK CHAMBER', sub: 'Room for a bigger crew — and an Excavator', t: 0 };
+    }
+  }
 }

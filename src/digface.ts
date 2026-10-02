@@ -30,23 +30,24 @@ export interface Chunk {
 
 export interface Pulse { x: number; y: number; t: number; k: number }
 
-export interface Face { chunks: Chunk[]; seams: number[][]; seamTop: number[] }
+/** The working face. Width and chunk count come from the worksite tier (Narrow Shaft / Work Chamber). */
+export interface Face { chunks: Chunk[]; seams: number[][]; seamTop: number[]; w: number; n: number; tier: number }
 
-export const face: Face = { chunks: [], seams: [], seamTop: [] };
+export const face: Face = { chunks: [], seams: [], seamTop: [], w: F.logicalW, n: F.chunks, tier: 0 };
 
-const chunkW = () => F.logicalW / F.chunks;
+const chunkW = () => face.w / face.n;
 const SEAM_SAMPLES = 4;
 
 function buildSeams() {
   // Seam k is a wandering vertical polyline (x per sample, top..bottom). Outer seams are the shaft walls.
   face.seams = [];
   face.seamTop = [];
-  for (let k = 0; k <= F.chunks; k++) {
+  for (let k = 0; k <= face.n; k++) {
     face.seamTop.push(rnd(0, F.edgeJitter * 0.5)); // shared by both neighbours so the top edge is continuous
     const base = k * chunkW();
     const xs: number[] = [];
     for (let j = 0; j <= SEAM_SAMPLES; j++) {
-      xs.push(k === 0 || k === F.chunks ? base : base + rnd(-1, 1) * chunkW() * F.seamJitter);
+      xs.push(k === 0 || k === face.n ? base : base + rnd(-1, 1) * chunkW() * F.seamJitter);
     }
     face.seams.push(xs);
   }
@@ -80,10 +81,11 @@ function makeChunk(i: number, mat: Material, hp: number): Chunk {
   };
 }
 
-export function initFace(mat: Material, hp: number) {
+export function initFace(mat: Material, hp: number, w: number = F.logicalW, n: number = F.chunks, tier = 0) {
+  face.w = w; face.n = n; face.tier = tier;
   buildSeams();
   face.chunks = [];
-  for (let i = 0; i < F.chunks; i++) face.chunks.push(makeChunk(i, mat, hp));
+  for (let i = 0; i < face.n; i++) face.chunks.push(makeChunk(i, mat, hp));
 }
 
 /** Replace a broken chunk with fresh material. */
@@ -103,8 +105,8 @@ export function chunkCenterX(i: number) {
 
 /** Chunk whose top span contains logical x (clamped to the face). */
 export function chunkAtX(x: number): number {
-  for (let i = 0; i < F.chunks; i++) if (x < face.seams[i + 1][0]) return i;
-  return F.chunks - 1;
+  for (let i = 0; i < face.n; i++) if (x < face.seams[i + 1][0]) return i;
+  return face.n - 1;
 }
 
 /** Clamp a hit point so it lands inside chunk i's top span. */

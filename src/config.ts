@@ -79,7 +79,7 @@ export const UPGRADES: Upgrade[] = [
   { id: 'loadSpeed', group: 'transport', name: 'Loading Speed', ic: '🪣', baseCost: 50, growth: 1.55, maxLevel: 30 },
   { id: 'rail', group: 'transport', name: 'Rail Quality', ic: '🛤️', baseCost: 200, growth: 1.8, maxLevel: 20 },
   { id: 'processSpeed', group: 'processing', name: 'Processing Speed', ic: '⚙️', baseCost: 75, growth: 1.6, maxLevel: 30 },
-  { id: 'contractValue', group: 'processing', name: 'Contract Value', ic: '💲', baseCost: 140, growth: 1.75, maxLevel: 30 },
+  { id: 'contractValue', group: 'processing', name: 'Block Quality', ic: '💎', baseCost: 140, growth: 1.75, maxLevel: 30 }, // raises property value + milestone pay
   { id: 'rawStorage', group: 'processing', name: 'Raw Storage', ic: '📦', baseCost: 110, growth: 1.65, maxLevel: 30 },
 ];
 
@@ -93,24 +93,60 @@ export interface Tool {
   head: string; headScale: number; handle: string; // look in hand
   fx: number; // chip/debris intensity multiplier
   thud: number; // extra low-end weight in the impact sound (0..1)
+  yield: number; // rubble per break multiplier: bigger tools visibly produce more material
 }
 export const TOOLS: Tool[] = [
-  { name: 'Pickaxe', ic: '⛏️', kind: 'pick', pow: 1, burst: 1, cost: 0, unlockDepth: 0, head: '#aab3bd', headScale: 1, handle: '#8a5a2b', fx: 1, thud: 0 },
-  { name: 'Iron Pickaxe', ic: '⛏️', kind: 'pick', pow: 1.5, burst: 1, cost: 75, unlockDepth: 0, head: '#6f7882', headScale: 1.18, handle: '#6b4423', fx: 1.25, thud: 0.35 },
-  { name: 'Heavy Pickaxe', ic: '⚒️', kind: 'pick', pow: 2.25, burst: 1, cost: 260, unlockDepth: 25, head: '#4a5058', headScale: 1.5, handle: '#4e3320', fx: 1.5, thud: 0.8 },
-  { name: 'Jackhammer', ic: '🔨', kind: 'jack', pow: 1.4, burst: 4, cost: 1800, unlockDepth: 75, head: '#ffcf3a', headScale: 1, handle: '#3b3f45', fx: 1.3, thud: 0.5 },
+  { name: 'Pickaxe', ic: '⛏️', kind: 'pick', pow: 1, burst: 1, cost: 0, unlockDepth: 0, head: '#aab3bd', headScale: 1, handle: '#8a5a2b', fx: 1, thud: 0, yield: 1 },
+  { name: 'Iron Pickaxe', ic: '⛏️', kind: 'pick', pow: 1.5, burst: 1, cost: 75, unlockDepth: 0, head: '#6f7882', headScale: 1.18, handle: '#6b4423', fx: 1.25, thud: 0.35, yield: 1.5 },
+  { name: 'Heavy Pickaxe', ic: '⚒️', kind: 'pick', pow: 2.25, burst: 1, cost: 260, unlockDepth: 25, head: '#4a5058', headScale: 1.5, handle: '#4e3320', fx: 1.5, thud: 0.8, yield: 2.5 },
+  { name: 'Jackhammer', ic: '🔨', kind: 'jack', pow: 1.4, burst: 4, cost: 1800, unlockDepth: 75, head: '#ffcf3a', headScale: 1, handle: '#3b3f45', fx: 1.3, thud: 0.5, yield: 3.5 },
 ];
 
 // ---- crew ----
 export type CrewId = 'dig' | 'exc';
 export interface Crew {
   id: CrewId; name: string; ic: string; ds: string; cost: number; unlockDepth: number;
-  dps: number; // raw dig power per second per unit
+  dps: number; // raw dig power per second per unit (analytic; the excavator bites whole chunks)
   swingSecs: number; // visible strike cadence per worker
+  yield: number; // rubble per break multiplier
+  needsTier: number; // minimum worksite tier (machines need room)
+  max: number; // how many can be owned (machines scale by class, not by stacking copies)
 }
 export const CREW: Crew[] = [
-  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Rappels in and digs all day', cost: 80, unlockDepth: 0, dps: 0.6, swingSecs: 1.1 },
-  { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'A bucket the size of a car', cost: 30000, unlockDepth: 235, dps: 14, swingSecs: 1.8 },
+  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Climbs down and digs all day', cost: 80, unlockDepth: 0, dps: 0.6, swingSecs: 1.1, yield: 1, needsTier: 0, max: 999 },
+  { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'Takes a whole chunk per bucket', cost: 900, unlockDepth: 0, dps: 2.2, swingSecs: 2.4, yield: 6, needsTier: 1, max: 1 },
+];
+
+// ---- worksite tiers (the mine physically expands; face-logical units, x = 0 at the left wall) ----
+export interface Worksite {
+  name: string;
+  width: number; // logical width of the work floor (the shaft itself is CFG.face.logicalW wide, centred)
+  chunks: number; // dig-face damage regions
+  ceiling: number; // chamber height above the floor (0 = open shaft)
+  visible: number; // animated crew on the floor (the rest dig at full rate, shown on the stairs/platform)
+  slots: number[]; // crew floor positions
+  slotsWithExc: number[]; // crew positions when the excavator is present
+  excX: number; // excavator station
+  playerX: number; // where the player starts
+  cost: number;
+  unlockCrew: number; // owned diggers that make the expansion available
+}
+export const WORKSITES: Worksite[] = [
+  { name: 'Narrow Shaft', width: 260, chunks: 8, ceiling: 0, visible: 3, slots: [76, 112, 148], slotsWithExc: [], excX: 0, playerX: 104, cost: 0, unlockCrew: 0 },
+  { name: 'Work Chamber', width: 420, chunks: 13, ceiling: 150, visible: 5, slots: [150, 196, 352, 392, 116], slotsWithExc: [262, 352, 392], excX: 112, playerX: 240, cost: 450, unlockCrew: 2 },
+];
+
+// ---- construction projects (one plot, reused; each project is bigger than the last) ----
+export interface BuildStage { name: string; blocks: number }
+export interface Project { id: 'cabin' | 'home'; name: string; value: number; stages: BuildStage[] }
+export const PROJECTS: Project[] = [
+  { id: 'cabin', name: 'Tiny Cabin', value: 900, stages: [
+    { name: 'Foundation', blocks: 30 }, { name: 'Frame', blocks: 30 }, { name: 'Walls', blocks: 40 }, { name: 'Roof', blocks: 30 }, { name: 'Finishing', blocks: 20 },
+  ] },
+  { id: 'home', name: 'Two-Story Home', value: 4200, stages: [
+    { name: 'Foundation', blocks: 60 }, { name: 'Ground Floor', blocks: 70 }, { name: 'Upper Floor', blocks: 80 }, { name: 'Walls & Siding', blocks: 80 },
+    { name: 'Roof', blocks: 70 }, { name: 'Windows & Doors', blocks: 60 }, { name: 'Landscaping', blocks: 40 },
+  ] },
 ];
 
 // Finds kept from the prototype that fall inside the slice. Animated reveals are Step 3.
@@ -122,10 +158,10 @@ export const FINDS: Find[] = [
 ];
 
 export const CFG = {
-  saveKey: 'digtohell_v4',
-  saveVersion: 4,
-  // older saves migrate (progress, cash and material kept): v3 = Phase 3A–3C (seller model), v2 = cash-from-digging
-  migrateFrom: [{ key: 'digtohell_v3', version: 3 }, { key: 'digtohell_v2', version: 2 }],
+  saveKey: 'digtohell_v5',
+  saveVersion: 5,
+  // older saves migrate (progress, cash and material kept): v4 = Phase 3C.5 (truck paid cash), v3 = 3A–3C, v2 = cash-from-digging
+  migrateFrom: [{ key: 'digtohell_v4', version: 4 }, { key: 'digtohell_v3', version: 3 }, { key: 'digtohell_v2', version: 2 }],
   legacySaveKeys: ['digtohell_v1'], // deliberately discarded: old 15,000 m economy
   saveIntervalMs: 5000,
 
@@ -179,7 +215,8 @@ export const CFG = {
     price: { base: 3, perLevel: 0.25 }, // $ per unit of carried material value, paid on truck departure
     pressBatch: 4, // units per press cycle (visual cadence; a block appears each THUMP)
     contractorRate: 30, // units/s the contractor (tutorial buyer) takes before the yard exists
-    truck: { capacity: 60, pickupMin: 15, arriveSecs: 3.6, departSecs: 3.4, loadRate: 16, minLoadSecs: 1.8, waitSecs: 4 },
+    // the delivery truck lives at the yard: PARKED -> LOADING -> TO_SITE -> UNLOADING (at the plot) -> RETURNING -> PARKED
+    truck: { capacity: 60, pickupMin: 15, arriveSecs: 3.6, driveSecs: 4, loadRate: 16, unloadRate: 20, minLoadSecs: 1.8, waitSecs: 4 },
     processTiers: [0, 3, 6], // faster parts, then a second crusher drum, then a bigger press
     valueTiers: [0, 2, 4, 6], // painted sign -> contract board -> weigh station -> company livery
     storageTiers: [0, 2, 4], // hopper -> bigger hopper -> overflow bunker
@@ -187,6 +224,41 @@ export const CFG = {
     revealStorageFrac: 0.5, // raw fraction of capacity that reveals Raw Storage
     stackVisualMax: 120, // finished units at which the output stack reads as full
   },
+
+  // ---- construction ----
+  build: {
+    rate: 3, // blocks/s the builders consume during an active stage
+    stagePay: 0.08, // milestone payment per completed stage (fraction of property value)
+    soldHoldSecs: 2.4, // SOLD sign hold before the plot clears
+    clearSecs: 2.2, // bulldozer cleanup
+    plotOffsetU: 4.6, // plot centre, in surface worker units right of the yard's truck bay end
+    stackVisualMax: 120,
+  },
+
+  // ---- workers: lightweight fatigue + rest platform ----
+  rest: {
+    work: [60, 120] as const, // secs of work before a worker gets tired (staggered)
+    rest: [10, 18] as const, // secs on the bench
+    seats: 3,
+    uptime: 0.85, // analytic share of time crew dig (offline / hidden crew)
+    walk: 34, climb: 22, // logical px/s
+    stairFootX: 58, landingX: 12, landingY: -44, platformY: -88, platformW: 62, seatX: [12, 28, 44],
+    minDepth: 22, // m: the rest platform is built into the wall once the shaft is this deep (before that nobody tires)
+    ladderX: 42, // the access ladder on the left wall (surface <-> platform/floor)
+    idleEvery: [24, 60] as const, // secs between personality idles per worker
+    idleSecs: [2.2, 3.2] as const,
+  },
+
+  // ---- first-time introduction ----
+  intro: {
+    lineSecs: 2.6, // each opening line
+    rubbleToCart: 8, // rubble dug before "RUBBLE ISN'T MONEY"
+    contractorTalkSecs: 3.2, // contractor inspects the first load before buying it
+    seedCash: 95, // the contractor buys only until you hold this much (just over the yard's cost); the rest stays for the yard's first blocks
+  },
+
+  // ---- navigation ----
+  nav: { transitSecs: 0.75, quickSecs: 0.35, quickWithinSecs: 2.5 },
 
   // ---- offline ----
   offlineCapSecs: 8 * 3600,
@@ -222,18 +294,14 @@ export const CFG = {
     chainGapMs: 55, // min gap between queued impacts when clicking very fast
     keyboardSpread: 70, // keyboard dig picks a chunk within this logical px of the miner
   },
-  crewVisibleMax: 3, // animated diggers on the face; the rest still dig at full DPS, shown as a helmet row
-  crewVisibleWithExc: 2, // the excavator takes one digger's space
-  crewSlots: { dig: [22, 62, 140], exc: [34] } as Record<CrewId, number[]>, // right side is the loading area
-  crewSlotsWithExc: [130, 166], // the excavator works from a timber mat on the left
-  minerStartX: 100,
-  crewArriveSecs: 1.2, // rope drop -> slide down -> land -> lamp on -> dig
+  crewArriveSecs: 1.6, // new hire climbs down the stairs from above, lamp on, starts digging
   jackBurstGapMs: 45, // jackhammer impacts within one click
   reserveHelmetsMax: 8,
-  playerScale: 1.3, // player miner is drawn larger + rim + strongest lamp so it reads first
+  playerScale: 1.15, // ~1.1× a worker: the player reads by clothing, lamp and position, never by giant scale
   crewScale: 1.05,
+  excavatorScale: 1.35, // machines share world scale: clearly bigger than a person
   crewFxScale: 0.6, // crew impact intensity relative to the player's (chips, dust, pulse)
-  excavatorReach: 66, // logical px from the excavator's centre to where the bucket bites
+  excavatorReach: 88, // logical px from the excavator's centre to where the bucket bites
 
   // ---- camera / juice hierarchy ----
   impulse: { hit: 0.3, break: 1.4, crit: 2.1, spring: 340, damping: 26 },
@@ -263,7 +331,7 @@ export const CFG = {
   shaftMinW: 260, // narrow screens: shaft takes at least this (bounded by shaftNarrowFrac)
   shaftNarrowFrac: 0.84,
   shaftCenterFrac: 0.45, // shaft sits slightly left so the Recycling Yard fits on the right at the surface
-  zoom: { dig: 1, surfaceMax: 1, surfaceMin: 0.45, ease: 3.5 }, // camera scale: close at the dig site; the surface pans + fits the yard
+  zoom: { dig: 1, surfaceMax: 1, buildMax: 1.3, surfaceMin: 0.45, ease: 3.5 }, // camera scale: close at the dig site; the surface pans + fits the yard
   fxScaleRef: 1.8, // face scale the particle sizes were authored at (effects grow with the work area)
   light: { fadeSpan: 0.75, shaftDark: 0.45, radius: 0.75, glow: 0.14, maxDark: 0.42, darkAtM: 260 }, // shaft vignette, work light, depth darkness
   scrollSpeed: 0.6,
@@ -305,4 +373,9 @@ export const AUDIO = {
   knock: { freq: 140, gain: 0.3 },
   jack: { pulse: [55, 70] as Range, rate: 20, gain: 0.32 },
   thud: { freq: 58, decay: 0.16, gain: 0.7 },
+  whistle: { f: [1800, 2500, 2000] as const, secs: 0.4, gain: 0.12 },
+  blast: { low: 40, secs: 1.4, gain: 0.95 },
+  hammer: { freq: 420, gain: 0.18 },
+  // music (original procedural Web Audio music; optional local files in public/music/<state>.ogg|mp3)
+  music: { volume: 0.35, sfx: 0.85, crossfadeSecs: 2.5, duckSecs: 2.2, duckTo: 0.25 },
 };

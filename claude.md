@@ -29,28 +29,30 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 - Audio: synthesized SFX (Web Audio) + `music.ts` MusicManager (procedural original music per site; optional local asset slots `public/music/<state>.(ogg|mp3)`); volumes + mute persisted in `dth_settings`.
 - Save: localStorage `digtohell_v5` every 5 s + unload/pagehide; versioned migration (v4/v3/v2 → v5); old key deleted only after the new save is written. Accordion state `dth_acc`.
 - Modules (src/):
-  - `config` tuning · `economy` pure formulas · `state` save schema/migration · `util`
-  - `sim` strikes, crew strikes, finds, offline · `cart` cart state machine · `surface` contractor, processing, truck route state machine · `construction` projects/stages/sale sim · `workers` crew presentation state: fatigue, rest routes, idles · `digface` chunk damage (dynamic width per worksite tier) · `geo` geology sampler + painter
-  - `rig` normalized character renderer (CharacterRig) · `characters` machines (excavator) + lamps · `render` mine/world/rails/cart/HUD · `yard` recycling yard + truck · `site` construction site + buildings · `landscape` sky/day-night/scenery · `draw` shared helpers · `fx` particles/popups/impulse · `juice` sim events → FX/audio · `audio` SFX · `music` MusicManager
-  - `view` canvas, camera (site framing, zoom/pan, transitions), geometry · `nav` site navigation bar + attention badges · `intro` first-time introduction state machine + text overlay · `panel` contextual per-site panels · `main` wiring + loop only
-- Dev-only hooks (`import.meta.env.DEV`): `window.__dig` (state, save, setPhase, glide/site, setCritChance, cartDepth…) and a debug panel. Stripped from production builds.
+  - `config` tuning · `economy` pure formulas · `state` save schema/migration · `util` · `layout` work-floor positions relative to the centred shaft
+  - `sim` strikes, finds, offline · `workers` crew behaviour: strikes, fatigue, rest paths, idles, arrival, `initSim`/`applyWorksite` · `miner` player strike scheduling · `cart` cart state machine · `surface` contractor, processing, truck route · `construction` projects/stages/sale · `expansion` Work Chamber blast sequence · `digface` chunk damage (width per worksite tier) · `geo` geology sampler + painter
+  - `rig` CharacterRig (all people) · `characters` excavator + lamp beams · `render` mine (face, chamber, rest area, crew, cart, rails, HUD) · `yard` recycling yard + truck · `site` construction site + buildings + build-event FX · `landscape` sky/day-night · `draw` shared helpers · `fx` particles/popups/impulse · `juice` sim events → FX/audio · `audio` SFX + buses · `music` MusicManager + settings
+  - `view` canvas, site camera (tweens, zoom/pan), geometry, `surfaceLayout()` · `nav` site bar + attention badges · `intro` introduction steps + overlay text + follow hints · `panel` contextual per-site panels · `main` wiring + loop only
+- Dev-only hooks (`import.meta.env.DEV`): `window.__dig` (state incl. camera/workers, save, go(site), setSpeed(k) time-scale, tireAll, forceYard, setPhase, setCritChance, cartDepth…) and a debug panel (+$1,000, +50 rubble, +60 blocks on site). Stripped from production builds.
+- Testing: puppeteer-core + system Chrome scripts in the session scratchpad (full-loop bot `v2flow.mjs <speed> <secs> <tag>`, targeted `v2target.mjs`, `v2perf.mjs`), headless pacing/conservation via `npx tsx` importing src modules. Seed localStorage from a same-origin non-game URL (e.g. `/src/style.css`) — reloading the game page saves on unload and overwrites injected saves.
 
-## CURRENT ECONOMY (as built — see the V2-1 section for numbers)
-- Extraction: chunk breaks add rubble × tool yield; crew strikes; Excavator bites whole chunks (needs Work Chamber).
-- Transport: one permanent cart (capacity / speed / loading / rail quality).
-- Yard: raw (Raw Storage cap) → processing → finished blocks; the delivery truck parks at the yard bay, loads blocks, drives to the construction site, unloads into the site stack, returns.
-- Construction: the player starts each stage when enough blocks are on site; builders consume blocks; stage completion pays a milestone; the finished property is sold for the main payout; the plot clears and the next (bigger) project appears.
+## CURRENT ECONOMY (as built in V2-1)
+- Extraction: a break gives 2 rubble × tool yield (Pickaxe ×1 · Iron ×1.5 · Heavy ×2.5 · Jackhammer ×3.5), ×2 on crit; diggers 0.6 dps each ($80, ×1.28 per hire); Excavator ($900, needs the Work Chamber, one) bites a whole chunk for ×6 rubble.
+- Transport: one cart, 50 capacity base; travel = 2.5 s + (depth + 7 m) / speed.
+- Yard ($80): raw 120 cap → 2/s processing → blocks; truck (60 per trip, leaves at ≥ 15) drives to the plot in 4 s.
+- Construction: Tiny Cabin $900 (30/30/40/30/20 blocks), Two-Story Home $4,200 (60/70/80/80/70/60/40); builders use 3 blocks/s; each stage pays 8% of the value; the sale pays the value (× Block Quality bonus +25%/level). The tutorial contractor pays ≈$95 seed money once.
+- Work Chamber $450 (needs 2 diggers).
 
 ## BUILD ORDER
 1. TS/Vite port — DONE · 2. Dig feel — DONE · 2.5. Click-loop polish — DONE
 3A/3B. Rubble economy + physical cart — DONE · 3C. Surface economy + extraction ladder — DONE (superseded model) · 3C.5. World identity + Recycling Yard — DONE
-**V2-1. Macro loop + navigation + Construction V1 + scalable characters + rest + Work Chamber — CURRENT**
+**V2-1. Macro loop + navigation + Construction V1 + scalable characters + rest + Work Chamber — BUILT, awaiting human playtest**
 V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, Side Cave) · V2-4. Industrial progression (drill rig, Industrial Chamber, logistics) · V2-5. More construction projects + automation · V2-6. Deep mystery / Red Door · later: museum, second mine, prestige, leaderboards, SDK.
 *(Superseded order: 3D navigation/unlimited depth, 4 animated finds, 5 upgrade arrivals, 6 interruptions, 8 Red Door. Navigation is now V2-1; unlimited depth + history browsing fold into later milestones.)*
 
 ## STATUS LOG
 - Step 1 port `e4d758d` · Step 2 dig feel `fc51a70` · Step 2.5 polish `72800ed` · design update `6ea5c2b` · 3A+3B `b4a2c08` · 3C `ce168ca` · 3C.5 `4bfadeb` (hash commits `3c30846`, `1278c76`, `3cf1c7a`, `81d4023`) · reset confirm `2011020`
-- V2 design consolidation (this Spec/claude rewrite): see git log "V2 design"
+- V2 design consolidation `719166f`
 - V2-1 implementation: `V21_HASH`
 
 ### History in brief (details in git history and older Spec revisions)
@@ -59,15 +61,19 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 - 3C: tool ladder (Pickaxe → Iron → Heavy → Jackhammer burst) and Digger hiring with rope-drop arrival; seller model (superseded).
 - 3C.5: Recycling Yard (hopper → crusher → auger → press → blocks), trucks (golden-angle colours), material composition `mix`, deterministic painted geology (5 m cached segments), new characters + helmet lamps + depth darkness, IK excavator, per-level rail visuals, painted landscape with day/night, accordion panel, save v4. Perf regression under heavy CPU throttle noted.
 
-## KNOWN ISSUES (carried into V2-1; update after implementation)
-- Throttled-CPU performance regressed in 3C.5 (desktop fine).
-- Transport dominated the 3C.5 economy (dig-site pile grew to hundreds by 3:00).
-- Hits land ~72 ms after the click (windup + downswing) to keep animation and sim in sync.
-- Finds still use the placeholder modal until discoveries are rebuilt; depth capped at 300 m in code.
-- Sounds verified only as error-free, not by ear. Offline progression design unresolved.
+## KNOWN ISSUES (after V2-1)
+- Transport is the silent bottleneck from ~3:00: with 4–6 diggers the dig-site pile reaches 300–550 by 5:00 unless the player buys cart upgrades. Nothing flags it (no badge, the pile number just grows).
+- 0:45 → 1:22 of a fresh game: the first truck brings ~18 of the 30 Foundation blocks; ~35 s of digging with no new decision.
+- First visible rest happens late (~4:00) because the platform needs ≥ 22 m and workers work 60–120 s first.
+- Throttled-CPU hitch: painting a new geology segment costs ~30 ms (≈130 ms at 4× CPU throttle) once per 5 m of digging (pre-existing from 3C.5).
+- Truck drives back mirrored (cab first) and flips instantly when parking; no U-turn.
+- Two-Story Home repeats after its sale (no Project #3 yet, by scope). Build site ground beyond the painted geology is a blended flat fill.
+- Music is procedural and verified only as running (state switching, crossfade, no errors) — not judged by ear. Same for SFX.
+- Finds (coin, buried car) are placeholder banners; depth is capped at 300 m in code.
+- Offline progression design is still interim (crew dig + chain runs; stages never auto-start).
 
 ## CURRENT IMPLEMENTATION TASK
-**V2-1** (Spec §23): A navigation (MINE/YARD/BUILD + transitions) · B contextual panels · C first-time introduction · D Construction V1 (Cabin → sell → Two-Story Home playable) · E economy routing (truck → construction; cash from stages/sale) · F tool yield · G CharacterRig (player, miner, construction worker; player scale ~1.1×, no giant shadow; variation) · H idle personality (idle, wipe sweat, adjust helmet, drink, look around) · I worker rest V1 (fatigue, left-wall switchback stairs, rest platform) · J Worksite Expansion V1 (Narrow Shaft → Work Chamber with blast sequence) · K Excavator requires Work Chamber, rescaled, big output · L recycling visibility · M MusicManager + settings · N real attention triggers. **Do not implement fossils, events, Red Door, prestige, more projects, multiple lots/carts, elevators, Industrial Chamber.** Stop for human playtest after V2-1.
+**None — V2-1 is complete and waiting for Tejas's playtest.** Next milestone after approval: **V2-2 Fossil Excavation** (Spec §11.1). Do not start it until the playtest feedback is in.
 
 ## HOW TO WORK WITH TEJAS
 - Be opinionated; say when an idea is weak. Be critical in reports — passing tests ≠ fun.

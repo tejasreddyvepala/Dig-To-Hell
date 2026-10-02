@@ -12,36 +12,80 @@
 <body>
 <div id="app">
   <div id="stage">
-    <canvas id="c" aria-label="Mine shaft. Click to dig."></canvas>
-    <div id="nav"><button id="navBtn" hidden></button></div>
+    <canvas id="c" aria-label="Your mine. Click the rock to dig."></canvas>
+    <nav id="nav" aria-label="Sites">
+      <button class="site" data-site="mine"><span class="lbl">Mine</span><span class="badge" aria-hidden="true"></span></button>
+      <button class="site" data-site="yard" hidden><span class="lbl">Yard</span><span class="badge" aria-hidden="true"></span></button>
+      <button class="site" data-site="build" hidden><span class="lbl">Build</span><span class="badge" aria-hidden="true"></span></button>
+    </nav>
+    <div id="hint" hidden></div>
+    <button id="setBtn" aria-label="Sound settings" aria-expanded="false">♪</button>
+    <div id="settings" hidden>
+      <label>Music <input type="range" id="volMusic" min="0" max="1" step="0.05"></label>
+      <label>Sound effects <input type="range" id="volSfx" min="0" max="1" step="0.05"></label>
+      <label class="chk"><input type="checkbox" id="mute"> Mute all</label>
+    </div>
+    <div id="intro" hidden>
+      <div id="introText"></div>
+      <button id="introBtn" hidden>START DIGGING</button>
+    </div>
     <div id="modal"><div class="card" id="card"></div></div>
   </div>
   <div id="panel">
     <div class="top">
       <div class="cash" id="cash">$0</div>
-      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span>Yard <b id="stock">—</b></span></div>
+      <div class="sub"><span>Depth <b id="depth">0 m</b></span><span id="siteName">Mine</span></div>
     </div>
     <div class="scroll">
-      <section class="acc" id="g-ext" data-acc="ext">
-        <button class="acc-h" aria-expanded="true"><span class="acc-t">Extraction</span><span class="stat" id="extStat"></span><span class="chev" aria-hidden="true">▾</span></button>
-        <div class="acc-b">
-          <div class="status" id="extHint"></div>
-          <div id="tool"></div>
-          <div id="crew"></div>
-        </div>
-      </section>
-      <section class="acc" id="g-tr" data-acc="tr" hidden>
-        <button class="acc-h" aria-expanded="false"><span class="acc-t">Transport</span><span class="stat" id="trStat"></span><span class="chev" aria-hidden="true">▾</span></button>
-        <div class="acc-b"><div id="transport"></div></div>
-      </section>
-      <section class="acc" id="g-proc" data-acc="proc" hidden>
-        <button class="acc-h" aria-expanded="false"><span class="acc-t">Processing</span><span class="stat" id="procStat"></span><span class="chev" aria-hidden="true">▾</span></button>
-        <div class="acc-b"><div id="yardCard"></div><div id="processing"></div></div>
-      </section>
-      <section class="acc" id="g-finds" data-acc="finds">
-        <button class="acc-h" aria-expanded="false"><span class="acc-t">Finds</span><span class="stat" id="findStat"></span><span class="chev" aria-hidden="true">▾</span></button>
-        <div class="acc-b"><div id="finds"></div></div>
-      </section>
+      <!-- MINE -->
+      <div class="sitepanel" id="p-mine" data-site="mine">
+        <section class="acc" data-acc="m-ext">
+          <button class="acc-h" aria-expanded="true"><span class="acc-t">Extraction</span><span class="stat" id="extStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b">
+            <div class="status" id="extHint"></div>
+            <div id="tool"></div>
+            <div id="crew"></div>
+          </div>
+        </section>
+        <section class="acc" data-acc="m-site" id="g-site" hidden>
+          <button class="acc-h" aria-expanded="false"><span class="acc-t">Worksite</span><span class="stat" id="siteStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b"><div id="expandCard"></div><div id="excCard"></div></div>
+        </section>
+        <section class="acc" data-acc="m-tr" id="g-tr" hidden>
+          <button class="acc-h" aria-expanded="false"><span class="acc-t">Transport</span><span class="stat" id="trStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b"><div id="transport"></div></div>
+        </section>
+        <section class="acc" data-acc="m-finds">
+          <button class="acc-h" aria-expanded="false"><span class="acc-t">Finds</span><span class="stat" id="findStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b"><div id="finds"></div></div>
+        </section>
+      </div>
+      <!-- YARD -->
+      <div class="sitepanel" id="p-yard" data-site="yard" hidden>
+        <section class="acc" data-acc="y-rec">
+          <button class="acc-h" aria-expanded="true"><span class="acc-t">Recycling</span><span class="stat" id="recStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b"><div class="status" id="yardHint"></div><div id="yardCard"></div><div id="processing"></div></div>
+        </section>
+        <section class="acc" data-acc="y-log" id="g-log" hidden>
+          <button class="acc-h" aria-expanded="true"><span class="acc-t">Logistics</span><span class="stat" id="logStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b"><div class="status" id="logInfo"></div></div>
+        </section>
+      </div>
+      <!-- BUILD -->
+      <div class="sitepanel" id="p-build" data-site="build" hidden>
+        <section class="acc" data-acc="b-proj">
+          <button class="acc-h" aria-expanded="true"><span class="acc-t">Project</span><span class="stat" id="projStat"></span><span class="chev" aria-hidden="true">▾</span></button>
+          <div class="acc-b">
+            <div class="proj">
+              <div class="proj-h"><span id="projName"></span><span id="projValue"></span></div>
+              <div class="bar"><i id="projBar"></i></div>
+              <ol id="stages"></ol>
+              <button id="buildAct" class="act"></button>
+              <div class="status" id="buildInfo"></div>
+            </div>
+          </div>
+        </section>
+      </div>
       <div id="debug"></div>
       <button class="reset" id="reset">Start over</button>
     </div>

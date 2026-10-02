@@ -7,7 +7,8 @@ import { S } from './state';
 import { mixPick, processRate, rawCap, tierOf } from './economy';
 import { rubbleRGB } from './geo';
 import { SV, truckPose } from './juice';
-import { drawCivilian, type Look } from './characters';
+import { drawRig, lookFor, RIG_H } from './rig';
+import { railX } from './layout';
 import { bubble, drawPile, pileHeight, pileLabel } from './draw';
 import { nightness } from './landscape';
 import { ctx, faceScale, surfaceLayout, toScreen, view, yOf } from './view';
@@ -16,8 +17,8 @@ import { hash, rgb } from './util';
 const C = CFG.cart, Y = CFG.yard;
 const FONT_UI = "'Rubik',system-ui,sans-serif";
 const STEEL = '#5b636c', STEEL_D = '#3f464e', STEEL_L = '#8a949e', YELLOW = '#e6a91a';
-const CONTRACTOR: Look = { shirt: '#7a5a3a', pants: '#3a3f34', helmet: '', cap: '#3d5a3a' };
-const HAND: Look = { shirt: '#3d6e9c', pants: '#2f3a44', helmet: '#ffd83a', vest: true };
+const CONTRACTOR = lookFor('contractor', 7);
+const HAND = lookFor('hand', 11);
 
 /** 0..1 progress of one construction step within the yard build. */
 const step = (a: number, b: number) => Math.max(0, Math.min(1, (SV.buildT - a) / (b - a)));
@@ -54,7 +55,6 @@ export function drawSurface(gy: number) {
     if (S.raw.qty >= 1 || S.flags.arrived) pileLabel(L.hopperX, gy - 2 - pileHeight(S.raw.qty, rawCap(S) * 0.6, u / 30) - 8, Math.floor(S.raw.qty), Math.round(11 + u * 0.08), false);
   }
   if (SV.contractorGone < 1) drawContractor(L);
-  if (S.truck.state !== 'NONE') drawTruck(night);
   // speech: the contractor before the yard, the yard hand after
   if (SV.speech) {
     const sx = S.yard && SV.contractorGone >= 1 ? L.pressX - u * 0.9 : L.stackX + u * 0.2;
@@ -63,7 +63,7 @@ export function drawSurface(gy: number) {
 }
 
 function drawHeadframe(gy: number, s: number, night: number) {
-  const x = toScreen(C.railX, 0).x, topY = yOf(-C.headframeM);
+  const x = toScreen(railX(), 0).x, topY = yOf(-C.headframeM);
   const w = 20 * s;
   ctx.strokeStyle = '#5b3d22'; ctx.lineWidth = Math.max(3, 2.4 * s); ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x - w, gy - 2); ctx.lineTo(x - 3 * s, topY); ctx.moveTo(x + w * 0.8, gy - 2); ctx.lineTo(x + 3 * s, topY); ctx.stroke();
@@ -79,7 +79,7 @@ function drawHeadframe(gy: number, s: number, night: number) {
 }
 
 function drawRoad(L: ReturnType<typeof surfaceLayout>) {
-  const u = L.u, x0 = L.pressX - u * 0.9, x1 = view.vx1 + 20, y = L.roadY;
+  const u = L.u, x0 = L.pressX - u * 0.9, x1 = Math.max(view.vx1 + 20, L.plotX1 + u * 2), y = L.roadY;
   ctx.fillStyle = '#5d5a55'; ctx.fillRect(x0, y - u * 0.22, x1 - x0, u * 0.44);
   ctx.fillStyle = '#4a4744'; ctx.fillRect(x0, y + u * 0.18, x1 - x0, u * 0.06);
   ctx.fillStyle = 'rgba(240,220,150,.7)';
@@ -116,6 +116,15 @@ function drawYard(L: ReturnType<typeof surfaceLayout>, night: number) {
         ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(i * 5.1))), 0.8 + hash(i * 2.2) * 0.4);
         ctx.beginPath(); ctx.ellipse(px, py, u * 0.06, u * 0.045, hash(i) * 3, 0, 6.283); ctx.fill();
       }
+    }
+    // cut-away window on the hopper body: the fill level is readable at a glance
+    if (s2 >= 1) {
+      const wx = L.hopperX - hw * 0.2, wy0 = top + (bot - top) * 0.18, wh = (bot - top) * 0.62, ww = hw * 0.4;
+      ctx.fillStyle = 'rgba(20,20,22,.85)'; ctx.fillRect(wx, wy0, ww, wh);
+      const lv = wh * fill;
+      ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, 0.5)), 0.95); ctx.fillRect(wx, wy0 + wh - lv, ww, lv);
+      ctx.fillStyle = 'rgba(255,255,255,.18)'; for (let i = 1; i < 4; i++) ctx.fillRect(wx, wy0 + (wh * i) / 4, ww * 0.35, 1);
+      ctx.strokeStyle = STEEL_L; ctx.lineWidth = 1.5; ctx.strokeRect(wx, wy0, ww, wh);
     }
     ctx.restore();
     if (st >= 2) { // overflow bunker
@@ -155,7 +164,23 @@ function drawYard(L: ReturnType<typeof surfaceLayout>, night: number) {
     for (let x = -pitch + ph; x < len; x += pitch) { ctx.beginPath(); ctx.moveTo(x, -tw / 2); ctx.lineTo(x + pitch * 0.55, tw / 2); ctx.stroke(); }
     ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(0, -tw / 2 + 2, len * s3, 2);
+    // crushed material riding up the screw (only while there is something to process)
+    if (S.raw.qty > 0.01 && s3 >= 1) {
+      const sp = (SV.spin * u * 0.18) % (u * 0.32);
+      for (let x = sp; x < len - u * 0.1; x += u * 0.32) {
+        ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(Math.floor((x - sp) / (u * 0.32)) * 1.9))), 0.95);
+        ctx.beginPath(); ctx.ellipse(x, -tw * 0.05, u * 0.055, u * 0.04, 0, 0, 6.283); ctx.fill();
+      }
+    }
     ctx.restore();
+    // material dropping from the hopper into the crusher
+    if (S.raw.qty > 0.01 && s3 >= 1) {
+      for (let i = 0; i < 3; i++) {
+        const k = (view.t * 2.2 + i / 3) % 1;
+        ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(i * 4.1))), 0.9);
+        ctx.fillRect(L.hopperX - u * 0.04 + (i - 1) * u * 0.05, gy - u * 0.68 + k * u * 0.2, u * 0.06, u * 0.06);
+      }
+    }
     ctx.fillStyle = STEEL_D; // auger supports
     ctx.fillRect(ax0 + (ax1 - ax0) * 0.55 - 2, ay0 + (ay1 - ay0) * 0.55, 4, gy - (ay0 + (ay1 - ay0) * 0.55));
     ctx.globalAlpha = 1;
@@ -222,7 +247,7 @@ function drawYard(L: ReturnType<typeof surfaceLayout>, night: number) {
   // ---- yard hand (scale reference), lights ----
   if (SV.buildT >= 1) {
     const busy = S.raw.qty > 0.01;
-    drawCivilian(L.pressX - u * 0.9, gy, u, HAND, busy ? (Math.sin(view.t * 3) + 1) / 4 : 0.1, 1);
+    drawRig(L.pressX - u * 0.9, gy, u / RIG_H, 1, HAND, busy ? { k: 'gesture', t: 0, a: (Math.sin(view.t * 3) + 1) / 4 } : { k: 'stand', t: 0 });
     for (const lx of [L.hopperX - u * 0.1, L.stackX + u * 0.5]) {
       ctx.fillStyle = STEEL_D; ctx.fillRect(lx - 1.5, gy - u * 2.3, 3, u * 2.3);
       ctx.fillStyle = '#ffd98a'; ctx.fillRect(lx - u * 0.12, gy - u * 2.36, u * 0.24, u * 0.07);
@@ -247,37 +272,50 @@ function block(cx: number, by: number, u: number, col: [number, number, number],
   ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(cx - w / 2, by - 1.5, w, 1.5);
 }
 
+/** The truck drives on the road in FRONT of the yard and the construction plot (drawn after both). */
+export function drawTruckLayer(gy: number) {
+  if (gy < view.vy0 - 400 || gy > view.vy1 + 400 || S.truck.state === 'NONE') return;
+  drawTruck(nightness());
+}
+
 function drawTruck(night: number) {
   const p = truckPose(), u = p.u, tr = S.truck;
-  const x = p.rear, y = p.y + p.rock * 1.5, len = p.len;
+  const len = p.len, y = p.y + p.rock * 1.5;
+  // drawn facing right from x = 0; mirrored about its centre when driving back to the yard
+  ctx.save();
+  ctx.translate(p.x0 + (p.dir < 0 ? len : 0), 0); ctx.scale(p.dir, 1);
+  const x = 0;
   const body = truckColor(tr.n), dark = truckColor(tr.n, 0.7);
   const wr = u * 0.27; // wheels roughly a worker's torso width
   const bedTop = y - u * 0.82, bedEnd = x + len * 0.68;
-  // chassis + wheels
+  // chassis + wheels (spokes turn while driving)
   ctx.fillStyle = '#2a2c30'; ctx.fillRect(x + u * 0.1, y - u * 0.42, len - u * 0.2, u * 0.16);
+  const roll = p.moving ? view.t * 9 : 0;
   for (const wx of [x + u * 0.45, x + u * 1.05, x + len - u * 0.55]) {
     ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(wx, y - wr, wr, 0, 6.283); ctx.fill();
     ctx.fillStyle = '#8a9198'; ctx.beginPath(); ctx.arc(wx, y - wr, wr * 0.45, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#3b3f45'; ctx.lineWidth = Math.max(1, u * 0.03);
+    ctx.beginPath(); ctx.moveTo(wx + Math.cos(roll) * wr * 0.4, y - wr + Math.sin(roll) * wr * 0.4); ctx.lineTo(wx - Math.cos(roll) * wr * 0.4, y - wr - Math.sin(roll) * wr * 0.4); ctx.stroke();
   }
   // flatbed with side rails
   ctx.fillStyle = dark; ctx.fillRect(x, y - u * 0.5, bedEnd - x, u * 0.1);
   ctx.fillStyle = body; ctx.fillRect(x, bedTop, u * 0.06, u * 0.36); ctx.fillRect(bedEnd - u * 0.06, bedTop, u * 0.06, u * 0.36);
   // load on the bed (rows of blocks)
-  const onBed = tr.state === 'DEPARTING' ? tr.bed : tr.load.qty;
-  const fill = onBed / Y.truck.capacity, n = Math.round(fill * 15), cols = 5, bw = (bedEnd - x - u * 0.16) / cols;
+  const fill = tr.load.qty / Y.truck.capacity, n = Math.round(fill * 15), cols = 5, bw = (bedEnd - x - u * 0.16) / cols;
   for (let i = 0; i < n; i++) {
     const c = i % cols, r = Math.floor(i / cols);
     block(x + u * 0.08 + c * bw + bw / 2, y - u * 0.5 - r * u * 0.16, u, lastBlock, hash(i * 1.7));
   }
-  // cab (front faces right: it backs into the bay, then drives off to the right)
+  // cab
   const cx = bedEnd + u * 0.04, cw = len - (bedEnd - x) - u * 0.04, ch = u * 1.5;
   ctx.fillStyle = body; ctx.beginPath(); ctx.roundRect(cx, y - ch + u * 0.26, cw, ch - u * 0.5, [u * 0.12, u * 0.2, 2, 2]); ctx.fill();
   ctx.fillStyle = '#9fd0ea'; ctx.beginPath(); ctx.roundRect(cx + cw * 0.38, y - ch + u * 0.4, cw * 0.5, u * 0.42, 3); ctx.fill();
   ctx.fillStyle = 'rgba(40,40,40,.6)'; ctx.beginPath(); ctx.arc(cx + cw * 0.58, y - ch + u * 0.6, u * 0.1, 0, 6.283); ctx.fill(); // driver
   ctx.fillStyle = dark; ctx.fillRect(cx, y - u * 0.5, cw, u * 0.08); // bumper line
   ctx.fillStyle = '#ffe9a8'; ctx.fillRect(cx + cw - u * 0.08, y - u * 0.62, u * 0.08, u * 0.1); // headlight
-  if (night > 0.05) glow(cx + cw + u * 0.3, y - u * 0.58, u * 0.8, 0.4 * night);
   ctx.fillStyle = '#3b3f45'; ctx.fillRect(cx - u * 0.05, y - ch + u * 0.15, u * 0.06, u * 0.5); // exhaust stack
+  ctx.restore();
+  if (night > 0.05) glow(p.dir > 0 ? p.x0 + len + u * 0.3 : p.x0 - u * 0.3, y - u * 0.58, u * 0.8, 0.4 * night);
 }
 
 function drawContractor(L: ReturnType<typeof surfaceLayout>) {
@@ -296,7 +334,7 @@ function drawContractor(L: ReturnType<typeof surfaceLayout>) {
   // the contractor himself (only while the truck is parked)
   if (gone <= 0) {
     const buying = !S.flags.sold && S.flags.arrived && S.raw.qty > 0;
-    drawCivilian(L.hopperX + u * 0.75, L.gy, u, CONTRACTOR, buying ? (Math.sin(view.t * 8) + 1) / 2 : 0.15, -1);
+    drawRig(L.hopperX + u * 0.75, L.gy, u / RIG_H, -1, CONTRACTOR, { k: 'gesture', t: 0, a: buying ? (Math.sin(view.t * 8) + 1) / 2 : 0.15 });
   }
   ctx.restore();
 }

@@ -3,12 +3,16 @@ import { CFG, FINDS, MATERIALS, MAX_DEPTH, TOOLS, type Find } from './config';
 import { S } from './state';
 import { cartCapacity, mixPick, tierOf } from './economy';
 import { materialAt, rubbleRGB } from './geo';
-import { drawSurface, flushGlows } from './yard';
+import { drawSurface, drawTruckLayer, flushGlows } from './yard';
 import { bubble, drawPile, pileHeight, pileLabel } from './draw';
 import { cartBlocked, cartDepth, cartFill } from './cart';
-import { CREW_LOOKS, PLAYER_LOOK, drawExcavator, drawExcavatorLight, drawLampBeam, drawMiner, type Look } from './characters';
+import { drawExcavator, drawExcavatorLight, drawLampBeam } from './characters';
+import { drawRig, lookFor, type Look, type Pose } from './rig';
 import { face, type Chunk, type Crack, type Mark } from './digface';
-import { workers } from './sim';
+import { pathPos, restAreaBuilt, restingCount, seatsTotal, workers, type Worker } from './workers';
+import { pileX, railX, shaftOff, worksiteDef } from './layout';
+import { EXP, chargeSpots, expanding } from './expansion';
+import { drawSite } from './site';
 import { miner, minerSwingAngle, swingAngle } from './miner';
 import { FX, drawPopups, drawWorldFx } from './fx';
 import { applyZoom, cartScreen, ctx, faceOrigin, faceScale, faceY, shaftCX, shaftW, toScreen, view, viewTop, yOf } from './view';
@@ -124,7 +128,7 @@ const PULSE: Record<string, string> = {
 
 /** The working face: a continuous mass of earth whose top band holds the logical damage regions. */
 function drawFace(s: number) {
-  const F = CFG.face, W = F.logicalW, cur = materialAt(S.depth);
+  const F = CFG.face, W = face.w, cur = materialAt(S.depth);
   // dark inner earth just under the surface: only visible where a break leaves a crater
   const gm = ctx.createLinearGradient(0, F.edgeJitter, 0, F.craterDepth);
   gm.addColorStop(0, rgb(cur.face, 0.3)); gm.addColorStop(1, rgba(cur.face, 0.45, 0));
@@ -197,77 +201,218 @@ function drawFace(s: number) {
   lip(); ctx.strokeStyle = rgba(cur.face, 1.5, 0.75); ctx.lineWidth = 1.5; ctx.stroke();
 }
 
-// ---------- figures (art lives in characters.ts) ----------
+// ---------- figures (people: rig.ts; machines: characters.ts) ----------
 function workerAngle(timer: number, since: number) {
   return timer < IMPACT_AT ? swingAngle(IMPACT_AT - timer) : swingAngle(IMPACT_AT + since);
 }
 /** 0..1 swing progress for machines (0 raised, 1 at impact), derived from the same timing as the miners. */
 const machineK = (timer: number, since: number) => Math.max(0, Math.min(1, (workerAngle(timer, since) + 0.5) / 1.55));
 
-/** Owned diggers beyond the visible few: a quiet row of helmets on the shaft wall. */
+const PLAYER_LOOK = lookFor('player', 1);
+const looks = new Map<number, Look>();
+const minerLook = (seed: number) => { let l = looks.get(seed); if (!l) looks.set(seed, (l = lookFor('miner', seed))); return l; };
+const RS = CFG.rest;
+
+/** Pose for a crew member from its behaviour state. */
+function workerPose(w: Worker): Pose {
+  switch (w.state) {
+    case 'arrive': case 'toRest': case 'back': {
+      const p = pathPos(w.path, w.pathT);
+      return { k: p.climbing ? 'climb' : 'walk', t: w.pathT * 1.7, lit: w.state !== 'arrive' || w.pathT > 0.3 };
+    }
+    case 'rest': {
+      const c = w.t % 7; // a sip of water now and then
+      return { k: 'sit', t: 0, a: c > 3 && c < 5 ? Math.sin(((c - 3) / 2) * Math.PI) : 0, lit: false };
+    }
+    case 'idle': return { k: w.idle, t: w.t / w.idleDur };
+    default: return { k: 'swing', t: 0, a: workerAngle(w.timer, w.since), tool: TOOLS[0] };
+  }
+}
+
+/** Player pose: swinging while digging; after a few quiet seconds, small personality idles. */
+function playerPose(): Pose {
+  const tool = TOOLS[S.tool];
+  const quiet = miner.clock - miner.lastInput;
+  if (!miner.pending.length && quiet > 6 && S.tut >= 1) {
+    const cyc = (quiet - 6) % 9;
+    if (cyc < 2.6) {
+      const kinds: Pose['k'][] = ['wipe', 'look', 'helmet', 'drink'];
+      return { k: kinds[Math.floor((quiet - 6) / 9) % 4], t: cyc / 2.6 };
+    }
+    return { k: 'stand', t: 0 };
+  }
+  return { k: tool.kind === 'jack' ? 'jack' : 'swing', t: 0, a: minerSwingAngle(), tool };
+}
+
+/** Owned diggers beyond the visible few: a quiet note by the rest platform (they dig at the full rate). */
 function drawReserve() {
   const extra = S.crew.dig - workers.filter((w) => w.id === 'dig').length;
   if (extra <= 0) return;
-  const n = Math.min(extra, CFG.reserveHelmetsMax);
-  ctx.save();
-  ctx.globalAlpha = 0.7;
-  for (let i = 0; i < n; i++) {
-    ctx.fillStyle = '#d6b24a'; ctx.beginPath(); ctx.arc(10 + i * 8, -70, 3.4, Math.PI, 0); ctx.fill();
-  }
   ctx.font = `700 9px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = '#e8dcc0';
-  ctx.fillText(`+${extra} crew`, 10 + n * 8, -68);
-  ctx.restore();
+  ctx.fillText(`+${extra} more crew working`, 4, RS.platformY - 40);
+}
+
+const TIMBER = '#6e4a2a', TIMBER_D = '#4e341d', TIMBER_L = '#8a6238';
+
+/** Work Chamber: the carved-out cavity, ceiling, and timber supports (supports go up after the blast). */
+function drawChamber() {
+  const site = worksiteDef();
+  if (!site.ceiling) return;
+  const w = face.w, h = site.ceiling, off = shaftOff();
+  // cavity: carved rock in shadow, a little lighter toward the floor (work lights)
+  const g = ctx.createLinearGradient(0, -h, 0, 0);
+  g.addColorStop(0, 'rgba(10,7,5,.78)'); g.addColorStop(1, 'rgba(30,20,12,.55)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -h + 14);
+  for (let x = 0; x <= w; x += 20) ctx.lineTo(x, -h + (x > off - 6 && x < off + CFG.face.logicalW + 6 ? -2 : hash(x * 0.37) * 10));
+  ctx.lineTo(w, -h + 12); ctx.lineTo(w, 0); ctx.closePath(); ctx.fill();
+  // rough ceiling edge (the shaft keeps going up through the middle)
+  ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, -h + 14);
+  for (let x = 0; x <= off; x += 20) ctx.lineTo(x, -h + hash(x * 0.37) * 10);
+  ctx.moveTo(off + CFG.face.logicalW, -h + 6);
+  for (let x = off + CFG.face.logicalW; x <= w; x += 20) ctx.lineTo(x, -h + hash(x * 0.37) * 10);
+  ctx.stroke();
+  // timber supports: posts + cap beams, rising after the blast
+  const k = EXP.supports;
+  if (k <= 0) return;
+  const posts = [70, off + 6, off + CFG.face.logicalW - 6, w - 8];
+  posts.forEach((x, i) => {
+    const kk = Math.max(0, Math.min(1, k * posts.length - i));
+    if (kk <= 0) return;
+    ctx.fillStyle = TIMBER; ctx.fillRect(x - 3.5, -h * kk, 7, h * kk);
+    ctx.fillStyle = TIMBER_D; ctx.fillRect(x - 3.5, -h * kk, 1.6, h * kk);
+    if (kk >= 1) { ctx.fillStyle = TIMBER_L; ctx.fillRect(x - 12, -h + 2, 24, 6); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(x - 12, -h + 7, 24, 1.5); }
+  });
+  if (k >= 1) { // cap beams between the posts over the side bays
+    ctx.fillStyle = TIMBER;
+    ctx.fillRect(70, -h + 2, off - 64, 5); ctx.fillRect(off + CFG.face.logicalW - 6, -h + 2, w - 8 - (off + CFG.face.logicalW - 6), 5);
+    // hanging work lamps in the bays
+    for (const lx of [(70 + off) / 2, (off + CFG.face.logicalW + w) / 2]) {
+      ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(lx, -h + 7); ctx.lineTo(lx, -h + 30); ctx.stroke();
+      ctx.fillStyle = '#ffe2a0'; ctx.beginPath(); ctx.arc(lx, -h + 32, 3, 0, 6.283); ctx.fill();
+    }
+  }
+}
+
+/** People route on the LEFT wall: an access ladder to the surface; once the shaft is deep enough, switchback
+ *  wooden stairs up to the rest platform. */
+function drawRestArea(groundY: number) {
+  const fy = RS.landingY, py = RS.platformY, pw = RS.platformW, built = restAreaBuilt();
+  // access ladder: surface -> platform (or the floor while the shaft is shallow)
+  ctx.strokeStyle = TIMBER_L; ctx.lineWidth = 1.6;
+  const lx = RS.ladderX, top = Math.max(groundY, -2400), bot = built ? py : 0;
+  if (bot > top) {
+    ctx.beginPath(); ctx.moveTo(lx - 5, top); ctx.lineTo(lx - 5, bot); ctx.moveTo(lx + 5, top); ctx.lineTo(lx + 5, bot); ctx.stroke();
+    for (let y = bot - 6; y > top; y -= 8) { ctx.beginPath(); ctx.moveTo(lx - 5, y); ctx.lineTo(lx + 5, y); ctx.stroke(); }
+  }
+  if (!built) return;
+  // flight 1: floor (stairFootX, 0) -> landing (landingX, landingY)
+  const flight = (x0: number, y0: number, x1: number, y1: number) => {
+    ctx.strokeStyle = TIMBER_D; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x0, y0 + 2); ctx.lineTo(x1, y1 + 2); ctx.stroke();
+    const n = Math.round(Math.abs(y1 - y0) / 6);
+    ctx.fillStyle = TIMBER_L;
+    for (let i = 1; i <= n; i++) { const k = i / (n + 1); ctx.fillRect(x0 + (x1 - x0) * k - 4, y0 + (y1 - y0) * k - 1, 8, 2.2); }
+    ctx.strokeStyle = 'rgba(200,170,120,.6)'; ctx.lineWidth = 1; // hand rail
+    ctx.beginPath(); ctx.moveTo(x0, y0 - 14); ctx.lineTo(x1, y1 - 14); ctx.stroke();
+  };
+  flight(RS.stairFootX, 0, RS.landingX, fy);
+  ctx.fillStyle = TIMBER; ctx.fillRect(0, fy - 1, RS.landingX + 12, 4); // landing
+  flight(RS.landingX + 8, fy, pw - 8, py);
+  // platform: planks on brackets, railing on the open side
+  ctx.fillStyle = TIMBER; ctx.fillRect(0, py - 1, pw + 4, 5);
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; for (let x = 6; x < pw; x += 8) ctx.fillRect(x, py - 1, 1, 5);
+  ctx.strokeStyle = TIMBER_D; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(2, py + 4); ctx.lineTo(16, py + 18); ctx.moveTo(pw - 4, py + 4); ctx.lineTo(pw - 18, py + 18); ctx.stroke();
+  ctx.strokeStyle = TIMBER_L; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pw + 3, py); ctx.lineTo(pw + 3, py - 15); ctx.lineTo(pw - 26, py - 15); ctx.stroke();
+  // bench, water barrel, lamp
+  ctx.fillStyle = TIMBER_L; ctx.fillRect(4, py - 11, 48, 3);
+  ctx.fillStyle = TIMBER_D; ctx.fillRect(6, py - 8, 2.5, 8); ctx.fillRect(48, py - 8, 2.5, 8);
+  ctx.fillStyle = '#4b6b7a'; ctx.beginPath(); ctx.roundRect(pw - 12, py - 13, 9, 13, 2); ctx.fill();
+  ctx.fillStyle = '#7fb0c4'; ctx.fillRect(pw - 11, py - 13, 7, 2);
+  ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(30, py - 40); ctx.lineTo(30, py - 30); ctx.stroke();
+  ctx.fillStyle = '#ffe2a0'; ctx.beginPath(); ctx.arc(30, py - 28, 2.6, 0, 6.283); ctx.fill();
+  // REST sign
+  ctx.fillStyle = '#2f3a2f'; ctx.fillRect(2, py - 26, 26, 10);
+  ctx.font = `700 7px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe08a';
+  ctx.fillText(`REST ${restingCount()}/${seatsTotal()}`, 15, py - 18.5);
+}
+
+/** Warm glow from the rest lamp and chamber lamps (after the darkness pass). */
+function drawPracticalLights() {
+  const py = RS.platformY;
+  if (!restAreaBuilt()) return;
+  const g = ctx.createRadialGradient(30, py - 28, 0, 30, py - 28, 46);
+  g.addColorStop(0, 'rgba(255,214,140,.28)'); g.addColorStop(1, 'rgba(255,214,140,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(30, py - 28, 46, 0, 6.283); ctx.fill();
+  const site = worksiteDef();
+  if (site.ceiling && EXP.supports >= 1) {
+    const off = shaftOff();
+    for (const lx of [(70 + off) / 2, (off + CFG.face.logicalW + face.w) / 2]) {
+      const y = -site.ceiling + 32;
+      const gl = ctx.createRadialGradient(lx, y, 0, lx, y, 90);
+      gl.addColorStop(0, 'rgba(255,214,140,.22)'); gl.addColorStop(1, 'rgba(255,214,140,0)');
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(lx, y, 90, 0, 6.283); ctx.fill();
+    }
+  }
 }
 
 function drawFaceAndCrew() {
   const o = faceOrigin(), s = faceScale();
-  if (o.y < view.vy0 - 200 || o.y > view.vy1 + 200) return;
+  if (o.y < view.vy0 - 260 * s || o.y > view.vy1 + 200) return;
   ctx.save();
   ctx.translate(o.x, o.y); ctx.scale(s, s);
+  drawChamber();
+  drawRestArea(-(o.y - yOf(0)) / s);
   drawFace(s);
   // rubble waiting at the dig site, coloured by what it is, with its count right on the pile
-  drawPile(C.pileX, 0, S.rubble, CFG.rubble.pileVisualMax, 1, 17);
-  if (S.rubble.qty >= 1) pileLabel(C.pileX, -pileHeight(S.rubble.qty, CFG.rubble.pileVisualMax, 1) - 5, Math.floor(S.rubble.qty), 10, S.rubble.qty > CFG.rubble.pileVisualMax);
-  let di = 0;
-  const ropeTop = -(o.y - view.vy0 + 30) / s;
+  const px = pileX();
+  drawPile(px, 0, S.rubble, CFG.rubble.pileVisualMax, 1, 17);
+  if (S.rubble.qty >= 1) pileLabel(px, -pileHeight(S.rubble.qty, CFG.rubble.pileVisualMax, 1) - 5, Math.floor(S.rubble.qty), 10, S.rubble.qty > CFG.rubble.pileVisualMax);
+  const ES = CFG.excavatorScale;
   for (const w of workers) {
-    if (w.arrive > 0) { drawArrival(w.x, w.dir, 1 - w.arrive / CFG.crewArriveSecs, ropeTop, CREW_LOOKS[di++ % CREW_LOOKS.length]); continue; }
-    if (w.id === 'exc') drawExcavator(w.x, w.dir, machineK(w.timer, w.since), CFG.excavatorReach, w.since < 0.4 ? Math.sin(w.since * 25) * (0.4 - w.since) * 2.5 : 0);
-    else drawMiner(w.x, w.dir, workerAngle(w.timer, w.since), TOOLS[0], CREW_LOOKS[di++ % CREW_LOOKS.length], CFG.crewScale, false);
+    if (w.id === 'exc') {
+      ctx.save(); ctx.translate(w.x, 0); ctx.scale(ES, ES);
+      drawExcavator(0, w.dir, expanding() ? 0 : machineK(w.timer, w.since), CFG.excavatorReach / ES, w.since < 0.4 ? Math.sin(w.since * 25) * (0.4 - w.since) * 2.5 : 0);
+      ctx.restore();
+    } else drawRig(w.x, w.y, CFG.crewScale, w.dir, minerLook(w.seed), workerPose(w));
   }
   drawReserve();
-  drawMiner(miner.x, miner.dir, minerSwingAngle(), TOOLS[S.tool], PLAYER_LOOK, CFG.playerScale, true);
+  drawRig(miner.x, 0, CFG.playerScale, miner.dir, PLAYER_LOOK, playerPose());
+  if (EXP.phase === 'whistle' || EXP.phase === 'clear') bubble(miner.x - 24, -64, 'STAND CLEAR!', '#7a1f12', true);
+  if (EXP.phase === 'charges') {
+    for (const [cx, cy] of chargeSpots()) {
+      ctx.fillStyle = '#b8402a'; ctx.fillRect(cx - 3, cy - 6, 6, 9);
+      if (Math.floor(view.t * 6) % 2) { ctx.fillStyle = '#ff4a3a'; ctx.beginPath(); ctx.arc(cx, cy - 8, 2, 0, 6.283); ctx.fill(); }
+    }
+  }
   // underground light: the deeper, the darker — helmet lamps carve out the work area
   const dark = Math.min(CFG.light.maxDark, S.depth / CFG.light.darkAtM * CFG.light.maxDark);
   if (dark > 0.01) {
-    // only inside the shaft (never over the sky), fading out through the face band into the ground
+    // only inside the shaft/chamber (never over the sky), fading out through the face band into the ground
     const top = -(o.y - Math.max(view.vy0, yOf(0))) / s, bot = CFG.face.height * 0.75;
+    const ceil = -worksiteDef().ceiling, off = shaftOff();
+    ctx.fillStyle = `rgba(4,4,10,${dark})`;
+    if (ceil < 0) {
+      ctx.fillRect(off, top, CFG.face.logicalW, Math.max(0, ceil - top));
+      ctx.fillRect(0, Math.max(top, ceil), face.w, bot - 18 - Math.max(top, ceil));
+    } else ctx.fillRect(0, top, face.w, bot - 18 - top);
     const g = ctx.createLinearGradient(0, bot - 18, 0, bot);
     g.addColorStop(0, `rgba(4,4,10,${dark})`); g.addColorStop(1, 'rgba(4,4,10,0)');
-    ctx.fillStyle = `rgba(4,4,10,${dark})`; ctx.fillRect(0, top, CFG.face.logicalW, bot - 18 - top);
-    ctx.fillStyle = g; ctx.fillRect(0, bot - 18, CFG.face.logicalW, 18);
+    ctx.fillStyle = g; ctx.fillRect(0, bot - 18, face.w, 18);
   }
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   const boost = 1 + dark * 1.4;
+  drawPracticalLights();
   for (const w of workers) {
-    if (w.arrive > 0.15 * CFG.crewArriveSecs) continue;
     if (w.id === 'exc') drawExcavatorLight(w.x, w.dir, 0.12 * boost);
-    else drawLampBeam(w.x, w.dir, CFG.crewScale, 0.1 * boost, CFG.miner.reach);
+    else if (w.state === 'work') drawLampBeam(w.x, w.dir, CFG.crewScale, 0.1 * boost, CFG.miner.reach);
   }
   drawLampBeam(miner.x, miner.dir, CFG.playerScale, 0.2 * boost, CFG.miner.reach);
   ctx.restore();
-  ctx.restore();
-}
-
-/** Rope drops from above, the digger slides down it, lands, the lamp clicks on (then normal digging resumes). */
-function drawArrival(x: number, dir: number, p: number, ropeTop: number, look: Look) {
-  const ropeIn = Math.min(1, p / 0.25);
-  ctx.strokeStyle = 'rgba(210,180,120,.85)'; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.moveTo(x + 4, ropeTop); ctx.lineTo(x + 4, ropeTop + (0 - ropeTop) * ropeIn); ctx.stroke();
-  if (p < 0.25) return;
-  const slide = Math.min(1, (p - 0.25) / 0.5), ease = slide * slide;
-  ctx.save(); ctx.translate(0, ropeTop * (1 - ease));
-  drawMiner(x, dir, -1.6, TOOLS[0], look, CFG.crewScale, false, p > 0.85);
+  if (EXP.flash > 0) { ctx.fillStyle = `rgba(255,240,210,${(EXP.flash * 0.8).toFixed(3)})`; ctx.fillRect(-40, -260, face.w + 80, 320); }
   ctx.restore();
 }
 
@@ -300,7 +445,7 @@ const RAIL_STYLES = [
 export const railCableW = () => 1.1 + 0.12 * S.upg.rail;
 function drawRails(yTop: number, yBot: number) {
   const L = S.upg.rail, st = RAIL_STYLES[tierOf(L, C.railTiers)];
-  const s = faceScale(), x = toScreen(C.railX, 0).x, half = 6 * s;
+  const s = faceScale(), x = toScreen(railX(), 0).x, half = 6 * s;
   const top = Math.max(view.vy0 - 20, yTop), bot = Math.min(view.vy1 + 20, yBot);
   if (bot <= top) return;
   const railW = st.w + 0.18 * L, tieStep = Math.max(0.45, 1.15 - 0.06 * L); // metres between sleepers
@@ -478,7 +623,7 @@ function drawWorld() {
   }
   FINDS.forEach((f, i) => {
     const y = yOf(f.d); if (y < view.vy0 - 120 || y > view.vy1 + 120) return;
-    const x = cx + f.side * (sw / 2 + 55);
+    const x = cx + f.side * (Math.max(sw / 2, (face.w / 2) * faceScale()) + 55);
     if (i < S.found) drawFind(f, x, y, 1);
     else if (i === S.found && f.d - S.depth < CFG.findTeaseM) {
       drawFind(f, x, y, 0.12 + 0.06 * Math.sin(t * 3));
@@ -488,6 +633,8 @@ function drawWorld() {
   });
   drawRails(yOf(-C.surfaceLiftM - 1.5), faceOrigin().y + 2);
   drawSurface(gy);
+  drawSite();
+  drawTruckLayer(gy);
 }
 
 /** Night/sunset grade over the surface, then the practical lights (yard lamps, headframe, headlights). */
@@ -523,12 +670,14 @@ function drawOverlays() {
   if (b) {
     ctx.globalAlpha = Math.min(1, b.t * 3, Math.max(0, CFG.bannerSecs - b.t));
     ctx.textAlign = 'center'; ctx.font = `34px ${FONT_DISPLAY}`;
-    ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillText(b.s, W / 2 + 2, 72);
-    ctx.fillStyle = '#ffcf3a'; ctx.fillText(b.s, W / 2, 70);
-    ctx.font = `500 15px ${FONT_UI}`; ctx.fillStyle = '#fff'; ctx.fillText(b.sub, W / 2, 96);
+    const by = 118;
+    ctx.font = `${W < 600 ? 22 : 34}px ${FONT_DISPLAY}`;
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillText(b.s, W / 2 + 2, by + 2);
+    ctx.fillStyle = '#ffcf3a'; ctx.fillText(b.s, W / 2, by);
+    ctx.font = `500 15px ${FONT_UI}`; ctx.fillStyle = '#fff'; ctx.fillText(b.sub, W / 2, by + 26);
     ctx.globalAlpha = 1;
   }
-  if (S.clicks < 3 && !view.hideDigHint) {
+  if (S.clicks < 3 && !view.hideDigHint && S.tut >= 1 && view.site === 'mine' && !view.tween) {
     ctx.textAlign = 'center'; ctx.font = `700 18px ${FONT_UI}`; ctx.fillStyle = '#fff';
     ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
     ctx.fillText('Click the rock to dig', W / 2, faceY() + 90);

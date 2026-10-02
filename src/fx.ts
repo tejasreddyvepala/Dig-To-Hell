@@ -70,8 +70,12 @@ export function popup(x: number, y: number, s: string, col: string, size: number
 
 export function updateFx(dt: number) {
   const c = FX.cam, I = CFG.impulse;
-  c.vx += (-I.spring * c.x - I.damping * c.vx) * dt; c.vy += (-I.spring * c.y - I.damping * c.vy) * dt;
-  c.x += c.vx * dt; c.y += c.vy * dt;
+  // substepped: the stiff spring is only stable for small steps (long frames / hitches would explode it)
+  for (let left = dt; left > 1e-6; left -= 1 / 120) {
+    const h = Math.min(left, 1 / 120);
+    c.vx += (-I.spring * c.x - I.damping * c.vx) * h; c.vy += (-I.spring * c.y - I.damping * c.vy) * h;
+    c.x += c.vx * h; c.y += c.vy * h;
+  }
 
   const g = CFG.gravity;
   for (let i = FX.parts.length - 1; i >= 0; i--) {

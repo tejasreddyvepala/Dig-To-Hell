@@ -4,7 +4,10 @@ import { AUDIO, type MaterialId } from './config';
 import { rnd, rndr, rndri } from './util';
 
 let ac: AudioContext | null = null;
-let master: GainNode;
+let master: GainNode; // SFX bus (into the compressor)
+let musicBus: GainNode; // music bus (music.ts plays into it; bypasses the SFX compressor)
+let sfxLevel = 1, musicLevel = 1; // user settings 0..1 (mute = 0)
+const listeners: ((ac: AudioContext, bus: GainNode) => void)[] = [];
 let echoIn: GainNode;
 let white: AudioBuffer;
 let brown: AudioBuffer;
@@ -32,8 +35,12 @@ export function unlockAudio() {
       const comp = ac.createDynamicsCompressor();
       comp.threshold.value = -14; comp.ratio.value = 4;
       master = ac.createGain();
-      master.gain.value = AUDIO.master;
+      master.gain.value = AUDIO.master * sfxLevel;
       master.connect(comp).connect(ac.destination);
+      musicBus = ac.createGain();
+      musicBus.gain.value = musicLevel;
+      musicBus.connect(ac.destination);
+      for (const f of listeners) f(ac, musicBus);
       // cave echo bus: delay with low-passed feedback
       echoIn = ac.createGain();
       const delay = ac.createDelay(0.5);
@@ -53,6 +60,17 @@ export function unlockAudio() {
 }
 
 export const audioState = () => (ac ? ac.state : 'not-created');
+
+/** Called once the AudioContext exists (music.ts builds its graph here). */
+export function onAudioReady(f: (ac: AudioContext, bus: GainNode) => void) { listeners.push(f); if (ac) f(ac, musicBus); }
+
+/** User volume settings (0..1; mute is 0). */
+export function setVolumes(sfx: number, music: number) {
+  sfxLevel = sfx; musicLevel = music;
+  if (!ac) return;
+  master.gain.setTargetAtTime(AUDIO.master * sfx, ac.currentTime, 0.05);
+  musicBus.gain.setTargetAtTime(music, ac.currentTime, 0.05);
+}
 
 const ready = () => !!ac && ac.state === 'running' && voices < AUDIO.maxVoices;
 const jitter = () => 1 + rnd(-AUDIO.pitchJitter, AUDIO.pitchJitter);
@@ -254,4 +272,45 @@ export function playThud(amount: number) {
   if (!ready() || amount <= 0.01) return;
   const A = AUDIO.thud, t = ac!.currentTime, f = A.freq * jitter();
   tone('sine', f, f * 0.6, t, A.gain * amount, 0.003, A.decay);
+}
+
+// ---- V2-1: worksite expansion + construction ----
+/** Foreman's whistle before a blast: three sharp pitches. */
+export function playWhistle() {
+  if (!ready()) return;
+  const A = AUDIO.whistle, t = ac!.currentTime;
+  A.f.forEach((f, i) => tone('sine', f, f * 1.02, t + i * A.secs * 0.55, A.gain, 0.01, A.secs * 0.5));
+}
+
+/** Short warning beep while the charges are set. */
+export function playBeep() {
+  if (!ready()) return;
+  const t = ac!.currentTime;
+  tone('square', 1320, 1320, t, 0.05, 0.002, 0.06);
+}
+
+/** The BOOM: deep sub drop + long rumble + debris. */
+export function playBlast() {
+  if (!ready()) return;
+  const A = AUDIO.blast, t = ac!.currentTime;
+  tone('sine', A.low * 2.2, A.low * 0.6, t, A.gain, 0.004, A.secs);
+  noise(brown, 'lowpass', 420, 0.7, t, A.gain * 0.9, 0.01, A.secs * 1.3, master, 90);
+  noise(white, 'lowpass', 2400, 0.7, t, A.gain * 0.35, 0.002, 0.35, master, 300);
+  setTimeout(() => playDebris(1), 250);
+  setTimeout(() => playDebris(0.7), 600);
+}
+
+/** Construction hammer tap. */
+export function playHammer(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const A = AUDIO.hammer, t = ac!.currentTime, f = A.freq * jitter();
+  tone('triangle', f, f * 0.7, t, A.gain * vol, 0.001, 0.05);
+  noise(white, 'bandpass', 2600, 2, t, A.gain * vol * 0.3, 0.001, 0.02);
+}
+
+/** Big sale: cash register-ish sting (ascending + coins). */
+export function playSold() {
+  notes([392, 523, 659, 784, 1047], 0.09, 0.17, 'triangle', 0.25);
+  setTimeout(() => playCoin(1), 380);
+  setTimeout(() => playCoin(0.8), 520);
 }

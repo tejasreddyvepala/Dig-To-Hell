@@ -1,6 +1,6 @@
 // Player miner: turns clicks into scheduled strikes. Swing anticipation -> accelerated downswing -> impact.
 // The strike is resolved by the simulation exactly when the pick lands, so animation and sim stay in sync.
-import { CFG, TOOLS } from './config';
+import { CFG, TOOLS, WORKSITES } from './config';
 import { S } from './state';
 import { chunkAtX, clampHitX, face } from './digface';
 import { playerStrike, type HitResult } from './sim';
@@ -8,16 +8,17 @@ import { playJack, playSwing } from './audio';
 import { clamp, rnd } from './util';
 
 const M = CFG.miner;
-const W = CFG.face.logicalW;
+const W = () => face.w; // the work floor widens with the worksite tier
 
 interface Pending { idx: number; x: number; y: number; at: number; swung: boolean }
 
 export const miner = {
-  x: CFG.minerStartX, // logical stand position (the left side of the face is the loading area)
-  standX: CFG.minerStartX,
+  x: WORKSITES[S.worksite].playerX, // logical stand position on the work floor
+  standX: WORKSITES[S.worksite].playerX,
   dir: 1 as 1 | -1, // facing
   clock: 0,
   lastImpact: -10,
+  lastInput: 0, // clock of the last dig input (idle personality starts after a few quiet seconds)
   pending: [] as Pending[],
 };
 
@@ -36,9 +37,10 @@ export function minerClick(x: number, y: number) {
   if (hx > miner.x + reach * 0.5) dir = 1;
   else if (hx < miner.x - reach * 0.5) dir = -1;
   let stand = hx - dir * reach;
-  if (stand < 12 || stand > W - 12) { dir = dir === 1 ? -1 : 1; stand = hx - dir * reach; }
+  if (stand < 12 || stand > W() - 12) { dir = dir === 1 ? -1 : 1; stand = hx - dir * reach; }
   miner.dir = dir;
-  miner.standX = clamp(stand, 12, W - 12);
+  miner.standX = clamp(stand, 12, W() - 12);
+  miner.lastInput = miner.clock;
   const last = miner.pending[miner.pending.length - 1];
   const at = Math.max(miner.clock + impactAt(), last ? last.at + M.chainGapMs / 1000 : 0);
   // a pickaxe lands once; the jackhammer rattles a burst of quick impacts into the same spot
@@ -49,7 +51,7 @@ export function minerClick(x: number, y: number) {
 
 /** Keyboard dig: strike a chunk near the miner. */
 export function minerKeyStrike() {
-  const x = clamp(miner.x + miner.dir * M.reach + rnd(-M.keyboardSpread, M.keyboardSpread) * 0.5, 4, W - 4);
+  const x = clamp(miner.x + miner.dir * M.reach + rnd(-M.keyboardSpread, M.keyboardSpread) * 0.5, 4, W() - 4);
   minerClick(x, rnd(CFG.face.hitYMin, CFG.face.hitYMax));
 }
 
@@ -90,4 +92,10 @@ export function swingAngle(t: number) {
   if (t < w + d) { const k = (t - w) / d; return RAISED + (IMPACT - RAISED) * k * k * k; } // accelerating strike
   if (t < w + d + r) { const k = (t - w - d) / r; return IMPACT + (REST - IMPACT) * k * k; }
   return REST;
+}
+
+/** Reset the player's stand position (new game / worksite rebuilt). */
+export function placeMiner() {
+  miner.x = miner.standX = WORKSITES[S.worksite].playerX;
+  miner.pending.length = 0;
 }

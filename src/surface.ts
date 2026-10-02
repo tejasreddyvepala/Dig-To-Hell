@@ -1,19 +1,20 @@
-// Surface simulation: the Recycling Yard production chain. Pure logic; presentation reacts to SurfaceEvents.
-//   raw material --(crusher + auger + press)--> finished blocks --(delivery truck)--> CASH
-// A loaded truck departing is the ONLY normal cash source. Before the yard exists, a contractor buys raw loads
-// (the first-load tutorial, and a safety net so the player can always afford the yard).
+// Surface simulation: contractor (tutorial seed), Recycling Yard processing, and the delivery truck route.
+//   raw material --(crusher + auger + press)--> finished blocks --(truck)--> construction plot
+// The truck NEVER pays: it delivers building material. Cash is created by construction (construction.ts).
+// Before the yard exists, a contractor buys raw loads once (seed money) and keeps buying only while the player
+// cannot afford the Recycling Yard (no soft-lock).
 import { CFG } from './config';
-import { S, emptyLoad } from './state';
+import { S, emptyLoad, type TruckState } from './state';
 import { contractPrice, moveLoad, processRate } from './economy';
 
 export type SurfaceEventType =
   | 'contractorSold' | 'firstSaleStart' | 'firstSaleDone'
-  | 'pressed' | 'truckArrive' | 'truckLoad' | 'truckDepart' | 'truckGone';
+  | 'pressed' | 'truckArrive' | 'truckLoad' | 'truckDepart' | 'truckAtSite' | 'siteUnload' | 'truckReturned';
 export interface SurfaceEvent { type: SurfaceEventType; qty?: number; cash?: number }
 
 const Y = CFG.yard, T = CFG.yard.truck;
 const sink = emptyLoad();
-let tutorial = { active: false, qty: 0, cash: 0 };
+let tutorial = { active: false, qty: 0, cash: 0, wait: 0 };
 let pressAcc = 0;
 
 /** Contractor buys raw material directly (pre-yard only). */
@@ -23,27 +24,33 @@ function contractorBuy(qty: number): { qty: number; cash: number } {
   const cash = sink.val * contractPrice(S);
   S.cash += cash;
   S.stats.earned += cash;
-  S.stats.delivered += q;
   return { qty: q, cash };
 }
 
 const cartBusyAtTop = () => S.cart.state === 'SURFACE_ARRIVAL' || S.cart.state === 'UNLOADING';
 
-function enterTruck(state: typeof S.truck.state, dur: number) { S.truck.state = state; S.truck.t = 0; S.truck.dur = dur; }
+function enterTruck(state: TruckState, dur: number) { S.truck.state = state; S.truck.t = 0; S.truck.dur = dur; }
+
+/** Called when the yard is built: the truck drives in from the road to its bay. */
+export function truckArrives() { if (S.truck.state === 'NONE') { S.truck.n++; enterTruck('ARRIVING', T.arriveSecs); } }
 
 export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEvent[] {
   if (!S.yard) {
-    // FIRST LOAD: a contractor is waiting above ground and buys the first delivery outright
+    // FIRST LOAD: the contractor inspects the dumped rubble, then buys it (seed money)
     if (!S.flags.sold) {
       if (!S.flags.arrived || cartBusyAtTop() || S.raw.qty <= 0) {
         if (tutorial.active && S.raw.qty <= 0) finishTutorial(out);
         return out;
       }
-      if (!tutorial.active) { tutorial = { active: true, qty: 0, cash: 0 }; out.push({ type: 'firstSaleStart' }); }
-      const r = contractorBuy(Y.contractorRate * dt);
+      if (!tutorial.active) { tutorial = { active: true, qty: 0, cash: 0, wait: CFG.intro.contractorTalkSecs }; out.push({ type: 'firstSaleStart' }); }
+      if (tutorial.wait > 0) { tutorial.wait -= dt; return out; }
+      // he buys just enough to fund the yard; whatever is left becomes the yard's very first blocks
+      const unitCash = S.raw.qty > 0 ? (S.raw.val / S.raw.qty) * contractPrice(S) : 1;
+      const need = Math.max(0, (CFG.intro.seedCash - S.cash) / Math.max(1e-6, unitCash));
+      const r = contractorBuy(Math.min(Y.contractorRate * dt, need + 1e-6));
       tutorial.qty += r.qty; tutorial.cash += r.cash;
       out.push({ type: 'contractorSold', qty: r.qty, cash: r.cash });
-      if (S.raw.qty <= 1e-6) finishTutorial(out);
+      if (S.raw.qty <= 1e-6 || S.cash >= CFG.intro.seedCash - 1e-6) finishTutorial(out);
       return out;
     }
     // safety net: while the player can't afford the yard, the contractor keeps buying (no soft-lock)
@@ -62,37 +69,38 @@ export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEven
     while (pressAcc >= Y.pressBatch) { pressAcc -= Y.pressBatch; out.push({ type: 'pressed', qty: Y.pressBatch }); }
   }
 
-  // DELIVERY TRUCK: arrives when enough blocks are stacked, loads them, and pays when it drives off
+  // DELIVERY TRUCK: yard bay -> road -> construction plot -> back (never pays)
   const tr = S.truck;
   tr.t += dt;
   switch (tr.state) {
-    case 'NONE':
-      if (S.goods.qty >= T.pickupMin) { tr.n++; tr.paid = 0; enterTruck('ARRIVING', T.arriveSecs); out.push({ type: 'truckArrive' }); }
-      break;
+    case 'NONE': truckArrives(); break;
     case 'ARRIVING':
-      if (tr.t >= tr.dur) enterTruck('LOADING', 0);
+      if (tr.t >= tr.dur) { enterTruck('PARKED', 0); out.push({ type: 'truckArrive' }); }
+      break;
+    case 'PARKED':
+      if (S.goods.qty >= T.pickupMin) enterTruck('LOADING', 0);
       break;
     case 'LOADING': {
       const q = moveLoad(S.goods, tr.load, Math.min(T.loadRate * dt, T.capacity - tr.load.qty));
       if (q > 0) out.push({ type: 'truckLoad', qty: q });
       const full = tr.load.qty >= T.capacity - 1e-6;
       const done = tr.t >= T.minLoadSecs && S.goods.qty <= 1e-6 && (tr.load.qty >= T.pickupMin * 0.5 || tr.t >= T.waitSecs);
-      if (full || (done && tr.load.qty > 0)) {
-        // PAYDAY: the delivery leaves the yard
-        const cash = tr.load.val * contractPrice(S);
-        S.cash += cash;
-        S.stats.earned += cash;
-        S.stats.delivered += tr.load.qty;
-        tr.paid = cash;
-        tr.bed = tr.load.qty; // visual only: the delivered blocks ride off on the bed
-        out.push({ type: 'truckDepart', qty: tr.load.qty, cash });
-        tr.load = emptyLoad(); // delivered: the material has left the world
-        enterTruck('DEPARTING', T.departSecs);
-      }
+      if (full || (done && tr.load.qty > 0)) { enterTruck('TO_SITE', T.driveSecs); out.push({ type: 'truckDepart', qty: tr.load.qty }); }
       break;
     }
-    case 'DEPARTING':
-      if (tr.t >= tr.dur) { tr.bed = 0; enterTruck('NONE', 0); out.push({ type: 'truckGone' }); }
+    case 'TO_SITE':
+      if (tr.t >= tr.dur) { enterTruck('UNLOADING', 0); out.push({ type: 'truckAtSite' }); }
+      break;
+    case 'UNLOADING': {
+      // blocks go onto the plot's material stack (material is conserved: the truck carries, the plot receives)
+      const q = moveLoad(tr.load, S.build.material, T.unloadRate * dt);
+      S.stats.delivered += q;
+      if (q > 0) out.push({ type: 'siteUnload', qty: q });
+      if (tr.load.qty <= 1e-6) { tr.load = emptyLoad(); tr.n++; enterTruck('RETURNING', T.driveSecs); }
+      break;
+    }
+    case 'RETURNING':
+      if (tr.t >= tr.dur) { enterTruck('PARKED', 0); out.push({ type: 'truckReturned' }); }
       break;
   }
   return out;
@@ -108,5 +116,6 @@ export function buildYard(): boolean {
   if (S.yard || S.cash < Y.cost) return false;
   S.cash -= Y.cost;
   S.yard = true;
+  truckArrives();
   return true;
 }
