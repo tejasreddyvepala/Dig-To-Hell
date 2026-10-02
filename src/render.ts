@@ -1,11 +1,13 @@
 // Draws the world, the destructible dig face, miner/crew, FX and HUD overlays. Reads state; never mutates sim.
 import { CFG, FINDS, MATERIALS, MAX_DEPTH, TOOLS, type Find } from './config';
 import { S } from './state';
-import { cartCapacity, mixPick, tierOf } from './economy';
+import { cartCapacity, mixPick, tierOf, trackSafe } from './economy';
 import { materialAt, rubbleRGB } from './geo';
 import { drawSurface, drawTruckLayer, flushGlows } from './yard';
 import { bubble, drawPile, pileHeight, pileLabel } from './draw';
-import { cartBlocked, cartDepth, cartFill } from './cart';
+import { cartBlocked, cartDepth, cartFill, cartTrackStress } from './cart';
+import { TRACKUP } from './track';
+import { reinforceY } from './trackfx';
 import { drawExcavator, drawExcavatorLight, drawLampBeam } from './characters';
 import { RIG_H, drawRig, lookFor, type Look, type Pose } from './rig';
 import { face, type Chunk, type Crack, type Mark } from './digface';
@@ -560,68 +562,90 @@ function drawBuriedCar(x: number, y: number, d: number) {
 
 // ---------- transport: rails, cart, piles, headframe ----------
 const C = CFG.cart;
-const RAIL_STYLES = [
-  { rail: '#7a5634', w: 2.2, tie: '#4e3620', tieW: 2.4, plate: '', bracket: '' }, // rough wooden track
-  { rail: '#5e4127', w: 3, tie: '#3e2a17', tieW: 3, plate: '#8a9198', bracket: '' }, // reinforced wood
-  { rail: '#a3acb6', w: 2.4, tie: '#4e3620', tieW: 2.6, plate: '', bracket: '' }, // metal rail
-  { rail: '#c4ccd4', w: 3.6, tie: '#3b3f45', tieW: 3.2, plate: '', bracket: '#e0b322' }, // heavy industrial
+// Track Strength tiers (Spec §7.8) — each one is visibly a different build:
+//   Wood: thin rough rails, sparse thin sleepers, small wooden brackets
+//   Reinforced Wood: thick rails, dense thick sleepers, steel fastener plates + bolts, diagonal timber braces, upright
+//   Iron: metal rails with a highlight, bolted sleepers, iron brackets, steel cross bracing, steel upright
+//   Steel: heavy bright rails, steel sleepers, yellow brackets, guard rail, hazard paint, wall lamps
+interface TrackStyle { rail: string; w: number; tie: string; tieW: number; step: number; rough: boolean; bolts: boolean; plates: boolean; brace: string; upright: string; bracket: string; metal: boolean; guard: boolean; hazard: boolean; lamps: number }
+const TRACK_STYLES: TrackStyle[] = [
+  { rail: '#7a5634', w: 2.2, tie: '#4e3620', tieW: 2.2, step: 1.15, rough: true, bolts: false, plates: false, brace: '', upright: '', bracket: '#5b3d22', metal: false, guard: false, hazard: false, lamps: 0 },
+  { rail: '#5e4127', w: 3.4, tie: '#3e2a17', tieW: 3.6, step: 0.8, rough: false, bolts: true, plates: true, brace: 'rgba(110,78,44,.9)', upright: '#4a3420', bracket: '#7d858f', metal: false, guard: false, hazard: false, lamps: 0 },
+  { rail: '#9aa3ad', w: 3.1, tie: '#4e3620', tieW: 3.2, step: 0.7, rough: false, bolts: true, plates: false, brace: 'rgba(160,170,180,.55)', upright: '#59616a', bracket: '#7d858f', metal: true, guard: false, hazard: false, lamps: 0 },
+  { rail: '#c4ccd4', w: 3.9, tie: '#3b3f45', tieW: 3.4, step: 0.55, rough: false, bolts: true, plates: false, brace: 'rgba(170,180,190,.6)', upright: '#59616a', bracket: '#e0b322', metal: true, guard: true, hazard: true, lamps: 8 },
 ];
 
-/** Rails along the transport wall from the headframe to the dig face; ties are anchored in world metres.
- *  Major tiers change the material; EVERY Rail Quality level visibly changes something (thickness, sleeper
- *  spacing, bolts, brackets, cross bracing, side braces, lamps, hazard paint, guard rails). */
-export const railCableW = () => 1.1 + 0.12 * S.upg.rail;
+export const railCableW = () => 1.1 + 0.3 * S.upg.rail;
+
+/** The track along the transport wall from the headframe to the dig face. While a loaded cart strains it, the rails
+ *  bow locally around the cart; during a reinforcement the new tier replaces the old one section by section. */
 function drawRails(yTop: number, yBot: number) {
-  const L = S.upg.rail, st = RAIL_STYLES[tierOf(L, C.railTiers)];
-  const s = faceScale(), x = toScreen(railX(), 0).x, half = 6 * s;
   const top = Math.max(view.vy0 - 20, yTop), bot = Math.min(view.vy1 + 20, yBot);
   if (bot <= top) return;
-  const railW = st.w + 0.18 * L, tieStep = Math.max(0.45, 1.15 - 0.06 * L); // metres between sleepers
-  const mTop = viewTop() + view.vy0 / CFG.ppm, mBot = viewTop() + view.vy1 / CFG.ppm;
+  // local flex: only around a climbing loaded cart, scaled by how hard it works the track
+  const stress = S.cart.state === 'TRAVELLING_UP' && !TRACKUP.active ? cartTrackStress() : 'safe';
+  const cy = cartScreen().y - 10 * faceScale(), R = 3.2 * CFG.ppm;
+  const amp = stress === 'over' ? 3.2 + Math.sin(view.t * 47) * 0.9 : stress === 'strained' ? 1.0 + Math.sin(view.t * 31) * 0.25 : 0;
+  const flex = (y: number) => (amp ? -amp * Math.exp(-(((y - cy) / R) ** 2)) : 0);
+  const shake = stress === 'over' ? 1 : 0;
+  const by = reinforceY();
+  if (by === null) { drawTrackTier(S.upg.rail, top, bot, flex, shake); return; }
+  // reinforcement: new track below the moving work section, old (loosening) track above it
+  ctx.save(); ctx.beginPath(); ctx.rect(view.vx0 - 10, top, view.vx1 - view.vx0 + 20, by - top); ctx.clip();
+  drawTrackTier(TRACKUP.from, top, bot, (y) => (y > by - 40 ? Math.sin(view.t * 60 + y) * 1.2 : 0), 0); // loosening
+  ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(view.vx0 - 10, by, view.vx1 - view.vx0 + 20, bot - by); ctx.clip();
+  drawTrackTier(TRACKUP.to, top, bot, () => 0, 0);
+  ctx.restore();
+  const s = faceScale(), x = toScreen(railX(), 0).x;
+  ctx.fillStyle = 'rgba(255,230,160,.85)'; ctx.fillRect(x - 10 * s, by - 1, 20 * s, 2); // the section being fixed
+  bubble(x + 14 * s, by - 14, 'REINFORCING TRACK', '#2a2420', true);
+}
+
+function drawTrackTier(tier: number, top: number, bot: number, flex: (y: number) => number, shake: number) {
+  const st = TRACK_STYLES[Math.min(tier, TRACK_STYLES.length - 1)];
+  const s = faceScale(), x = toScreen(railX(), 0).x, half = 6 * s;
+  const mTop = viewTop() + Math.max(view.vy0, top) / CFG.ppm, mBot = viewTop() + Math.min(view.vy1, bot) / CFG.ppm;
   ctx.lineCap = 'butt';
-  // side braces (Lv 5+): timber/steel uprights tying the track to the wall
-  if (L >= 5) {
-    ctx.fillStyle = L >= 7 ? '#59616a' : '#4a3420';
-    ctx.fillRect(x + half + 4 * s, top, 2.2 + 0.1 * L, bot - top);
-  }
-  for (let i = Math.floor(mTop / tieStep); i * tieStep <= mBot; i++) {
-    const m = i * tieStep, y = yOf(m) + (st === RAIL_STYLES[0] ? (hash(i * 1.7) - 0.5) * 3 : 0);
+  if (st.upright) { ctx.fillStyle = st.upright; ctx.fillRect(x + half + 4 * s, top, st.metal ? 3 : 2.6, bot - top); } // side upright tying track to wall
+  // sleepers (anchored in world metres)
+  for (let i = Math.floor(mTop / st.step); i * st.step <= mBot; i++) {
+    const m = i * st.step;
+    let y = yOf(m) + (st.rough ? (hash(i * 1.7) - 0.5) * 3 : 0);
     if (y < top || y > bot) continue;
-    ctx.strokeStyle = st.tie; ctx.lineWidth = st.tieW + 0.05 * L;
-    ctx.beginPath(); ctx.moveTo(x - half - 3, y); ctx.lineTo(x + half + 3, y); ctx.stroke();
-    if (L >= 1) { // bolts on every sleeper
-      ctx.fillStyle = L >= 4 ? '#d6dde4' : '#b4bcc4';
-      ctx.fillRect(x - half - 2, y - 1.5, 3, 3); ctx.fillRect(x + half - 1, y - 1.5, 3, 3);
-    }
-    if (st.plate && i % 3 === 0) { ctx.fillStyle = st.plate; ctx.fillRect(x - half - 2, y - 2, 4, 4); ctx.fillRect(x + half - 2, y - 2, 4, 4); }
+    const dx = flex(y);
+    if (shake && Math.abs(dx) > 0.5) y += Math.sin(view.t * 53 + i) * 0.6; // sleepers rattle under the cart
+    ctx.strokeStyle = st.tie; ctx.lineWidth = st.tieW;
+    ctx.beginPath(); ctx.moveTo(x - half - 3 + dx, y); ctx.lineTo(x + half + 3 + dx * 0.6, y); ctx.stroke();
+    if (st.bolts) { ctx.fillStyle = st.metal ? '#d6dde4' : '#b4bcc4'; ctx.fillRect(x - half - 2 + dx, y - 1.5, 3, 3); ctx.fillRect(x + half - 1 + dx * 0.6, y - 1.5, 3, 3); }
+    if (st.plates) { ctx.fillStyle = '#8a9198'; ctx.fillRect(x - half - 2.5 + dx, y - 2.5, 5, 5); ctx.fillRect(x + half - 2.5 + dx * 0.6, y - 2.5, 5, 5); }
   }
-  // per-metre structure: brackets (Lv 3+), cross bracing (Lv 4+), hazard paint (Lv 9+)
+  // per-metre structure: brackets (joints) every 4 m, diagonal bracing every 3 m, hazard paint, lamps
   for (let m = Math.max(0, Math.floor(mTop)); m <= mBot; m++) {
-    const y = yOf(m);
-    if (y < top || y > bot) continue;
-    if ((L >= 3 || st.bracket) && m % 4 === 0) { ctx.fillStyle = st.bracket || '#7d858f'; ctx.fillRect(x + half + 2, y - 3, 5 * s * 0.6, 6); }
-    if (L >= 4 && m % 3 === 0) {
-      ctx.strokeStyle = 'rgba(160,170,180,.45)'; ctx.lineWidth = 1;
+    const y0 = yOf(m);
+    if (y0 < top || y0 > bot) continue;
+    const dx = flex(y0), jit = shake && Math.abs(dx) > 0.6 ? Math.sin(view.t * 70 + m) * 1.1 : 0; // joints shake near the cart
+    if (m % 4 === 0) { ctx.fillStyle = st.bracket; ctx.fillRect(x + half + 2 + dx * 0.5 + jit, y0 - 3 + jit, (st.metal ? 4 : 3) * s * 0.6 + 2, 6); }
+    if (st.brace && m % 3 === 0) {
+      ctx.strokeStyle = st.brace; ctx.lineWidth = st.metal ? 1.2 : 1.8;
       const y2 = yOf(m + 3);
-      ctx.beginPath(); ctx.moveTo(x - half, y); ctx.lineTo(x + half, y2); ctx.moveTo(x + half, y); ctx.lineTo(x - half, y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - half + dx, y0); ctx.lineTo(x + half + flex(y2), y2); ctx.moveTo(x + half + dx, y0); ctx.lineTo(x - half + flex(y2), y2); ctx.stroke();
     }
-    if (L >= 9 && m % 2 === 0) { ctx.fillStyle = m % 4 ? '#1d1d1d' : '#e0b322'; ctx.fillRect(x - half - railW / 2, y, railW, 6); }
+    if (st.hazard && m % 2 === 0) { ctx.fillStyle = m % 4 ? '#1d1d1d' : '#e0b322'; ctx.fillRect(x - half - st.w / 2, y0, st.w, 6); }
   }
-  ctx.strokeStyle = shadeHex(st.rail, 0.9 + Math.min(0.35, 0.03 * L)); ctx.lineWidth = railW;
-  ctx.beginPath(); ctx.moveTo(x - half, top); ctx.lineTo(x - half, bot); ctx.moveTo(x + half, top); ctx.lineTo(x + half, bot); ctx.stroke();
-  if (railW > 2.3) { // highlight edge on metal rails
-    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.moveTo(x - half + 1, top); ctx.lineTo(x - half + 1, bot); ctx.moveTo(x + half + 1, top); ctx.lineTo(x + half + 1, bot); ctx.stroke();
-  }
-  if (L >= 12) { // guard rail on the shaft side
-    ctx.strokeStyle = '#e0b322'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x - half - 9 * s * 0.6, top); ctx.lineTo(x - half - 9 * s * 0.6, bot); ctx.stroke();
-  }
-  // shaft lamps (Lv 6+): warm lights on the wall, closer together every level
-  if (L >= 6) {
-    const every = Math.max(3, 12 - (L - 6));
+  // rails: sampled so they can bow around a straining cart
+  const rail = (ox: number, k: number) => {
+    ctx.beginPath();
+    for (let y = top, first = true; y <= bot + 8; y += 8, first = false) { const yy = Math.min(y, bot); const px = x + ox + flex(yy) * k; first ? ctx.moveTo(px, yy) : ctx.lineTo(px, yy); }
+    ctx.stroke();
+  };
+  ctx.strokeStyle = st.rail; ctx.lineWidth = st.w;
+  rail(-half, 1); rail(half, 0.6);
+  if (st.metal) { ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 0.8; rail(-half + 1, 1); rail(half + 1, 0.6); }
+  if (st.guard) { ctx.strokeStyle = '#e0b322'; ctx.lineWidth = 2; rail(-half - 5.4 * s, 1); }
+  if (st.lamps) {
     ctx.save();
-    for (let m = Math.ceil(Math.max(0, mTop) / every) * every; m <= mBot; m += every) {
+    for (let m = Math.ceil(Math.max(0, mTop) / st.lamps) * st.lamps; m <= mBot; m += st.lamps) {
       const y = yOf(m);
       if (y < top || y > bot) continue;
       ctx.fillStyle = '#3b3f45'; ctx.fillRect(x + half + 6, y - 2, 6, 4);
@@ -649,21 +673,31 @@ const CART_BODIES = [
 ];
 
 /** The cart in screen space, base centred at (x, y). */
-function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, roll: number) {
+function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, roll: number, heap = 0) {
   const b = CART_BODIES[tierOf(S.upg.cartCap, C.bodyTiers)];
   const w = b.w * s, h = b.h * s, r = b.wheel * s;
   ctx.save();
   ctx.translate(x, y);
   ctx.translate(w / 2, -r); ctx.rotate(tip); ctx.translate(-w / 2, r); // tips over its right wheel, toward the stockpile
-  // load: rocks heap up over the rim as it fills
+  // open top (seen slightly from above): back lip + dark interior; the load fills it so 25/50/75/100% read at a glance,
+  // and an overloaded cart is heaped well above the rim
+  const ob = h * 0.38, rimY = -r - h, backY = rimY - ob;
+  ctx.fillStyle = shadeHex(b.body, 0.62);
+  ctx.beginPath(); ctx.moveTo(-w / 2 + 1 * s, rimY); ctx.lineTo(-w / 2 + 3 * s, backY); ctx.lineTo(w / 2 - 3 * s, backY); ctx.lineTo(w / 2 - 1 * s, rimY); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(20,14,10,.9)';
+  ctx.beginPath(); ctx.moveTo(-w / 2 + 2.6 * s, rimY); ctx.lineTo(-w / 2 + 4 * s, backY + 1.4 * s); ctx.lineTo(w / 2 - 4 * s, backY + 1.4 * s); ctx.lineTo(w / 2 - 2.6 * s, rimY); ctx.closePath(); ctx.fill();
   if (fill > 0.001) {
-    const n = Math.max(2, Math.round(fill * 14));
-    const mound = Math.max(0, fill - 0.35) * h * 0.75;
-    for (let i = 0; i < n; i++) {
-      const k = hash(31 + i * 7.3), px = -w / 2 + 3 * s + (w - 6 * s) * k;
-      const py = -r - h + 3 * s + (1 - fill) * h * 0.55 - mound * Math.sin(Math.PI * k) * (0.6 + 0.4 * hash(i * 3.1));
-      ctx.fillStyle = rgb(rubbleRGB(mixPick(S.cart.load, hash(i * 2.9))), 0.8 + hash(i * 5.3) * 0.45);
-      ctx.beginPath(); ctx.ellipse(px, py, (2.2 + hash(i) * 1.6) * s, (1.8 + hash(i * 2) * 1.2) * s, 0, 0, 6.283); ctx.fill();
+    const level = Math.min(1, fill) * ob; // inside the opening
+    const mound = Math.max(0, (fill - 0.75) / 0.25) * h * 0.3 + heap * h * 0.32; // above the back lip
+    const cols = Math.max(3, Math.round(w / (3.6 * s))), rows = Math.max(1, Math.ceil((level + mound) / (2.6 * s)));
+    for (let rI = 0; rI < rows; rI++) for (let c = 0; c < cols; c++) {
+      const k = (c + 0.5) / cols, prof = Math.sin(Math.PI * k);
+      const yTopHere = rimY - level - mound * prof;
+      const py = rimY - 1.2 * s - rI * 2.6 * s - hash(rI * 7.1 + c) * 1.2 * s;
+      if (py < yTopHere) continue;
+      const i = rI * cols + c, px = -w / 2 + 3 * s + (w - 6 * s) * k + (hash(i * 3.3) - 0.5) * 2 * s;
+      ctx.fillStyle = rgb(rubbleRGB(mixPick(S.cart.load, hash(i * 2.9))), 0.78 + hash(i * 5.3) * 0.45);
+      ctx.beginPath(); ctx.ellipse(px, py, (2 + hash(i) * 1.3) * s, (1.6 + hash(i * 2) * 1) * s, hash(i * 9) * 3, 0, 6.283); ctx.fill();
     }
   }
   // body (slightly tapered tub)
@@ -694,11 +728,17 @@ function drawCart() {
     tip = 0.95 * (p < 0.75 ? Math.sin(Math.min(1, p / 0.3) * Math.PI / 2) : (1 - p) / 0.25);
   }
   const roll = cartDepth() * 1.6;
+  // a strained/overloaded cart rattles on the track while it climbs
+  const stress = st === 'TRAVELLING_UP' && !TRACKUP.active ? cartTrackStress() : 'safe';
+  const rat = stress === 'over' ? 1 : stress === 'strained' ? 0.35 : 0;
+  const rx = rat * Math.sin(view.t * 53) * 1.3 * s;
+  tip += rat * Math.sin(view.t * 37) * 0.035;
+  const heap = Math.min(1, Math.max(0, (cs.load.qty / trackSafe(S) - 1) * 3)); // load beyond the track's safe load
   // cable from the headframe pulley to the cart
   const pulleyY = yOf(-C.headframeM);
   ctx.strokeStyle = 'rgba(40,36,30,.8)'; ctx.lineWidth = railCableW();
   ctx.beginPath(); ctx.moveTo(c.x, Math.max(view.vy0 - 10, pulleyY)); ctx.lineTo(c.x, c.y - 22 * s + bump); ctx.stroke();
-  drawCartAt(c.x, c.y + bump, s, cartFill(), tip, roll);
+  drawCartAt(c.x + rx, c.y + bump, s, cartFill(), tip, roll, heap);
   const b = CART_BODIES[tierOf(S.upg.cartCap, C.bodyTiers)];
   view.cartRect = { x: c.x - (b.w / 2 + 6) * s, y: c.y - (b.h + b.wheel * 2 + 12) * s, w: (b.w + 12) * s, h: (b.h + b.wheel * 2 + 16) * s };
   // "tap to send" hint while it holds something but is not yet full

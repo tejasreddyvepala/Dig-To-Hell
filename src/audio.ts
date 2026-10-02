@@ -314,3 +314,40 @@ export function playSold() {
   setTimeout(() => playCoin(1), 380);
   setTimeout(() => playCoin(0.8), 520);
 }
+
+// ---- track strain (restrained, randomized; never a constant loop) ----
+/** Wood creak: a buzzy low saw with a wandering pitch through a resonant band. */
+export function playCreak(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const t = ac!.currentTime, dur = rnd(0.32, 0.6), f0 = rnd(95, 150);
+  const o = ac!.createOscillator(), bp = ac!.createBiquadFilter(), g = ac!.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.linearRampToValueAtTime(f0 * rnd(1.25, 1.6), t + dur * 0.45);
+  o.frequency.linearRampToValueAtTime(f0 * rnd(0.85, 1.1), t + dur);
+  bp.type = 'bandpass'; bp.frequency.value = rnd(520, 820); bp.Q.value = 5;
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.11 * vol, t + 0.05);
+  g.gain.linearRampToValueAtTime(0.07 * vol, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(bp).connect(g).connect(master);
+  voices++; o.onended = () => voices--;
+  o.start(t); o.stop(t + dur + 0.05);
+}
+/** Wheel squeal under load: a thin high whine with vibrato. */
+export function playSqueak(vol = 1) {
+  if (!ready() || vol <= 0.01) return;
+  const t = ac!.currentTime, f = rnd(2300, 3100), d = rnd(0.12, 0.22);
+  const o = ac!.createOscillator(), lfo = ac!.createOscillator(), lg = ac!.createGain();
+  o.type = 'sine'; o.frequency.value = f; lfo.frequency.value = rnd(18, 26); lg.gain.value = f * 0.015;
+  lfo.connect(lg).connect(o.frequency);
+  o.connect(env(t, 0.035 * vol, 0.02, d, master));
+  voices++; o.onended = () => voices--;
+  o.start(t); lfo.start(t); o.stop(t + d + 0.05); lfo.stop(t + d + 0.05);
+}
+/** The new rail locking into place: a solid metal clunk. */
+export function playClunk() {
+  if (!ready()) return;
+  const t = ac!.currentTime;
+  tone('triangle', 170, 95, t, 0.35, 0.002, 0.18);
+  tone('square', 620, 400, t, 0.06, 0.001, 0.05);
+  noise(white, 'bandpass', 2200, 1.2, t, 0.12, 0.001, 0.06);
+}

@@ -1,5 +1,5 @@
 // Pure economy formulas. No DOM, no rendering.
-import { CFG, CREW, MAX_DEPTH, PROJECTS, RESOURCES, TOOLS, UPGRADES, WORKSITES, type Crew, type CrewId, type UpgradeId } from './config';
+import { CFG, CREW, MAX_DEPTH, PROJECTS, RESOURCES, TOOLS, TRACK_TIERS, UPGRADES, WORKSITES, type Crew, type CrewId, type UpgradeId } from './config';
 import type { Load, State } from './state';
 import type { MaterialId } from './config';
 
@@ -65,13 +65,23 @@ export function mixPick(l: Load, r: number): MaterialId {
 // ---- transport ----
 export const upgDef = (id: UpgradeId) => UPGRADES.find((u) => u.id === id)!;
 export const upgCost = (s: State, id: UpgradeId) => {
+  if (id === 'rail') return nextTrack(s)?.cost ?? Infinity; // Track Strength: priced per physical tier
   const u = upgDef(id);
   return Math.ceil(u.baseCost * Math.pow(u.growth, s.upg[id]));
 };
 const C = CFG.cart;
 export const cartCapacity = (s: State) => Math.round(C.capacity.base * (1 + C.capacity.perLevel * s.upg.cartCap));
 export const loadRate = (s: State) => C.loadRate.base * (1 + C.loadRate.perLevel * s.upg.loadSpeed);
-export const railMult = (s: State) => 1 + C.railPerLevel * s.upg.rail;
+export const trackDef = (s: State) => TRACK_TIERS[Math.min(s.upg.rail, TRACK_TIERS.length - 1)];
+export const nextTrack = (s: State) => TRACK_TIERS[s.upg.rail + 1];
+export const trackSafe = (s: State) => trackDef(s).safe;
+export type TrackStress = 'safe' | 'strained' | 'over';
+/** How hard a given cart load works the current track (loadRatio = load / safe load). */
+export function trackStress(s: State, load: number): TrackStress {
+  const r = load / trackSafe(s);
+  return r > 1 + 1e-9 ? 'over' : r >= CFG.track.strainedAt ? 'strained' : 'safe';
+}
+export const railMult = (s: State) => trackDef(s).speed;
 export const cartSpeed = (s: State) => C.speed.base * (1 + C.speed.perLevel * s.upg.cartSpeed) * railMult(s);
 /** One-way trip time between the surface and depth d. Linear in depth: deep transport matters, never explodes. */
 export const travelTime = (s: State, d: number) => C.baseTravel + (d + C.surfaceLiftM) / cartSpeed(s);

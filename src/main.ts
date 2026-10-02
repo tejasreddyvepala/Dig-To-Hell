@@ -13,6 +13,8 @@ import { SV, present, presentCart, presentExpansion, presentLandings, presentSur
 import { updateSurface, type SurfaceEvent } from './surface';
 import { updateConstruction, type BuildEvent } from './construction';
 import { EXP, expanding, inputBlocked, updateExpansion, type ExpEvent } from './expansion';
+import { trackBusy, updateTrackUpgrade, type TrackUpEvent } from './track';
+import { updateTrackFx } from './trackfx';
 import { SITE, presentBuild, updateSite } from './site';
 import { FX, popup, updateFx } from './fx';
 import { audioState, playSting, unlockAudio } from './audio';
@@ -122,6 +124,7 @@ const cartEvents: CartEvent[] = [];
 const surfEvents: SurfaceEvent[] = [];
 const buildEvents: BuildEvent[] = [];
 const expEvents: ExpEvent[] = [];
+const trackEvents: TrackUpEvent[] = [];
 let last = performance.now(), panelT = 0, devSpeed = 1;
 function frame(now: number) {
   const realDt = Math.min(CFG.maxDt, (now - last) / 1000) * devSpeed;
@@ -135,11 +138,14 @@ function frame(now: number) {
   expEvents.length = 0;
   updateExpansion(dt, expEvents);
   presentExpansion(expEvents);
-  if (S.tut >= 2) {
-    cartEvents.length = 0;
+  trackEvents.length = 0;
+  updateTrackUpgrade(dt, trackEvents);
+  cartEvents.length = 0;
+  if (S.tut >= 2 && !trackBusy()) { // the cart waits while the crew reinforces the track
     updateCart(dt, cartEvents);
     presentCart(cartEvents, dt);
   }
+  updateTrackFx(dt, cartEvents, trackEvents);
   surfEvents.length = 0;
   updateSurface(dt, surfEvents);
   presentSurface(surfEvents, dt);
@@ -187,6 +193,12 @@ if (import.meta.env.DEV) {
     tireAll: () => { for (const w of workers) w.fatigue = 0; },
     setSpeed: (k: number) => { devSpeed = k; },
     ladderDemo: () => ladderDemo(-(faceOrigin().y - yOf(0)) / faceScale()),
+    // track-strain acceptance test: put a given load in the cart at the bottom and send it up
+    sendLoad: (qty: number) => {
+      S.cart.load.qty = qty; S.cart.load.val = qty * 2; S.cart.load.mix = { clay: qty * 0.7, dirt: qty * 0.3 };
+      S.cart.state = 'READY'; S.cart.t = CFG.cart.readySecs; S.cart.dur = 0;
+    },
+    track: () => ({ tier: S.upg.rail, story: S.flags.trackStory, cart: S.cart.state, load: S.cart.load.qty, dur: S.cart.dur, t: S.cart.t }),
     setTruck: (state: typeof S.truck.state, k: number, qty: number) => { // visual testing: pose the truck exactly
       const T = CFG.yard.truck, dur = state === 'ARRIVING' ? T.arriveSecs : state === 'TO_SITE' || state === 'RETURNING' ? T.driveSecs : 0;
       S.truck.state = state; S.truck.dur = dur; S.truck.t = dur * k;

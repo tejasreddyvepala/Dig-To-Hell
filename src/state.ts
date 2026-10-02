@@ -65,7 +65,8 @@ export interface State {
   build: BuildState;
   site: Site; // where the camera is (restored on load)
   tut: number; // first-time introduction step (see intro.ts; TUT_DONE = finished)
-  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean };
+  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean }; // trackStory: first-overload moment shown
+  trackSchema: number; // 1 = upg.rail is a Track Strength tier (older saves stored Rail Quality levels)
   stats: { earned: number; delivered: number; processed: number; sold: number }; // lifetime cash, blocks delivered to the plot, units processed, properties sold
 }
 
@@ -86,7 +87,8 @@ export function fresh(): State {
     build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false },
     site: 'mine',
     tut: 0,
-    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false },
+    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false, trackStory: false },
+    trackSchema: 1,
     stats: { earned: 0, delivered: 0, processed: 0, sold: 0 },
   };
 }
@@ -109,6 +111,9 @@ function load(o: any, guessDepth: number): Load {
   return l;
 }
 
+/** Old Rail Quality level -> Track Strength tier (any bought level keeps at least Reinforced Wood). */
+const railLevelsToTier = (l: number) => (l >= 7 ? 3 : l >= 4 ? 2 : l >= 1 ? 1 : 0);
+
 /** Validate a parsed save of the current version, or migrate an older supported one. Never duplicates material or cash. */
 export function sanitize(o: any): State | null {
   if (!o || typeof o !== 'object') return null;
@@ -129,6 +134,7 @@ export function sanitize(o: any): State | null {
   s.flags.arrived = !!o.flags?.arrived;
   s.flags.sold = !!o.flags?.sold;
   s.flags.storageSeen = !!o.flags?.storageSeen;
+  s.flags.trackStory = !!o.flags?.trackStory;
   s.stats.earned = num(o.stats?.earned, 0, 1e18, 0);
   const c = o.cart;
   if (c && CART_STATES.includes(c.state)) {
@@ -147,7 +153,7 @@ export function sanitize(o: any): State | null {
     s.upg.cartCap = Math.floor(num(o.upg?.cartCap, 0, 30, 0));
     s.upg.cartSpeed = Math.floor(num(o.upg?.cartSpeed, 0, 30, 0));
     s.upg.loadSpeed = Math.floor(num(o.upg?.loadSpeed, 0, 30, 0));
-    s.upg.rail = Math.floor(num(o.upg?.rail, 0, 20, 0));
+    s.upg.rail = railLevelsToTier(num(o.upg?.rail, 0, 20, 0));
     s.upg.processSpeed = Math.floor(num(o.upg?.sellSpeed, 0, 30, 0));
     s.upg.contractValue = Math.floor(num(o.upg?.sellValue, 0, 30, 0));
     s.upg.rawStorage = Math.floor(num(o.upg?.storage, 0, 30, 0));
@@ -160,6 +166,8 @@ export function sanitize(o: any): State | null {
   s.raw = load(o.raw, s.depth * 0.6);
   s.goods = load(o.goods, s.depth * 0.6);
   for (const u of UPGRADES) s.upg[u.id] = Math.floor(num(o.upg?.[u.id], 0, u.maxLevel, 0));
+  // Rail Quality (speed levels 0..20) became Track Strength (physical tiers 0..3): map once, never downgrade a bought tier
+  if (o.trackSchema !== 1) s.upg.rail = railLevelsToTier(num(o.upg?.rail, 0, 20, 0));
   s.yard = !!o.yard;
   s.stats.delivered = v === 5 ? num(o.stats?.delivered, 0, 1e15, 0) : 0; // v4 "delivered" meant sold-by-truck
   s.stats.processed = num(o.stats?.processed, 0, 1e15, 0);

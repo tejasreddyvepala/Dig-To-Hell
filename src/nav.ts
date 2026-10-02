@@ -5,7 +5,7 @@
 import { CFG } from './config';
 import { S, type Site } from './state';
 import { worksiteAvailable, nextWorksite } from './economy';
-import { cartBlocked } from './cart';
+import { cartBlocked, trackOverloaded } from './cart';
 import { canStartStage } from './construction';
 import { expanding } from './expansion';
 import { optionalAffordable, showSitePanel, updatePanel } from './panel';
@@ -30,6 +30,7 @@ export function attention(site: Site): boolean {
     if (S.tut === 5 && !buildVisited && (S.truck.state !== 'PARKED' || S.build.material.qty > 0)) return true; // FOLLOW THE TRUCK
     return S.build.done || canStartStage();
   }
+  if (trackOverloaded()) return true; // a real active problem: the cart carries more than the track safely can
   const n = nextWorksite(S);
   if (n && worksiteAvailable(S) && S.cash >= n.cost && !expanding()) return true;
   return chainStarved();

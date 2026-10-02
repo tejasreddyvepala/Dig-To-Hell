@@ -4,7 +4,7 @@
 //   BOTTOM_EMPTY → LOADING → READY → TRAVELLING_UP → SURFACE_ARRIVAL → UNLOADING → TRAVELLING_DOWN → (BOTTOM_EMPTY | LOADING)
 import { CFG } from './config';
 import { S, type CartState } from './state';
-import { cartCapacity, loadRate, moveLoad, rawCap, travelTime } from './economy';
+import { cartCapacity, loadRate, moveLoad, rawCap, trackSafe, trackStress, travelTime, type TrackStress } from './economy';
 
 export type CartEventType = 'loaded' | 'ready' | 'depart' | 'arrive' | 'unloadStart' | 'unloaded' | 'returnStart' | 'back';
 export interface CartEvent { type: CartEventType; qty?: number }
@@ -30,6 +30,30 @@ export function cartDepth(): number {
     case 'UNLOADING': return top;
     default: return S.depth;
   }
+}
+
+// ---- track load (Spec §7.8): the physical cart load decides how hard the track works ----
+let lastTripOver = false; // the last trip up was overloaded (not saved: recomputed at the next departure)
+/** Seconds for a loaded trip up from `from`; an overloaded track slows it (no damage, no material loss). */
+function upTripSecs(from: number) {
+  const over = trackStress(S, S.cart.load.qty) === 'over';
+  return travelTime(S, from) / (over ? 1 - CFG.track.overloadPenalty : 1);
+}
+/** Stress on the track right now: only a loaded cart on its way up (or sitting loaded at the bottom) counts. */
+export function cartTrackStress(): TrackStress {
+  const st = S.cart.state;
+  if (st !== 'TRAVELLING_UP' && st !== 'LOADING' && st !== 'READY') return 'safe';
+  return trackStress(S, S.cart.load.qty);
+}
+/** A real, active transport problem: the cart is carrying (or keeps carrying) more than the track's safe load. */
+export const trackOverloaded = () =>
+  S.cart.load.qty > trackSafe(S) + 1e-9 || (lastTripOver && cartCapacity(S) > trackSafe(S) + 1e-9);
+/** After a track upgrade: a cart already climbing continues at the new track's speed (same progress). */
+export function retimeUpTrip() {
+  lastTripOver = trackStress(S, S.cart.load.qty) === 'over' && S.cart.state === 'TRAVELLING_UP';
+  if (S.cart.state !== 'TRAVELLING_UP' || S.cart.dur <= 0) return;
+  const p = S.cart.t / S.cart.dur, dur = upTripSecs(S.cart.from);
+  S.cart.dur = dur; S.cart.t = p * dur;
 }
 
 /** True while the cart is at the dig site (loading area). */
@@ -84,9 +108,10 @@ export function updateCart(dt: number, out: CartEvent[] = []): CartEvent[] {
         if (left < need) { c.t += left; left = 0; break; }
         left -= need;
         const from = S.depth;
-        enter('TRAVELLING_UP', travelTime(S, from));
+        enter('TRAVELLING_UP', upTripSecs(from));
         c.from = from;
         S.flags.dispatched = true;
+        lastTripOver = trackStress(S, c.load.qty) === 'over';
         out.push({ type: 'depart' });
         break;
       }

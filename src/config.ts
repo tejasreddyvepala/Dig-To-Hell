@@ -77,10 +77,22 @@ export const UPGRADES: Upgrade[] = [
   { id: 'cartCap', group: 'transport', name: 'Cart Capacity', ic: '🛒', baseCost: 80, growth: 1.6, maxLevel: 30 },
   { id: 'cartSpeed', group: 'transport', name: 'Cart Speed', ic: '💨', baseCost: 100, growth: 1.6, maxLevel: 30 },
   { id: 'loadSpeed', group: 'transport', name: 'Loading Speed', ic: '🪣', baseCost: 50, growth: 1.55, maxLevel: 30 },
-  { id: 'rail', group: 'transport', name: 'Rail Quality', ic: '🛤️', baseCost: 200, growth: 1.8, maxLevel: 20 },
+  { id: 'rail', group: 'transport', name: 'Track Strength', ic: '🛤️', baseCost: 0, growth: 1, maxLevel: 3 }, // level = track tier (TRACK_TIERS); cost per tier lives there
   { id: 'processSpeed', group: 'processing', name: 'Processing Speed', ic: '⚙️', baseCost: 75, growth: 1.6, maxLevel: 30 },
   { id: 'contractValue', group: 'processing', name: 'Block Quality', ic: '💎', baseCost: 140, growth: 1.75, maxLevel: 30 }, // raises property value + milestone pay
   { id: 'rawStorage', group: 'processing', name: 'Raw Storage', ic: '📦', baseCost: 110, growth: 1.65, maxLevel: 30 },
+];
+
+// ---- track strength: each tier is a physical track with a SAFE LOAD (Spec §7.8) ----
+// loadRatio = cart load / safe load: SAFE < strainedAt <= STRAINED <= 1 < OVERLOADED (slower trips, world shows strain).
+// Tuned so the starting cart (50) runs safe on Wood (71%) and the FIRST Cart Capacity upgrade (73) overloads it;
+// each new tier gives several cart-capacity levels of relief before it strains again.
+export interface TrackTier { name: string; safe: number; speed: number; cost: number }
+export const TRACK_TIERS: TrackTier[] = [
+  { name: 'Wood Track', safe: 70, speed: 1, cost: 0 },
+  { name: 'Reinforced Wood Track', safe: 140, speed: 1.15, cost: 150 }, // relief until Cart Capacity Lv 5 (163)
+  { name: 'Iron Rail', safe: 260, speed: 1.3, cost: 700 }, // ... until Lv 10 (275)
+  { name: 'Steel Rail', safe: 450, speed: 1.5, cost: 2500 },
 ];
 
 // ---- player tools: a short early ladder, then the Jackhammer changes how digging works ----
@@ -187,8 +199,6 @@ export const CFG = {
     capacity: { base: 50, perLevel: 0.45 }, // units = base × (1 + perLevel × L)
     loadRate: { base: 3.5, perLevel: 0.35 }, // units/s pile -> cart
     speed: { base: 8, perLevel: 0.25 }, // m/s along the shaft
-    railPerLevel: 0.15, // travel speed multiplier per Rail Quality level
-    railTiers: [0, 2, 4, 7], // Rail Quality levels where the track visibly upgrades
     bodyTiers: [0, 2, 5, 9], // Cart Capacity levels where the cart body visibly upgrades
     baseTravel: 2.5, // secs added to every trip (start/stop)
     readySecs: 0.6, // full cart pause before departure
@@ -255,6 +265,15 @@ export const CFG = {
     rubbleToCart: 8, // rubble dug before "RUBBLE ISN'T MONEY"
     contractorTalkSecs: 3.2, // contractor inspects the first load before buying it
     seedCash: 95, // the contractor buys only until you hold this much (just over the yard's cost); the rest stays for the yard's first blocks
+  },
+
+  // ---- track strain (see TRACK_TIERS) ----
+  track: {
+    strainedAt: 0.75, // loadRatio where the world starts creaking
+    overloadPenalty: 0.3, // overloaded trips: -30% travel speed (no damage, no material loss)
+    upgradeSecs: 2.6, // physical reinforcement sequence (the cart waits)
+    joltEveryM: 3, // overloaded cart: a tiny camera jolt per joint crossed
+    jolt: 0.35, // impulse size (a normal hit is 0.3)
   },
 
   // ---- navigation ----

@@ -138,7 +138,7 @@ A bigger tool or machine means **more damage + more material + a larger visual b
 ### 7.4 Physical upgrade tiers (minor levels inside major tiers)
 Major progression is equipment, not "Lv 9". Numerical sub-levels exist, but every few levels the player unlocks **a new thing**:
 - Transport: Old Mine Cart → Reinforced Cart → Powered Cart → Ore Wagon → Motorized Hauler.
-- Rail: Wood Track → Reinforced Track → Iron Rail → Steel Rail → Industrial Rail → Powered Track. (Every level already changes something visible: thickness, sleeper spacing, bolts, brackets, bracing, lamps, paint, guard rail.)
+- Track Strength (§7.8): Wood Track → Reinforced Wood Track → Iron Rail → Steel Rail → (later) Industrial Track → Powered Rail. Each tier is a physical rebuild with a safe load, not a speed level.
 - Loading: Hand Loading → Chute → Mechanical Loader → Powered Hopper → Industrial Loader.
 - Processing: Basic Crusher → Rock Crusher → Rotary Crusher → Twin Crusher → Industrial Pulverizer.
 
@@ -157,6 +157,29 @@ Clearly larger than a person (shared world scale): tracks, base, upper body, cab
 
 ### 7.7 Future drilling
 Pneumatic Drill Operator → Drill Rig → Industrial Drill → Tunnel Borer, each requiring progressively larger worksite infrastructure.
+
+### 7.8 Track Strength and the overload storyline (built)
+Increased mining eventually puts too much weight through the transport system; the world shows it, the player fixes it.
+- **Tiers** (`TRACK_TIERS` in `config.ts`; `S.upg.rail` = tier index): Wood Track (safe load 70, speed ×1.0) · Reinforced Wood Track (140, ×1.15, $150) · Iron Rail (260, ×1.3, $700) · Steel Rail (450, ×1.5, $2,500). Later: Industrial Track, Powered Rail.
+- **loadRatio = cart load / safe load** of the ACTUAL cart (never time or depth): SAFE < 0.75 ≤ STRAINED ≤ 1.0 < OVERLOADED (`CFG.track.strainedAt`).
+- **Balance:** the starting cart (50) runs SAFE on Wood (71%), so the opening is healthy. The first Cart Capacity upgrade (73) overloads Wood — a bigger cart is not pure upside (the capacity row warns *full load may exceed track strength*, but never blocks). Reinforced Wood stays safe/strained until Cart Capacity Lv 5 (163); Iron until Lv 10 (275): each track buys a real period of relief. More diggers/tools/the Excavator fill carts faster, so full (heavy) trips become the norm.
+- **SAFE:** normal speed, stable track, no warning, no dust.
+- **STRAINED** (while the loaded cart climbs): rails bow ~1 px around the cart, rare wood creaks (every 2.5–5 s), the odd wheel squeak, a speck of dust. "Hmm, that cart is getting heavy."
+- **OVERLOADED** (while it climbs): rails bow ~3 px and vibrate around the cart, sleepers rattle, joint brackets shake, the cart rattles and tilts, frequent creaks (0.9–2 s) and squeal (1.5–3 s), dust (~4/s) and pebbles (~1.5/s) shaken off the wall near the cart, a tiny camera jolt each joint crossed (`CFG.track.joltEveryM` 3 m, `jolt` 0.35 — less than a pick hit; scaled down on narrow screens). All effects are local to the cart and fade out when it is off screen. The cart is visibly heaped above the rim.
+- **Consequence:** an overloaded trip up travels −30% slower (`CFG.track.overloadPenalty`). Nothing breaks, nothing is lost, no countdown, no fake danger (cave-ins are V2-3).
+- **First overload ever** (saved flag `flags.trackStory`, plays only if the player is watching the Mine): creak → dust → creak + squeal → a short shake + pebbles → non-blocking lines **⚠ TRACK STRAIN** / *"These wooden rails weren't built for loads this heavy."* / *"Reinforce the track before transport gets worse."* → the TRANSPORT accordion opens and the track card pulses.
+- **Attention:** MINE red `!` only while the track is genuinely overloaded (`trackOverloaded()`: the cart carries more than the safe load, or the last trip was overloaded and a full cart still would be). Not because an upgrade is affordable.
+- **UI** (Transport): Track name · Safe load · Current cart; when overloaded: **⚠ OVERLOADED 73 / 70 · transport −30%** and a **REINFORCE TRACK** card (next tier, safe load, speed gain, cost).
+- **Upgrade = a physical job (~2.6 s, `CFG.track.upgradeSecs`):** the cart waits; the new tier replaces the old one section by section from the dig face upward (old sections shake loose above the work line, hammering, dust, a REINFORCING TRACK tag), a final metal clunk, **TRACK REINFORCED**. A cart already climbing then continues at the new speed (`retimeUpTrip`).
+- **Payoff:** dust and creaks stop, the track no longer bows, the cart stops rattling, the red `!` clears, the same load climbs faster (measured: 73-load trip 12.0 s on overloaded Wood → 7.6 s on Reinforced Wood; a safe 40-load trip on Wood took 8.4 s).
+- **Visual tiers:** Wood = thin rough rails, sparse thin sleepers, small wooden brackets; Reinforced Wood = thick rails, dense thick sleepers with steel plates + bolts, diagonal timber bracing, an upright; Iron = metal rails with highlight, bolted sleepers, iron brackets, steel bracing; Steel = heavy bright rails, steel sleepers, yellow brackets, guard rail, hazard paint, wall lamps.
+- **Save:** `upg.rail` is the tier; `trackSchema: 1` marks the new meaning (older saves map Rail Quality levels once: Lv ≥ 7 → Steel, ≥ 4 → Iron, ≥ 1 → Reinforced); `flags.trackStory`. The "last trip overloaded" memory is not saved, so a reload never shows a false overload.
+- **Code:** `config.ts` (`TRACK_TIERS`, `CFG.track`) · `economy.ts` (`trackDef`, `trackSafe`, `trackStress`) · `cart.ts` (penalty at departure, `cartTrackStress`, `trackOverloaded`, `retimeUpTrip`) · `track.ts` (purchase + reinforcement job) · `trackfx.ts` (world feedback, first-overload story, rebuild FX) · `render.ts` (`drawRails`/`drawTrackTier`, cart heap/rattle) · `panel.ts` (track block) · `nav.ts` (red `!`) · `audio.ts` (`playCreak`, `playSqueak`, `playClunk`).
+
+### 7.9 The bottleneck principle (reuse this pattern)
+**GROWTH → PHYSICAL BOTTLENECK → THE WORLD SHOWS THE PROBLEM → THE PLAYER NOTICES → THE PLAYER BUYS A SOLUTION → THE WORLD PHYSICALLY IMPROVES.**
+Track strain is the first instance. Future pressures to build the same way, interconnected: more rubble → the cart can't keep up; heavier cart → the track struggles (built); more workers → the chamber is overcrowded; more raw material → the hopper overflows; more blocks → truck logistics struggle; heavier machinery → the chamber is too small; more construction → the delivery network falls behind.
+**Rule: do not make the UI explain something the world can show first.** The UI confirms what the world already communicated.
 
 ---
 
@@ -315,6 +338,7 @@ Off-screen sources are attenuated by camera distance.
 - Stop looking like enterprise software. **Location navigation is primary.**
 - **Contextual panels:** MINE (Extraction, Workers, Worksite, Transport, Discoveries) · YARD (Processing, Storage, Loading, Logistics) · BUILD (Current Project, Materials, Stage, Sell). Never show every upgrade in the game at once. Accordions inside a site where needed.
 - **Major vs minor:** major transformations (new tool, new machine, new chamber, new rest facility, new project, start stage, sell) get big cards and animations; minor efficiency (+capacity, +speed, +value) are compact rows.
+- **World first:** never make the UI explain something the world can show first (§7.9); the UI confirms.
 - **Attention without annoyance:** red `!` important, yellow dot optional, no badge routine. Do not constantly pulse everything.
 - **Automation as progression:** what starts as a chore later becomes automated (Foreman auto-starts construction stages; an Archaeology Team handles common fossils; a dispatcher manages transport), while new, larger problems appear.
 

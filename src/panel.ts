@@ -5,12 +5,14 @@ import { CFG, CREW, FINDS, PROJECTS, TOOLS, UPGRADES, WORKSITES, type CrewId, ty
 import { S, saveState, type Site } from './state';
 import {
   addTo, cartCapacity, cartSpeed, crewAvailable, crewCost, crewRubbleRate, loadRate, materialAt, nextWorksite, processRate,
-  projectValue, rawCap, stagePayment, unitValue, upgCost, worksiteAvailable,
+  nextTrack, projectValue, rawCap, stagePayment, trackDef, trackSafe, unitValue, upgCost, worksiteAvailable,
 } from './economy';
 import { syncWorkers, restingCount, workers } from './workers';
 import { buildYard } from './surface';
 import { canStartStage, currentProject, currentStage, sellProperty, startStage, type BuildEvent } from './construction';
 import { buyExpansion, expanding } from './expansion';
+import { buyTrack, trackBusy } from './track';
+import { trackOverloaded } from './cart';
 import { FX, popup } from './fx';
 import { playPurchase } from './audio';
 import { yardPurchased } from './juice';
@@ -98,7 +100,15 @@ export function buildPanel() {
     saveState();
     updatePanel();
   };
-  $('transport').innerHTML = UPGRADES.filter((u) => u.group === 'transport').map(row).join('');
+  // TRACK: what it is, what it safely carries, what the cart weighs now; the reinforce card; then the minor rows
+  $('transport').innerHTML = `<div class="track" id="trackBox">
+      <div class="tk-r"><span>Track</span><b id="tkName"></b></div>
+      <div class="tk-r"><span>Safe load</span><b id="tkSafe"></b></div>
+      <div class="tk-r"><span>Current cart</span><b id="tkCart"></b></div>
+      <div class="tk-warn" id="tkWarn" hidden></div>
+      ${card('id="tkBuy"', '🛤️')}
+    </div>` + UPGRADES.filter((u) => u.group === 'transport' && u.id !== 'rail').map(row).join('');
+  $('tkBuy').onclick = () => { if (buyTrack()) { playPurchase(); updatePanel(); } };
   $('processing').innerHTML = UPGRADES.filter((u) => u.group === 'processing').map(row).join('');
   document.querySelectorAll<HTMLButtonElement>('[data-upg]').forEach((b) => (b.onclick = () => buyUpgrade(b.dataset.upg as UpgradeId)));
   $('buildAct').onclick = buildAction;
@@ -179,7 +189,8 @@ export function tickCash(dt: number) {
 function upgStat(id: UpgradeId): string {
   switch (id) {
     case 'cartCap': return `${cartCapacity(S)}/trip`;
-    case 'cartSpeed': case 'rail': return `${cartSpeed(S).toFixed(1)} m/s`;
+    case 'cartSpeed': return `${cartSpeed(S).toFixed(1)} m/s`;
+    case 'rail': return trackDef(S).name;
     case 'loadSpeed': return `${loadRate(S).toFixed(1)}/s`;
     case 'processSpeed': return `${processRate(S).toFixed(1)}/s`;
     case 'contractValue': return `+${Math.round(Y.price.perLevel * S.upg.contractValue * 100)}% property value`;
@@ -194,6 +205,15 @@ function procRowVisible(id: UpgradeId) {
   if (id === 'contractValue') return S.stats.sold >= 1 || S.upg.contractValue > 0;
   if (id === 'rawStorage') return S.flags.storageSeen || S.upg.rawStorage > 0;
   return true;
+}
+
+/** First overload story beat: open TRANSPORT and draw the eye to the track card (no modal). */
+export function highlightTrack() {
+  setOpen('m-tr', true);
+  const box = $('trackBox');
+  box.classList.add('pulse');
+  setTimeout(() => box.classList.remove('pulse'), 4200);
+  updatePanel();
 }
 
 /** Affordable optional purchases per site (the nav's yellow dot). */
@@ -269,6 +289,26 @@ export function updatePanel() {
   reveal('m-tr', $('g-tr'), S.flags.dispatched);
   setText('trStat', `Cart ${Math.floor(S.cart.load.qty)}/${cartCapacity(S)} ${CART_LABEL[S.cart.state]} · pile ${Math.floor(S.rubble.qty)}`);
   document.querySelectorAll<HTMLButtonElement>('#transport [data-upg]').forEach((b) => updRow(b, hasMoney));
+  // track strength: the world already showed the strain; this confirms it with numbers
+  const tk = trackDef(S), nt2 = nextTrack(S), over = trackOverloaded(), cap2 = cartCapacity(S);
+  const shown = S.cart.load.qty > 0.5 ? S.cart.load.qty : cap2;
+  setText('tkName', tk.name);
+  setText('tkSafe', `${tk.safe} rubble`);
+  setText('tkCart', S.cart.load.qty > 0.5 ? `${Math.floor(S.cart.load.qty)} / ${cap2} carried` : `holds ${cap2}`);
+  $('trackBox').classList.toggle('over', over);
+  const warn = $('tkWarn');
+  warn.hidden = !over;
+  if (over) setText('tkWarn', `⚠ OVERLOADED  ${Math.floor(Math.max(shown, cap2))} / ${tk.safe} · transport −${Math.round(CFG.track.overloadPenalty * 100)}%`);
+  const tb = $('tkBuy') as HTMLButtonElement;
+  tb.hidden = !nt2;
+  if (nt2) {
+    tb.disabled = S.cash < nt2.cost || trackBusy();
+    set(tb, '.nm', trackBusy() ? 'Reinforcing…' : over ? 'REINFORCE TRACK' : `Upgrade to ${nt2.name}`);
+    set(tb, '.ds', `${nt2.name} · safe load ${nt2.safe} · transport +${Math.round((nt2.speed / tk.speed - 1) * 100)}%`);
+    set(tb, '.pr', money(nt2.cost));
+    set(tb, '.ct', '');
+    tb.classList.toggle('urgent', over);
+  }
 
   setText('findStat', `${S.found}/${FINDS.length}`);
   const fh =
@@ -336,7 +376,9 @@ function updRow(b: HTMLButtonElement, visible: boolean) {
   if (!visible) return;
   const maxed = S.upg[id] >= u.maxLevel, cost = upgCost(S, id);
   b.disabled = maxed || S.cash < cost;
-  set(b, 'small', `Lv ${S.upg[id]} · ${upgStat(id)}`);
+  // a bigger cart is not pure upside: say when the next level's full load will exceed the track (still buyable)
+  const capWarn = id === 'cartCap' && Math.round(CFG.cart.capacity.base * (1 + CFG.cart.capacity.perLevel * (S.upg.cartCap + 1))) > trackSafe(S);
+  set(b, 'small', `Lv ${S.upg[id]} · ${upgStat(id)}${capWarn ? ' · ⚠ full load may exceed track strength' : ''}`);
   set(b, '.rp', maxed ? 'MAX' : money(cost));
 }
 

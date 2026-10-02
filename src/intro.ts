@@ -21,6 +21,8 @@ let lineT = 0, cur: { s: string; secs: number; big: boolean } | null = null;
 let shownBuild = false, firstBreak = false;
 
 function line(s: string, big = true, secs: number = CFG.intro.lineSecs) { queue.push({ s, secs, big }); }
+/** A short non-blocking line over the world (also used by later world moments, e.g. the first track overload). */
+export const showLine = line;
 
 export function initIntro(onStart: () => void) {
   btn.onclick = () => { startDigging(); onStart(); };

@@ -22,6 +22,7 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 - People route (left wall stairs/rest) and material route (right wall rail/cart) never overlap.
 - Characters share one normalized rig; the player is ~1.1× a worker with only a contact shadow.
 - Never let the player wait > ~45 s with nothing happening early; report dead zones honestly.
+- **World first:** never make the UI explain what the world can show first. Growth creates physical bottlenecks the world shows (creaks, dust, slow carts) before the UI confirms them; the fix physically transforms the world (Spec §7.8–7.9).
 - Every click must feel like impact. Interruptions (future) never punish failure. Cosmetic-only monetization later.
 
 ## TECH / ARCHITECTURE
@@ -30,6 +31,7 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 - Save: localStorage `digtohell_v5` every 5 s + unload/pagehide; versioned migration (v4/v3/v2 → v5); old key deleted only after the new save is written. Accordion state `dth_acc`.
 - Modules (src/):
   - `config` tuning · `economy` pure formulas · `state` save schema/migration · `util` · `layout` work-floor positions relative to the centred shaft
+  - `track` Track Strength purchase + reinforcement job · `trackfx` track strain feedback + first-overload story
   - `sim` strikes, finds, offline · `workers` crew behaviour: strikes, fatigue, rest paths, idles, arrival, `initSim`/`applyWorksite` · `miner` player strike scheduling · `cart` cart state machine · `surface` contractor, processing, truck route · `construction` projects/stages/sale · `expansion` Work Chamber blast sequence · `digface` chunk damage (width per worksite tier) · `geo` geology sampler + painter
   - `rig` CharacterRig (all people) · `characters` excavator + lamp beams · `render` mine (face, chamber, rest area, crew, cart, rails, HUD) · `yard` recycling yard + truck · `site` construction site + buildings + build-event FX · `landscape` sky/day-night · `draw` shared helpers · `fx` particles/popups/impulse · `juice` sim events → FX/audio · `audio` SFX + buses · `music` MusicManager + settings
   - `view` canvas, site camera (tweens, zoom/pan), geometry, `surfaceLayout()` · `nav` site bar + attention badges · `intro` introduction steps + overlay text + follow hints · `panel` contextual per-site panels · `main` wiring + loop only
@@ -38,7 +40,7 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 
 ## CURRENT ECONOMY (as built in V2-1)
 - Extraction: a break gives 2 rubble × tool yield (Pickaxe ×1 · Iron ×1.5 · Heavy ×2.5 · Jackhammer ×3.5), ×2 on crit; diggers 0.6 dps each ($80, ×1.28 per hire); Excavator ($900, needs the Work Chamber, one) bites a whole chunk for ×6 rubble.
-- Transport: one cart, 50 capacity base; travel = 2.5 s + (depth + 7 m) / speed.
+- Transport: one cart, 50 capacity base; travel = 2.5 s + (depth + 7 m) / speed. Track Strength tiers (safe load / speed / cost): Wood 70 ×1.0 · Reinforced Wood 140 ×1.15 $150 · Iron 260 ×1.3 $700 · Steel 450 ×1.5 $2,500; an overloaded trip up (cart load > safe load) is −30% speed. First overload = Cart Capacity Lv 1 (73) on Wood.
 - Yard ($80): raw 120 cap → 2/s processing → blocks; truck (60 per trip, leaves at ≥ 15) drives to the plot in 4 s.
 - Construction: Tiny Cabin $900 (30/30/40/30/20 blocks), Two-Story Home $4,200 (60/70/80/80/70/60/40); builders use 3 blocks/s; each stage pays 8% of the value; the sale pays the value (× Block Quality bonus +25%/level). The tutorial contractor pays ≈$95 seed money once.
 - Work Chamber $450 (needs 2 diggers).
@@ -53,7 +55,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 ## STATUS LOG
 - Step 1 port `e4d758d` · Step 2 dig feel `fc51a70` · Step 2.5 polish `72800ed` · design update `6ea5c2b` · 3A+3B `b4a2c08` · 3C `ce168ca` · 3C.5 `4bfadeb` (hash commits `3c30846`, `1278c76`, `3cf1c7a`, `81d4023`) · reset confirm `2011020`
 - V2 design consolidation `719166f`
-- V2-1 implementation: `97fd236`
+- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `TRACK_HASH`
 
 ### History in brief (details in git history and older Spec revisions)
 - Steps 1–2.5: TS/Vite port; destructible dig face (per-material stages, cracks, crits with hit-stop/star/ring); impact hierarchy; synthesized SFX; face reads as one mass of earth; popup hierarchy.
@@ -62,7 +64,8 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 - 3C.5: Recycling Yard (hopper → crusher → auger → press → blocks), trucks (golden-angle colours), material composition `mix`, deterministic painted geology (5 m cached segments), new characters + helmet lamps + depth darkness, IK excavator, per-level rail visuals, painted landscape with day/night, accordion panel, save v4. Perf regression under heavy CPU throttle noted.
 
 ## KNOWN ISSUES (after V2-1)
-- Transport is the silent bottleneck from ~3:00: with 4–6 diggers the dig-site pile reaches 300–550 by 5:00 unless the player buys cart upgrades. Nothing flags it (no badge, the pile number just grows).
+- Transport is the silent bottleneck from ~3:00: with 4–6 diggers the dig-site pile reaches 300–550 by 5:00 unless the player buys cart upgrades. The cart-can't-keep-up pressure is still unflagged (track overload now is flagged, Spec §7.8).
+- Track reinforcement has no workers walking over (the job is shown by the sweeping rebuild, hammering and dust). Wood's STRAINED band (53–70) is rarely seen because the base cart is 50 and the first upgrade jumps to 73.
 - 0:45 → 1:22 of a fresh game: the first truck brings ~18 of the 30 Foundation blocks; ~35 s of digging with no new decision.
 - First visible rest happens late (~4:00) because the platform needs ≥ 22 m and workers work 60–120 s first.
 - Throttled-CPU hitch: painting a new geology segment costs ~30 ms (≈130 ms at 4× CPU throttle) once per 5 m of digging (pre-existing from 3C.5).
