@@ -66,7 +66,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 - 0:45 → 1:22 of a fresh game: the first truck brings ~18 of the 30 Foundation blocks; ~35 s of digging with no new decision.
 - First visible rest happens late (~4:00) because the platform needs ≥ 22 m and workers work 60–120 s first.
 - Throttled-CPU hitch: painting a new geology segment costs ~30 ms (≈130 ms at 4× CPU throttle) once per 5 m of digging (pre-existing from 3C.5).
-- Truck drives back mirrored (cab first) and flips instantly when parking; no U-turn.
+- Truck (redrawn `1836a66` as a heavy cab-forward flatbed, 4.5 worker heights, tandem rear axles): turnarounds are a side-view swing through a front view, not a true 3-point turn. While unloading at the plot it hides the block stack behind it for a few seconds.
 - Two-Story Home repeats after its sale (no Project #3 yet, by scope). Build site ground beyond the painted geology is a blended flat fill.
 - Music is procedural and verified only as running (state switching, crossfade, no errors) — not judged by ear. Same for SFX.
 - Finds (coin, buried car) are placeholder banners; depth is capped at 300 m in code.
