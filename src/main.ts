@@ -79,8 +79,18 @@ function updateNav() {
 
 // ---- panel ----
 buildPanel();
-document.getElementById('reset')!.onclick = () => {
-  if (!confirm('Start over from the surface? This erases your progress.')) return;
+// two-step in-page confirmation (browser confirm() dialogs are blocked in some embeds)
+const resetBtn = document.getElementById('reset') as HTMLButtonElement;
+let resetArmed = 0;
+resetBtn.onclick = () => {
+  if (Date.now() - resetArmed > 4000) {
+    resetArmed = Date.now();
+    resetBtn.textContent = 'Click again to erase all progress';
+    setTimeout(() => { if (Date.now() - resetArmed >= 4000) resetBtn.textContent = 'Start over'; }, 4100);
+    return;
+  }
+  resetArmed = 0;
+  resetBtn.textContent = 'Start over';
   resetState();
   workers.length = 0;
   pendingFinds.length = 0;
