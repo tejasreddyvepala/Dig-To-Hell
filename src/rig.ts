@@ -27,7 +27,7 @@ export interface Look {
 
 export type PoseKind =
   | 'stand' | 'walk' | 'climb' | 'sit' | 'swing' | 'jack' | 'wipe' | 'helmet' | 'drink' | 'look'
-  | 'hammer' | 'carry' | 'cheer' | 'gesture' | 'drive';
+  | 'hammer' | 'carry' | 'cheer' | 'gesture' | 'drive' | 'ladder';
 export interface Pose {
   k: PoseKind;
   t: number; // phase (walk/climb/hammer cycles) or 0..1 progress (idles)
@@ -35,6 +35,9 @@ export interface Pose {
   tool?: Tool;
   lit?: boolean; // helmet lamp on
   carryCol?: string; // block colour while carrying
+  /** 'ladder': seen from behind, facing the wall ladder. Heights are rig units ABOVE the feet baseline (each limb
+   *  sits exactly on a rung); hx/fx = half-spacing of hands/feet across the ladder. */
+  ladder?: { fl: number; fr: number; hl: number; hr: number; hx: number; fx: number };
 }
 
 const SKINS: [string, string][] = [['#f1c9a0', '#d9a77e'], ['#e0ae84', '#c58f68'], ['#c98d62', '#a8714b'], ['#9a6644', '#7d5135'], ['#6e4630', '#573623']];
@@ -177,7 +180,7 @@ export function drawRig(x: number, y: number, scale: number, dir: number, L: Loo
   const px = screenH(s);
   const lod = px < 14 ? 0 : px < 30 ? 1 : 2;
   // contact shadow only
-  if (p.k !== 'sit' && p.k !== 'climb') { ctx.fillStyle = 'rgba(0,0,0,.24)'; ctx.beginPath(); ctx.ellipse(0.6, 0.4, 7.5 * L.build, 1.6, 0, 0, 6.283); ctx.fill(); }
+  if (p.k !== 'sit' && p.k !== 'climb' && p.k !== 'ladder') { ctx.fillStyle = 'rgba(0,0,0,.24)'; ctx.beginPath(); ctx.ellipse(0.6, 0.4, 7.5 * L.build, 1.6, 0, 0, 6.283); ctx.fill(); }
   if (lod === 0) { silhouette(L); ctx.restore(); return; }
   const lit = p.lit ?? true;
   const t = p.t;
@@ -269,6 +272,52 @@ export function drawRig(x: number, y: number, scale: number, dir: number, L: Loo
       } else if (p.k === 'cheer') arm(0.5, SHOULDER_Y, 2.8, 3.1, L, false);
       else if (p.k === 'gesture') { const a = p.a ?? 0; arm(0.5, SHOULDER_Y, 0.4 + a * 1.2, 0.8 + a * 1.4, L, false); }
       else arm(0.5, SHOULDER_Y, 0.1, 0.22, L, false);
+      break;
+    }
+    case 'ladder': {
+      const q = p.ladder!, b = L.build;
+      // legs: hip -> foot on its rung; the knee bends sideways as the foot comes up (seen from behind)
+      const leg2 = (side: number, fh: number) => {
+        const hx = side * 1.8 * b, hy = HIP_Y, fx = side * q.fx, fy = -fh;
+        const len = THIGH + SHIN, dist = Math.hypot(fx - hx, fy - hy);
+        const bend = Math.sqrt(Math.max(0, len * len - dist * dist)) * 0.5;
+        const kx = (hx + fx) / 2 + side * bend * 0.3, ky = (hy + fy) / 2 + bend * 0.25;
+        seg(hx, hy, kx, ky, 5 * b, L.pants); seg(kx, ky, fx, fy, 4.4 * b, shade(L.pants, 0.9));
+        ctx.fillStyle = L.boots; ctx.beginPath(); ctx.roundRect(fx - 2, fy - 2.6, 4, 3.2, 1.2); ctx.fill(); // heel on the rung
+        ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(fx - 2, fy + 0.2, 4, 0.8);
+      };
+      const sway = (q.hl - q.hr) * 0.05;
+      leg2(-1, q.fl); leg2(1, q.fr);
+      ctx.save(); ctx.translate(sway, 0);
+      // torso from behind: symmetric, belt, hi-vis stripes if any
+      ctx.fillStyle = L.shirt; ctx.beginPath(); ctx.roundRect(-6 * b, -31.6, 12 * b, 15.4, [5, 5, 2, 2]); ctx.fill();
+      if (lod >= 2) {
+        ctx.fillStyle = 'rgba(0,0,0,.16)'; ctx.fillRect(-0.4, -30, 0.8, 12); // spine seam
+        if (L.vest === 'hivis' || L.vest === 'player') { ctx.fillStyle = '#eef0d0'; ctx.fillRect(-6 * b, -26, 12 * b, 1.4); ctx.fillRect(-6 * b, -21.6, 12 * b, 1.4); }
+        if (L.belt) { ctx.fillStyle = '#2b2219'; ctx.fillRect(-5.6 * b, -18.6, 11.2 * b, 2.3); }
+      }
+      // arms: shoulder -> elbow (out to the side) -> glove gripping its rung (behind the head: the hands grip the ladder on the wall side)
+      const arm2 = (side: number, hh: number) => {
+        const sx = side * 5.2 * b + sway, sy = SHOULDER_Y - 3, hx = side * q.hx, hy = -hh;
+        const dist = Math.hypot(hx - sx, hy - sy), len = UPPER + FORE;
+        const bend = Math.sqrt(Math.max(0, len * len - dist * dist)) * 0.5;
+        const ex = (sx + hx) / 2 + side * bend * 0.8, ey = (sy + hy) / 2 + bend * 0.2;
+        seg(sx, sy, ex, ey, 3.9 * b, L.shirt); seg(ex, ey, hx, hy, 3.4 * b, L.sleeve);
+        ctx.fillStyle = L.glove; ctx.beginPath(); ctx.ellipse(hx, hy, 2.3, 1.9, 0, 0, 6.283); ctx.fill();
+      };
+      arm2(-1, q.hl); arm2(1, q.hr);
+      // head from behind: neck, ears, hair at the nape, helmet dome + brim
+      ctx.fillStyle = L.skinD; ctx.fillRect(-1.3, -33.4, 2.6, 3);
+      ctx.fillStyle = L.skin; ctx.beginPath(); ctx.ellipse(0, -36.3, 4.2, 4.6, 0, 0, 6.283); ctx.fill();
+      ctx.fillStyle = L.skinD; ctx.beginPath(); ctx.arc(-4.2, -36, 1.2, 0, 6.283); ctx.arc(4.2, -36, 1.2, 0, 6.283); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.ellipse(0, -36.3, 4.2, 4.6, 0, 0, 6.283); ctx.clip(); // back of the head: hair down to the nape
+      ctx.fillStyle = L.hair; ctx.fillRect(-5, -42, 10, 7.4); ctx.restore();
+      if (L.helmet) {
+        ctx.fillStyle = L.helmet; ctx.beginPath(); ctx.arc(0, -38.4, 5.2, Math.PI, 0); ctx.fill();
+        ctx.fillRect(-6.2, -39, 12.4, 2.1);
+        if (lod >= 2) { ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(-0.6, -43.4, 1.2, 4.6); ctx.fillStyle = '#3b3f45'; ctx.fillRect(-2.2, -39.6, 4.4, 1.2); } // lamp strap
+      }
+      ctx.restore();
       break;
     }
     case 'hammer': {

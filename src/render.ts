@@ -7,7 +7,7 @@ import { drawSurface, drawTruckLayer, flushGlows } from './yard';
 import { bubble, drawPile, pileHeight, pileLabel } from './draw';
 import { cartBlocked, cartDepth, cartFill } from './cart';
 import { drawExcavator, drawExcavatorLight, drawLampBeam } from './characters';
-import { drawRig, lookFor, type Look, type Pose } from './rig';
+import { RIG_H, drawRig, lookFor, type Look, type Pose } from './rig';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { pathPos, restAreaBuilt, restingCount, seatsTotal, workers, type Worker } from './workers';
 import { pileX, railX, shaftOff, worksiteDef } from './layout';
@@ -213,6 +213,34 @@ const looks = new Map<number, Look>();
 const minerLook = (seed: number) => { let l = looks.get(seed); if (!l) looks.set(seed, (l = lookFor('miner', seed))); return l; };
 const RS = CFG.rest;
 
+// ---------- wall-ladder climbing (rung-locked, opposite-limb rhythm) ----------
+// Rungs sit at RUNG0 above the ladder's foot, then every RUNG (drawRestArea). The floor counts as rung -1. Two limb
+// pairs alternate: A = left hand + right foot (even rungs), B = right hand + left foot (odd rungs). A pair moves up two
+// rungs while the other holds; everything is a function of HEIGHT only, so planted hands/feet never slide and the
+// same motion plays in reverse going down. Hands hold the rung five above their foot (above the helmet).
+const RUNG0 = 6, RUNG = 8;
+const rungH = (k: number) => (k >= 0 ? RUNG0 + RUNG * k : RUNG0 + RUNG0 * k); // k = -1 is the floor
+const climbU = (h: number) => (h >= RUNG0 ? (h - RUNG0) / RUNG : (h - RUNG0) / RUNG0); // inverse of rungH
+const ease = (r: number) => r * r * (3 - 2 * r);
+function pairRung(u: number, odd: boolean) {
+  const w = odd ? u + 1 : u, n = Math.floor(w / 2), r = w - 2 * n;
+  return (r < 1 ? 2 * n + 2 * ease(r) : 2 * n + 2) - (odd ? 1 : 0);
+}
+/** Ladder pose + feet position for a worker at height `h` above the ladder foot (topH = ladder top / ground). */
+function ladderFrame(h: number, topH: number, look: Look) {
+  const hc = Math.max(0, Math.min(h, topH));
+  const u = Math.max(-1, climbU(hc));
+  const base = rungH(u); // feet baseline: never above the lowest planted foot
+  const kA = pairRung(u, false), kB = pairRung(u, true);
+  const k = CFG.crewScale * look.height; // logical -> rig units
+  const foot = (kk: number) => (Math.min(rungH(kk), topH) - base + 0.8) / k; // sole on top of the rung
+  const hand = (kk: number) => (Math.min(rungH(kk + 5), topH + 4) - base) / k; // grip above the helmet
+  return {
+    base,
+    pose: { k: 'ladder', t: 0, ladder: { fr: foot(kA), hl: hand(kA), fl: foot(kB), hr: hand(kB), hx: 5.6 / k, fx: 3.2 / k } } as Pose, // gloves close over the rung ends at the rails
+  };
+}
+
 /** Pose for a crew member from its behaviour state. */
 function workerPose(w: Worker): Pose {
   switch (w.state) {
@@ -306,6 +334,11 @@ function drawRestArea(groundY: number) {
     ctx.beginPath(); ctx.moveTo(lx - 5, top); ctx.lineTo(lx - 5, bot); ctx.moveTo(lx + 5, top); ctx.lineTo(lx + 5, bot); ctx.stroke();
     for (let y = bot - 6; y > top; y -= 8) { ctx.beginPath(); ctx.moveTo(lx - 5, y); ctx.lineTo(lx + 5, y); ctx.stroke(); }
   }
+  if (top === groundY && top < bot - 20) { // shaft collar: planks at the surface where the ladder starts
+    ctx.fillStyle = TIMBER; ctx.fillRect(-18, top - 1, lx + 12 + 18, 4);
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; for (let x = -12; x < lx + 10; x += 8) ctx.fillRect(x, top - 1, 1, 4);
+    ctx.fillStyle = TIMBER_D; ctx.fillRect(lx + 6, top - 1, 3, 10);
+  }
   if (!built) return;
   // flight 1: floor (stairFootX, 0) -> landing (landingX, landingY)
   const flight = (x0: number, y0: number, x1: number, y1: number) => {
@@ -359,13 +392,20 @@ function drawPracticalLights() {
   }
 }
 
+/** True if the segment before the current one was the ladder (the worker has just stepped off it). */
+function isLadderEnd(path: number[], t: number) {
+  const now = pathPos(path, t), prev = pathPos(path, Math.max(0, t - now.segT - 0.02));
+  return prev.ladder && prev.seg !== now.seg && (prev.seg[2] === now.seg[0] && prev.seg[3] === now.seg[1]);
+}
+
 function drawFaceAndCrew() {
   const o = faceOrigin(), s = faceScale();
+  const groundY = -(o.y - yOf(0)) / s; // logical y of the surface above the work floor
   if (o.y < view.vy0 - 260 * s || o.y > view.vy1 + 200) return;
   ctx.save();
   ctx.translate(o.x, o.y); ctx.scale(s, s);
   drawChamber();
-  drawRestArea(-(o.y - yOf(0)) / s);
+  drawRestArea(groundY);
   drawFace(s);
   // rubble waiting at the dig site, coloured by what it is, with its count right on the pile
   const px = pileX();
@@ -377,7 +417,21 @@ function drawFaceAndCrew() {
       ctx.save(); ctx.translate(w.x, 0); ctx.scale(ES, ES);
       drawExcavator(0, w.dir, expanding() ? 0 : machineK(w.timer, w.since), CFG.excavatorReach / ES, w.since < 0.4 ? Math.sin(w.since * 25) * (0.4 - w.since) * 2.5 : 0);
       ctx.restore();
-    } else drawRig(w.x, w.y, CFG.crewScale, w.dir, minerLook(w.seed), workerPose(w));
+    } else {
+      const look = minerLook(w.seed);
+      const p = w.state === 'arrive' || w.state === 'toRest' || w.state === 'back' ? pathPos(w.path, w.pathT) : null;
+      if (p?.ladder) {
+        const bot = Math.max(p.seg[1], p.seg[3]); // the ladder's foot (platform or floor)
+        const f = ladderFrame(bot - w.y, bot - groundY, look);
+        ctx.save();
+        if (w.state === 'arrive' && w.pathT < 0.5) ctx.globalAlpha = w.pathT / 0.5; // climbs into view from above
+        drawRig(p.seg[0], bot - f.base, CFG.crewScale, 1, look, f.pose);
+        ctx.restore();
+      } else if (p && !p.climbing && p.segT < 0.35 && isLadderEnd(w.path, w.pathT)) {
+        // stepping off the ladder: the planted foot stays, the other swings across into the first stride
+        drawRig(w.x, w.y, CFG.crewScale, w.dir, look, { k: 'walk', t: 0.25 + (p.segT / 0.35) * 0.25 });
+      } else drawRig(w.x, w.y, CFG.crewScale, w.dir, look, workerPose(w));
+    }
   }
   drawReserve();
   drawRig(miner.x, 0, CFG.playerScale, miner.dir, PLAYER_LOOK, playerPose());
@@ -418,15 +472,89 @@ function drawFaceAndCrew() {
 
 // ---------- world ----------
 function drawFind(f: Find, x: number, y: number, alpha: number) {
-  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y);
+  ctx.save(); ctx.globalAlpha = alpha;
   if (f.kind === 'coin') {
+    ctx.translate(x, y);
     ctx.fillStyle = '#d9a62e'; ctx.beginPath(); ctx.arc(0, 0, 9, 0, 7); ctx.fill();
     ctx.fillStyle = '#8a6414'; ctx.fillRect(-2, -5, 4, 10);
-  } else {
-    ctx.rotate(-0.12); ctx.fillStyle = '#8c3b22'; ctx.fillRect(-40, -14, 80, 20); ctx.fillRect(-22, -28, 44, 16);
-    ctx.fillStyle = '#2a1e18'; ctx.beginPath(); ctx.arc(-24, 8, 9, 0, 7); ctx.arc(24, 8, 9, 0, 7); ctx.fill();
-    ctx.fillStyle = '#5b7f8f'; ctx.fillRect(-18, -25, 16, 10); ctx.fillRect(2, -25, 16, 10);
+  } else drawBuriedCar(x, y, f.d);
+  ctx.restore();
+}
+
+/** A real compact car buried in the shaft wall, sized from the worker: length ≈ 2.45 worker heights, roof ≈ 0.78,
+ *  wheels ≈ 0.34 across. `x` = front bumper (nearest the shaft), `y` = the find's depth line. Nose dips toward the
+ *  shaft; the rear disappears into the earth. */
+function drawBuriedCar(x: number, y: number, d: number) {
+  const U = RIG_H * CFG.crewScale * faceScale(); // one worker height in screen px
+  const Lc = 2.45 * U, Hc = 0.78 * U, r = 0.17 * U;
+  const fa = 0.2 * Lc, ra = 0.79 * Lc; // axles
+  ctx.save();
+  ctx.translate(x, y + 0.42 * U); ctx.rotate(-0.07);
+  const P = (fx: number, fy: number) => [fx * Lc, -fy * U] as const;
+  // the pocket of disturbed earth around it
+  const pk = ctx.createRadialGradient(Lc * 0.45, -Hc * 0.4, Hc * 0.3, Lc * 0.45, -Hc * 0.4, Lc * 0.55);
+  pk.addColorStop(0, 'rgba(20,12,6,.32)'); pk.addColorStop(1, 'rgba(20,12,6,0)');
+  ctx.fillStyle = pk; ctx.beginPath(); ctx.ellipse(Lc * 0.45, -Hc * 0.4, Lc * 0.6, Hc * 0.9, 0, 0, 6.283); ctx.fill();
+  // body silhouette: bumper, hood, windshield, roof, rear window, trunk
+  const body = () => {
+    ctx.beginPath();
+    ctx.moveTo(...P(0.01, 0.12));
+    ctx.quadraticCurveTo(...P(-0.005, 0.25), ...P(0.012, 0.38)); // front bumper
+    ctx.lineTo(...P(0.05, 0.43)); ctx.lineTo(...P(0.29, 0.47)); // hood
+    ctx.lineTo(...P(0.43, 0.76)); ctx.quadraticCurveTo(...P(0.45, 0.785), ...P(0.48, 0.78)); // windshield
+    ctx.lineTo(...P(0.72, 0.775)); ctx.quadraticCurveTo(...P(0.75, 0.77), ...P(0.76, 0.75)); // roof
+    ctx.lineTo(...P(0.86, 0.52)); ctx.lineTo(...P(0.985, 0.5)); // rear window, trunk deck
+    ctx.quadraticCurveTo(...P(1.0, 0.36), ...P(0.99, 0.13)); // tail
+    ctx.closePath();
+  };
+  body();
+  const g = ctx.createLinearGradient(0, -Hc, 0, 0);
+  g.addColorStop(0, '#a8402c'); g.addColorStop(0.55, '#8c2f20'); g.addColorStop(1, '#5a2418');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.save(); body(); ctx.clip();
+  // glass (dusty), B-pillar
+  ctx.fillStyle = '#5f7a80';
+  ctx.beginPath(); ctx.moveTo(...P(0.315, 0.5)); ctx.lineTo(...P(0.435, 0.735)); ctx.lineTo(...P(0.575, 0.735)); ctx.lineTo(...P(0.575, 0.5)); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(...P(0.605, 0.5)); ctx.lineTo(...P(0.605, 0.735)); ctx.lineTo(...P(0.73, 0.735)); ctx.lineTo(...P(0.83, 0.52)); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.18)';
+  ctx.beginPath(); ctx.moveTo(...P(0.35, 0.52)); ctx.lineTo(...P(0.44, 0.71)); ctx.lineTo(...P(0.47, 0.71)); ctx.lineTo(...P(0.38, 0.52)); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(70,45,25,.45)'; ctx.fillRect(...P(0.3, 0.6), 0.55 * Lc, 0.1 * U); // dirt caked on the lower glass
+  // belt line, sill, door seams, handles, mirror, lights, bumpers
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(...P(0.04, 0.4), 0.95 * Lc, 0.012 * U); ctx.fillRect(...P(0.04, 0.17), 0.95 * Lc, 0.03 * U);
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  for (const sx of [0.31, 0.59, 0.83]) ctx.fillRect(...P(sx, 0.5), Math.max(1, 0.004 * Lc), 0.33 * U);
+  ctx.fillStyle = '#c9c2b4'; ctx.fillRect(...P(0.5, 0.43), 0.045 * Lc, 0.025 * U); ctx.fillRect(...P(0.73, 0.43), 0.045 * Lc, 0.025 * U);
+  ctx.fillStyle = '#e8d9a8'; ctx.fillRect(...P(0.0, 0.37), 0.035 * Lc, 0.07 * U); // headlight
+  ctx.fillStyle = '#b8402a'; ctx.fillRect(...P(0.965, 0.46), 0.03 * Lc, 0.09 * U); // taillight
+  ctx.fillStyle = '#3a3330'; ctx.fillRect(...P(-0.005, 0.22), 0.05 * Lc, 0.07 * U); ctx.fillRect(...P(0.955, 0.24), 0.05 * Lc, 0.07 * U); // bumpers
+  // rust + grime
+  ctx.fillStyle = 'rgba(120,60,20,.55)';
+  for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.ellipse(Lc * (0.1 + hash(i * 3.3) * 0.8), -U * (0.15 + hash(i * 7.1) * 0.25), U * (0.03 + hash(i) * 0.05), U * (0.02 + hash(i * 2) * 0.03), 0, 0, 6.283); ctx.fill(); }
+  const gr = ctx.createLinearGradient(0, -0.35 * U, 0, 0); gr.addColorStop(0, 'rgba(60,40,22,0)'); gr.addColorStop(1, 'rgba(60,40,22,.65)');
+  ctx.fillStyle = gr; ctx.fillRect(-10, -0.35 * U, Lc + 20, 0.35 * U);
+  ctx.restore();
+  ctx.fillStyle = '#7a2a1c'; ctx.beginPath(); ctx.ellipse(...P(0.335, 0.52), 0.022 * Lc, 0.04 * U, 0, 0, 6.283); ctx.fill(); // mirror
+  // wheel arches + wheels
+  for (const ax of [fa, ra]) {
+    ctx.fillStyle = '#1a1310'; ctx.beginPath(); ctx.arc(ax, -r, r * 1.2, Math.PI, 0); ctx.lineTo(ax + r * 1.2, -0.12 * U); ctx.lineTo(ax - r * 1.2, -0.12 * U); ctx.fill();
+    ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(ax, -r, r, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = Math.max(1, r * 0.08); ctx.beginPath(); ctx.arc(ax, -r, r * 0.86, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = '#7d8086'; ctx.beginPath(); ctx.arc(ax, -r, r * 0.55, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#5a5d62'; ctx.beginPath(); ctx.arc(ax, -r, r * 0.2, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#3e4146';
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * 6.283 + 0.3; ctx.beginPath(); ctx.arc(ax + Math.cos(a) * r * 0.36, -r + Math.sin(a) * r * 0.36, r * 0.05, 0, 6.283); ctx.fill(); }
   }
+  // the earth still holds the rear of the car and packs around the wheels
+  const wall = materialAt(d).wall;
+  ctx.fillStyle = `rgb(${wall.map((v) => Math.round(v * 0.97)).join(',')})`;
+  ctx.beginPath(); ctx.moveTo(Lc * 0.74, U * 0.2);
+  for (let i = 0; i <= 12; i++) { const yy = -Hc * 1.15 + (i / 12) * (Hc * 1.15 + U * 0.2); ctx.lineTo(Lc * (0.78 + (hash(i * 4.7) - 0.5) * 0.06 + (i / 12) * 0.06), yy); }
+  ctx.lineTo(Lc * 1.15, U * 0.2); ctx.lineTo(Lc * 1.15, -Hc * 1.2); ctx.lineTo(Lc * 0.78, -Hc * 1.2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-U * 0.1, U * 0.15);
+  for (let i = 0; i <= 16; i++) ctx.lineTo((i / 16) * Lc * 0.8, -U * (0.05 + hash(i * 2.9) * 0.07));
+  ctx.lineTo(Lc * 0.8, U * 0.15); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.arc(Lc * (0.06 + hash(i * 5.1) * 0.6), -Hc * (0.62 + hash(i * 1.9) * 0.1) - (i % 2 ? 0 : 0.18 * U), U * 0.035, 0, 6.283); ctx.fill(); } // dirt clods on hood/roof
   ctx.restore();
 }
 
@@ -623,7 +751,8 @@ function drawWorld() {
   }
   FINDS.forEach((f, i) => {
     const y = yOf(f.d); if (y < view.vy0 - 120 || y > view.vy1 + 120) return;
-    const x = cx + f.side * (Math.max(sw / 2, (face.w / 2) * faceScale()) + 55);
+    const edge = cx + f.side * Math.max(sw / 2, (face.w / 2) * faceScale());
+    const x = f.kind === 'car' ? edge + f.side * RIG_H * CFG.crewScale * faceScale() * 0.55 : edge + f.side * 55; // car: front bumper clear of the depth marks
     if (i < S.found) drawFind(f, x, y, 1);
     else if (i === S.found && f.d - S.depth < CFG.findTeaseM) {
       drawFind(f, x, y, 0.12 + 0.06 * Math.sin(t * 3));

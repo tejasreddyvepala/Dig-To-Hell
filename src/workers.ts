@@ -55,18 +55,38 @@ function pathTime(p: number[]) {
   }
   return t;
 }
+export interface PathPos {
+  x: number; y: number; climbing: boolean; dir: 1 | -1;
+  ladder: boolean; // on a vertical segment (the wall ladder): drawn with the ladder-climb pose, not a walk
+  seg: [number, number, number, number]; // current segment x0, y0, x1, y1
+  segT: number; // seconds spent on the current segment
+}
 /** Position at time `t` along a path (constant speed per segment). */
-export function pathPos(p: number[], t: number): { x: number; y: number; climbing: boolean; dir: 1 | -1 } {
+export function pathPos(p: number[], t: number): PathPos {
   for (let i = 2; i < p.length; i += 2) {
     const dx = p[i] - p[i - 2], dy = p[i + 1] - p[i - 1], d = Math.hypot(dx, dy);
     const seg = d / (Math.abs(dy) > 1 ? R.climb : R.walk);
     if (t <= seg || i === p.length - 2) {
       const k = seg > 0 ? Math.min(1, t / seg) : 1;
-      return { x: p[i - 2] + dx * k, y: p[i - 1] + dy * k, climbing: Math.abs(dy) > 1, dir: dx >= 0 ? 1 : -1 };
+      return {
+        x: p[i - 2] + dx * k, y: p[i - 1] + dy * k, climbing: Math.abs(dy) > 1, dir: dx >= 0 ? 1 : -1,
+        ladder: Math.abs(dx) < 0.5 && Math.abs(dy) > 1, seg: [p[i - 2], p[i - 1], p[i], p[i + 1]], segT: Math.min(t, seg),
+      };
     }
     t -= seg;
   }
-  return { x: p[p.length - 2], y: p[p.length - 1], climbing: false, dir: 1 };
+  const n = p.length;
+  return { x: p[n - 2], y: p[n - 1], climbing: false, dir: 1, ladder: false, seg: [p[n - 2], p[n - 1], p[n - 2], p[n - 1]], segT: 0 };
+}
+
+/** DEV ONLY (shallow shaft): send one digger up the wall ladder to the surface collar and back down, to inspect
+ *  the ladder-climb animation in both directions (no production route climbs UP the ladder yet). */
+export function ladderDemo(groundY: number): boolean {
+  const w = workers.find((o) => o.id === 'dig' && (o.state === 'work' || o.state === 'idle'));
+  if (!w) return false;
+  const L = R.ladderX;
+  setPath(w, [w.x, 0, L, 0, L, groundY, L - 30, groundY, L - 30, groundY, L, groundY, L, 0, w.homeX, 0], 'back');
+  return true;
 }
 
 function setPath(w: Worker, p: number[], state: WState) { w.path = p; w.pathT = 0; w.pathDur = pathTime(p); w.state = state; w.t = 0; }

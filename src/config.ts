@@ -154,7 +154,7 @@ export type FindKind = 'coin' | 'car';
 export interface Find { d: number; name: string; kind: FindKind; side: 1 | -1 }
 export const FINDS: Find[] = [
   { d: 12, name: 'A rusty coin', kind: 'coin', side: 1 },
-  { d: 45, name: 'A buried car', kind: 'car', side: -1 },
+  { d: 45, name: 'A buried car', kind: 'car', side: 1 }, // right of the shaft: the left wall holds the ladder/stairs
 ];
 
 export const CFG = {

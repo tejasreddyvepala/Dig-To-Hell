@@ -5,7 +5,7 @@ import { CFG } from './config';
 import { S, loadState, resetState, saveState } from './state';
 import { materialAt } from './economy';
 import { offlineAdvance, pendingFinds } from './sim';
-import { initSim, landings, updateCrew, workers } from './workers';
+import { initSim, ladderDemo, landings, updateCrew, workers } from './workers';
 import { cartDepth, sendCart, updateCart, type CartEvent } from './cart';
 import { updateFace } from './digface';
 import { miner, minerClick, minerKeyStrike, placeMiner, updateMiner } from './miner';
@@ -17,7 +17,7 @@ import { SITE, presentBuild, updateSite } from './site';
 import { FX, popup, updateFx } from './fx';
 import { audioState, playSting, unlockAudio } from './audio';
 import { applySettings, musicDebug, settings } from './music';
-import { canvas, goSite, toLogical, toVirtual, updateCamera, view } from './view';
+import { canvas, faceOrigin, faceScale, goSite, toLogical, toVirtual, updateCamera, view, yOf } from './view';
 import { render } from './render';
 import { buildPanel, isModalOpen, showModal, tickCash, updatePanel } from './panel';
 import { initNav, navigate, updateNav } from './nav';
@@ -186,6 +186,7 @@ if (import.meta.env.DEV) {
     setPhase: (p: number) => { view.t = (((p - CFG.daynight.startPhase) % 1) + 1) % 1 * CFG.daynight.cycleSecs; },
     tireAll: () => { for (const w of workers) w.fatigue = 0; },
     setSpeed: (k: number) => { devSpeed = k; },
+    ladderDemo: () => ladderDemo(-(faceOrigin().y - yOf(0)) / faceScale()),
     forceYard: () => { S.tut = Math.max(S.tut, 3); S.flags.dispatched = true; navigate('yard'); },
     miner: () => ({ x: miner.x, standX: miner.standX }),
     landings: () => landings.length,
