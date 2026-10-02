@@ -1,399 +1,392 @@
-# DIG TO HELL — Design Spec
+# DIG TO HELL — Game Design Specification (V2)
 
-Authoritative design document. Supersedes the original "0–300 m vertical slice" spec (direct cash from clicking, purchasable minecarts, 300 m as the end of the game). All tuning numbers live in `src/config.ts`; numbers in this document describe intent and current defaults.
+This is the **authoritative** design document. It supersedes every earlier spec (the original "0–300 m vertical slice ending at the Red Door", the Phase 3C seller model, and the Phase 3C.5 "truck departure pays cash" model). Superseded decisions are listed in §30 so nobody reintroduces them. Implementation status lives in `claude.md`; tuning numbers live in `src/config.ts` (numbers here describe intent and current defaults).
 
----
-
-## 1. Product North Star
-
-DIG TO HELL is a browser idle/clicker mining game (CrazyGames / Poki) where the player builds an increasingly absurd industrial operation inside **one continuous vertical shaft**.
-
-The fantasy:
-
-ONE MINER → SMALL HOLE → RUBBLE CART → RECYCLING YARD + TRUCKS → CREW → RAILS → MACHINERY → PROCESSING → INDUSTRIAL MINE → EXTREME DEPTH → STRANGE DISCOVERIES
-
-Two hooks:
-- **Curiosity:** "What's down there?" (discoveries, geology, mysteries).
-- **Mechanical:** "Can I make this entire mine run better?" (visible bottlenecks in a physical production chain).
-
-The shaft itself is the player's machine:
-
-| Zone | Role |
-|---|---|
-| Bottom (dig site) | Extraction |
-| Shaft | Transport + infrastructure + history |
-| Surface | Storage + processing + selling + construction |
-
-The player can move through this vertical machine and watch every part operate.
+Design priorities, in order, when two options compete:
+1. Something the player can **see happen** beats another number.
+2. A **physical transformation** beats another upgrade row.
+3. A **new meaningful decision** beats more passive income.
+4. A **larger mine with better machinery** beats 20 more tiny workers.
+5. **Show the world transformed** instead of telling the player they progressed.
 
 ---
 
-## 2. Core Gameplay Loop
+## 1. Core Fantasy
 
-Old loop (superseded): CLICK → CASH → UPGRADE.
+The game begins with **one person, one pickaxe, one tiny hole, almost nothing.** Eventually the player owns a huge mine, dozens–hundreds of workers, rest infrastructure, industrial excavation chambers, excavators, drill rigs, transport systems, a surface recycling complex, truck logistics, construction operations, fossil excavation teams, massive construction projects and extremely strange deep-earth discoveries.
 
-New loop:
+Emotional escalation (the heart of the game):
+"I started by hitting dirt myself." → "I hired a couple of people." → "We need a bigger mine." → "We need machines." → "We're producing serious material." → "We can build things with this." → "I'm running an industrial operation." → "What the hell did we just find down there?"
 
-**DIG → MATERIAL → LOAD → TRANSPORT → UNLOAD → SELL → CASH → UPGRADE**
-
-- Cash has a physical origin: it appears only when something is sold at the surface.
-- Digging feedback is impact, cracks, debris, depth and material — never money.
-- Cash feedback happens at the surface, when a loaded delivery truck leaves the yard.
+Platform: browser idle/clicker for CrazyGames and Poki. Cosmetic-only monetization later; no pay-to-win, no energy systems.
 
 ---
 
-## 3. World Structure
+## 2. Four Progression Fantasies
 
-- One continuous vertical world from the sky/surface down to the current dig face. Depth is **unbounded**.
-- **Surface (depth 0):** a painted landscape (day/night sky, sun/moon, clouds, mountains, trees, birds), the shaft opening, a tall headframe, and the **Recycling Yard**: hopper → crusher → auger → hydraulic press → finished-block stack → road + loading bay where delivery trucks pick up.
-- **Shaft:** the transport side (rails, hoist cable, the cart in transit) is the RIGHT wall; depth markers, geology, finds, milestone structures, machines.
-- **Dig site:** the destructible face (8 logical chunks rendered as one mass of earth), miners and machines on the left/centre, rubble pile and loading point with the cart on the right.
-- Previously visited depths remain recognizable: geology is painted deterministically per 5 m segment (§9); rails, finds, structures and milestones are reconstructed from saved state. Transient detail (cracks, particles) is not preserved.
-- Camera: close framing at the dig site (the shaft is ~60% of the canvas); at the surface it smoothly pans + zooms out so the whole yard and truck bay fit.
-- Over time the shaft should read as **"I BUILT THIS."**
+| Fantasy | Question | Systems |
+|---|---|---|
+| DEPTH | "What is below me?" | digging, geology, layers, the deep mystery (Red Door…) |
+| INDUSTRY | "How large can my operation become?" | workers, tools, machines, worksite tiers, transport, processing, rest infrastructure |
+| CONSTRUCTION | "What can I build with everything I'm extracting?" | projects on a plot, ever-larger buildings, sale payouts |
+| DISCOVERY | "What will I find next?" | fossils, caves, buried objects, strange structures |
 
-### Scale rules (worker height = 1; visual guidance, not collision)
-Cart body ≈ 0.8–1.1 · compact excavator cab ≈ 1.1–1.3 · truck cab ≈ 1.5, truck length ≈ 3.6, wheels ≈ a torso wide · processing plant ≈ 2–3 · headframe ≈ 2.5+. People are stylised ~4.7 heads tall (boots, bent knees, belt, gloves, face, hard hat with lamp).
+They reinforce each other: depth produces material and discoveries; industry scales material; construction turns material into money; money buys industry.
 
-## 4. Economy / Resource Flow
+---
 
-### Resource flow V1
-One generic material: **RUBBLE**. Resource definitions are data-driven (`RESOURCES` in config) so ores can be added later. Do not add ores yet.
-
-Every quantity is a **Load** `{qty, val, mix}`: units, accumulated value, and **material composition** (`mix` = units per source material: dirt / clay / stone / cave). Composition travels with the material, so rubble, the cart's load, the hopper and the finished blocks are coloured by what they actually contain (stone looks gray, clay red-brown; a transition load shows both).
+## 3. Master Economy (the macro-loop)
 
 ```
-dig face chunk breaks   → rubble pile at the dig site   (+mix of the broken material; value = baseValue × valueAt(depth))
-cart LOADING            → rubble → cart load            (loadRate units/s, up to capacity)
-cart reaches surface    → cart load → RAW (hopper)      (unloading waits when Raw Storage is full)
-crusher + auger + press → RAW → FINISHED BLOCKS          (processRate units/s; a THUMP + a block per press cycle)
-delivery truck          → blocks → truck bed            (arrives when ≥ pickupMin blocks, loads up to capacity)
-truck departs           → CASH = load value × contract price   ← the ONLY normal cash source
+DIG → RAW MATERIAL (rubble) → LOAD CART → TRANSPORT TO SURFACE → RECYCLING / PROCESSING
+    → BUILDING MATERIAL (blocks) → LOAD TRUCK → DELIVER TO CONSTRUCTION SITE → CONSTRUCT PROJECT
+    → COMPLETE / SELL PROPERTY → CASH → UPGRADE OPERATION → DIG DEEPER
 ```
 
-*(Superseded — Phase 3C seller model: a Scrap Buyer and a Scrap Stall seller converted surface stock straight into a cash drip. Replaced in Phase 3C.5 by the Recycling Yard production chain above. "Scrap" is no longer used for geological rubble.)*
+- **Mining creates matter. Industry transforms matter. Construction creates value.**
+- Digging never generates cash. Cart arrival never generates cash. Processing never generates cash. Truck departure never generates cash.
+- **Main cash:** selling a completed property. **Secondary construction cash:** small milestone payments when a construction stage completes (the client pays per milestone, ~8–10% of the property value each).
+- **Tutorial seed money:** the contractor buys the very first raw load once (and keeps buying only while the player cannot afford the Recycling Yard — a no-soft-lock safety net).
+- **Future secondary cash:** fossil sales to collectors, special discoveries, bonus contracts. Never normal mining.
+- Every quantity of material is a **Load** `{qty, val, mix}`: units, accumulated value, and material composition (units per source material). Composition travels pile → cart → hopper → blocks → truck → construction stack and drives every colour on the way.
 
-Before the yard exists, a **contractor** buys raw loads directly (the first-load tutorial, and a safety net so the player can always afford the yard). After the yard exists, no cash is generated by digging, cart arrival, processing or block creation — only by a loaded truck leaving.
-
-### Three visible bottlenecks
+### Visible bottlenecks
 | Bottleneck | What the player sees |
 |---|---|
-| Extraction | Empty cart waiting at the bottom |
-| Transport | Rubble pile growing at the bottom; cart always travelling |
-| Processing | Hopper full (RAW FULL), cart waiting at the top to unload; or an empty stack and no trucks |
-
-The upgrade decision should usually come from watching the world, not reading numbers.
-
----
-
-## 5. Extraction
-
-- The player clicks/taps the face; the miner swings; the strike resolves on the impact frame (§14).
-- Each broken chunk advances depth by the material's `metersPerBreak` and adds rubble to the pile at the dig site.
-- Crits advance the crack two stages; a crit that breaks a chunk yields ×2 rubble.
-- **Crew (Diggers)** strike chunks on their own timers and produce rubble the same way. Hiring one is a visible event: a rope drops, the digger slides down, lands in a dust puff, the helmet lamp clicks on, and they start swinging. Max 3 animated diggers on the face; the rest dig at full rate and are shown as a "+N crew" helmet row. Cost escalates ×1.28 per hire.
-- **Excavator** (later extraction machinery, 235 m) strikes a large area periodically.
-- **Tool ladder** (Phase 3C; each tier changes the tool in hand, the impact sound and the debris):
-
-| Tool | Power / click | Unlock | Look / feel |
-|---|---|---|---|
-| Pickaxe | 1 | start | light gray head |
-| Iron Pickaxe | 1.5 | $75 | larger dark head, more chips, extra low thud |
-| Heavy Pickaxe | 2.25 | $260, 25 m | big block head, heavy THUNK, bigger break |
-| Jackhammer | 4 × 1.4 burst | $1,800, 75 m | each click rattles 4 rapid impacts, BRRRT |
-
-  Hits per dirt chunk: 3 → 2 → ~1.3 → <1 click. Clicking stays meaningful because every tier still needs clicks.
-- *(History: Phases 3A/3B temporarily left extraction progression inaccessible — no income existed and only the tool name was shown. Phase 3C restores the tool ladder and Digger hiring as real early purchases.)*
-
-### Rubble pile
-- `rubbleWaiting` is shown as a procedural pile next to the loading point, sized by quantity (few stones → small → medium → large → overflowing at ~100%+ of the pile's visual capacity).
-- Deterministic shapes; no per-unit physics objects. Transient debris from impacts is separate.
-- On a break, a few pieces visibly arc from the face into the pile; loading arcs pieces from the pile into the cart.
-- The pile is not hard-capped in V1 (no material is ever silently destroyed). A huge pile is the transport signal.
+| Extraction | empty cart waiting at the bottom; idle trucks |
+| Transport | rubble pile growing at the dig site; cart always travelling |
+| Processing | hopper full (RAW FULL); cart waiting at the top to unload |
+| Construction | material stack empty at the plot; builders idle; or a big stack waiting for the player to start the next stage |
 
 ---
 
-## 6. Transport
+## 4. Locations
 
-### The cart
-- Exactly **one** cart in the initial game. It is permanent infrastructure, never a repeated purchase.
-- When the cart leaves the dig site it is gone from the bottom; its world position always derives from its actual journey progress, so it can be seen anywhere along the shaft.
+Three primary sites, all parts of one continuous world:
 
-### State machine
-```
-BOTTOM_EMPTY → LOADING → READY → TRAVELLING_UP → SURFACE_ARRIVAL → UNLOADING → TRAVELLING_DOWN → (BOTTOM_EMPTY | LOADING)
-```
-- **LOADING:** rubble transfers at `loadRate` until capacity.
-- **READY:** short dwell, then automatic dispatch when full.
-- **Manual send:** clicking/tapping the cart while it holds anything sends it early. Manual dispatch is never required; idle play works.
-- **TRAVELLING_UP / DOWN:** travel time depends on distance and speed:
-  `travelTime(d) = baseTravel + d / (cartSpeed × railMult)` (smoothstep position profile).
-  Shallow trips are quick (~4 s at 10 m); at 200–300 m a round trip is over a minute until upgraded. Linear in depth — no exponential misery; future transport tech (second cart, elevator/hoist, express rail) solves deep transport.
-- **SURFACE_ARRIVAL:** brake + bump.
-- **UNLOADING:** the cart tips and dumps into `surfaceStock`. (3C: if surface storage is full, the cart waits — the waiting cart is the signal.)
-
-### Transport upgrades (level-based, cash)
-| Upgrade | Effect | Visual |
+| Site | Where | Role |
 |---|---|---|
-| Cart Capacity | more units per trip | cart body tiers: rusty hand cart → reinforced → metal → heavy industrial |
-| Cart Speed | faster travel | — |
-| Loading Speed | faster pile → cart transfer | loading arcs speed up |
-| Rail Quality | travel speed multiplier | rails: rough wood → reinforced wood → metal rail → heavy industrial |
+| **MINE** | the shaft + dig site (vertical) | extraction, workers, rest, worksite, transport |
+| **YARD** | surface beside the headframe | Recycling Yard: hopper → crusher → auger → press → block stack, truck depot |
+| **BUILD** | surface, further along the road | the construction plot, material stack, builders, the building |
 
-Not yet: second cart, elevators/hoists, conveyors.
-
-### Rails
-Rails run the full height of the shaft along the transport (right) wall; the cart rides them on a hoist cable from the headframe. Rails remain visible when scrolling old depths. Major tiers (Lv 0/2/4/7) change the material (rough wood → reinforced wood → metal → heavy steel); **every level** also changes something visible: rail thickness and brightness, sleeper spacing (1.15 m → 0.45 m), cable thickness, plus bolts (Lv 1+), wall brackets (3+), cross bracing (4+), side braces (5+), warm shaft lamps that get closer each level (6+), hazard paint (9+), guard rail (12+).
+Future locations (documented only): Fossil Lab / Museum, Second Mine, Deep Facility, Research Site.
 
 ---
 
-## 7. Surface: the Recycling Yard (Phase 3C.5)
+## 5. Navigation
 
-The surface is the calm, open, beautiful counterpart to the dark industrial mine — and the place where money is made physically.
+A permanent, game-like navigation bar: **[⛏ MINE] [♻ YARD] [🏗 BUILD]** — desktop: bottom-centre over the game view; mobile: bottom bar. Each button: icon, short label, active state, attention state. Buttons appear as the tutorial unlocks them (MINE → YARD → BUILD).
 
-### Bootstrap: the contractor
-1. The first cart load is dumped beside the headframe (no yard yet). A **contractor** with a pickup ("CONTRACTOR") buys it: "Rubble like this? I'll take it." The pile drains into his truck, a big **+$X / SOLD N RUBBLE** popup + sting (~$165–175).
-2. "I can't haul this forever. Build a recycling yard." → **BUILD RECYCLING YARD $80** (the only purchase offered until built; while cash < $80 the contractor keeps buying — no soft-lock).
-3. Building it: a 2.6 s construction (pad, hopper, crusher, auger, press, lights) with hammer knocks; the contractor drives off.
+### Attention indicators
+- **Red `!`** = "GO HERE. SOMETHING IS HAPPENING." Only for meaningful attention:
+  - MINE: worksite expansion ready, machine arrival ready, fossil discovered (future), cave-in (future), major discovery.
+  - YARD: raw storage full and the cart blocked (production stopped), Recycling Yard ready to build (tutorial), major machinery unlock.
+  - BUILD: enough material to start the next stage, building complete / ready to sell, new project to choose, the first truck arriving (tutorial).
+- **Yellow dot** = an optional upgrade is affordable there. Subtle, no pulsing.
+- **No badge** = routine operation. Never red-badge a routine affordable +5% upgrade. Badges are not shown on the site you are viewing.
 
-### The production line (left → right, readable with no UI)
-- **Hopper:** the cart parks over it in the headframe and tips straight in. Raw material heaps in the mouth (coloured by its mix); the count + `raw / cap` sits on the hopper (RAW FULL in warm red).
-- **Crusher drum(s)** under the hopper turn while there is material; **inclined auger** with moving flights carries crushed material up to the press; short dust puffs in the source colour.
-- **Hydraulic press:** anticipation drop → **THUMP** at each press event → dust → ram rises → a block slides out along a roller bed.
-- **Output stack:** finished **RECYCLED BLOCKS** on pallets, tinted by source geology; count on the stack. The player sees input shrinking and output growing.
-- **Road + loading bay** in front of the yard; a yard hand stands by the press for scale.
-
-### Delivery trucks (the payday)
-- When ≥ 15 blocks are stacked, a truck **reverses in from the right edge** along the road to the bay (exhaust puffs as it slows), loads blocks in visible batches (blocks arc onto the bed, rows fill), then drives off to the right with an engine rock and exhaust. **Cash is credited when the loaded truck departs** — "+$X / DELIVERY" popup at the truck + coin sound.
-- Capacity 60 blocks; a truck every ~10–25 s while production runs (early game).
-- Colour: deterministic per delivery `hue = (deliveryIndex × 137.508) mod 360`, saturation 42–54%, lightness 44% (cab), 31% (bed) — tasteful, never random per frame.
-
-### Processing upgrades (PROCESSING section)
-| Upgrade | Effect | Visual |
-|---|---|---|
-| Processing Speed | raw → blocks rate (2.0/s base, +35%/level) | faster drum/auger/press; Lv 3 second crusher drum; Lv 6 bigger press |
-| Contract Value | $ per unit of value (×3 base, +25%/level) | painted sign → "RECYCLING ✓" board → weigh station by the bay → company livery |
-| Raw Storage | hopper capacity (120 base, +50%/level) | wider ribbed hopper → overflow bunker |
-
-Revealed by need: Processing Speed with the yard; Contract Value after 120 units delivered; Raw Storage once raw reaches 50% of capacity. Truck capacity/frequency upgrades are future work. Save migration maps sellSpeed → processSpeed, sellValue → contractValue, storage → rawStorage.
-
-### Day / night (cosmetic only)
-A ~10 minute cycle (dawn → day → sunset → night), sun and moon arcs, stars, warm/cool landscape grading. At night the yard lamps, headframe lamp and truck headlights glow (practical lights drawn after the night grade). No gameplay effect.
-
-### Future surface systems (documented only, not tasks)
-Sorting table, separate crushers per material, weigh station economy, warehouse, output storage, specialty buyers/contracts, rare-material processing, truck fleet upgrades. The surface can eventually become an industrial complex.
-
-## 8. Navigation / Continuous Shaft (Phase 3D)
-
-- Persistent controls: **▲ SURFACE** (smooth camera to depth 0) and **▼ DIG SITE** (smooth camera to the working face). No hard cuts.
-- Manual exploration: mouse wheel / trackpad on desktop; touch drag on mobile.
-- The simulation never pauses because the camera moved.
-- Nav buttons carry attention states (label/badge): ▲ CART ARRIVED, ▲ STORAGE FULL, ▼ RUBBLE FULL, ▼ FIND!
-- Optional: follow-cart camera.
-- Current build (3B): wheel scroll only, cart position shown on the depth gauge.
+### Transitions
+Short camera moves (≈0.3–0.8 s), no loading screens: **vertical** travel for Mine ↔ Yard (up/down the shaft), **horizontal** road pan for Yard ↔ Build. Repeated quick navigation uses the shorter duration. Mouse wheel / trackpad still scrolls the shaft at the Mine (history browsing); touch drag later.
 
 ---
 
-## 9. Procedural Geology (painter implemented in 3C.5; unlimited-depth history in 3D)
+## 6. First-Time Introduction (no modals, no checklists — teach through the world)
 
-Logical depth ranges stay clean; visual boundaries must not look like a layer cake.
-- Transitions: uneven boundaries, fingers of the old material, pockets, embedded stones, streaks, inclusions, gradual mixing over several meters.
-- **Deterministic:** generated from `worldSeed + segment index` (segments of ~5–10 m). Returning to 82 m shows the same wall. Nothing per-pebble is saved; nothing random is regenerated per frame.
-- A segment derives: material blend, edge shape, wall variation, embedded rocks, minor features.
+1. **Land.** Calm landscape (mountains, trees, clouds, birds), almost no infrastructure. The player stands beside a tiny staked patch of ground. Text: **YOU BOUGHT THIS LAND FOR $1.** … *Someone said there's something valuable underneath it.* … **START DIGGING** (the patch glows; nothing else competes).
+2. **First dig.** WHACK, crack, material breaks loose, visible rubble, a small **+N RUBBLE** (never cash). After several breaks: **RUBBLE ISN'T MONEY.** … **GET IT TO THE SURFACE.**
+3. **Cart.** The headframe goes up, rails drop, the cart is lowered. It fills from the pile and starts up. **YARD `!`** appears: **FOLLOW THE CART.**
+4. **Yard.** The cart dumps raw rubble beside the headframe. A contractor drives up and inspects it: *"Raw rubble isn't worth much."* … *"But processed material is."* He buys this first load (seed money) → **BUILD RECYCLING YARD**.
+5. **Recycling.** Hopper, crusher, auger and press go up. Raw rubble visibly enters; the first finished block slides out: *"Now this is useful."* The delivery truck loads blocks. **BUILD `!`**: **FOLLOW THE TRUCK.**
+6. **Construction.** An empty plot. The truck drives in and unloads blocks. **BUILD SOMETHING.** → start the Tiny Cabin.
 
-Implemented (3C.5): `geo.ts` paints each 5 m segment once into a cached half-resolution canvas from value noise: boundaries offset by large waves + small noise per column, lenses/pockets of the neighbouring material within ~5 m of a boundary, soft wandering strata and light streaks, embedded rocks, faint fissures. One sampler (`materialAt` logical, `materialAtXY` visual) feeds walls, the dig face, debris and rubble colours. LRU cache of 90 segments, ≤1 new segment per frame plus prefetch of the 3 segments below the view.
-
-Material ranges (logical): Dirt 0–75 m, Clay 75–155 m, Stone 155–250 m, Cave Rock 250–300 m, then procedural deep rock (§17).
-
----
-
-## 10. Upgrades
-
-Philosophy (kept and broadened): **no invisible number-only upgrade when a physical change is reasonable.** Upgrades add, enlarge, improve, speed up animation, change machinery, architecture, character behavior or the physical flow of resources. Not every +5% needs unique art — use visual tiers at meaningful thresholds.
-
-Panel groups, revealed progressively (no walls of disabled buttons):
-
-| Group | Upgrades | Revealed |
-|---|---|---|
-| EXTRACTION | Tool (next tier card), Hire Digger (card), (Excavator, future machinery) | purchasable once the Recycling Yard exists |
-| TRANSPORT | Cart Capacity, Cart Speed, Loading Speed, Rail Quality (compact rows) | after the first cart dispatch |
-| PROCESSING | Build Recycling Yard (card) → Processing Speed, Contract Value, Raw Storage (compact rows) | after the first load reaches the surface |
-
-Panel rule: **accordion sections** (EXTRACTION / TRANSPORT / PROCESSING / FINDS) — each header stays visible with a live summary (e.g. `PROCESSING  Raw 139/300 · Blocks 42 · Truck loading`) and collapses to one line; a section opens itself (with a flash) the first time the game reveals it; on narrow screens opening one closes the others. Big cards only for the next meaningful action (next tool, hire digger, build yard); systems the player already understands are compact one-line rows (`Cart Speed  Lv 1 · 10 m/s  $160`). Each group header shows a live summary (crew + rubble/s; cart state + pile; stock/capacity + sell rate).
-
-Current costs (Phase 3C, base × growth^level): Digger $80 ×1.28 · Cart Capacity $80 ×1.6 · Cart Speed $100 ×1.6 · Loading Speed $50 ×1.55 · Rail Quality $200 ×1.8 · Processing Speed $75 ×1.6 · Contract Value $140 ×1.75 · Raw Storage $110 ×1.65 · Recycling Yard $80 (once).
-
-Arrival animations (Phase 5, kept from the original spec): Digger rope-drop (1.2 s), Jackhammer crate (1.4 s), Foreman lift + whistle (1.7 s), Excavator lowered on a platform (1.9 s); abbreviated 0.5–0.8 s arrivals for repeat purchases. (The old "Minecart rolls in" purchase arrival is obsolete — the cart is permanent; cart/rail tier changes get small upgrade animations instead.)
+After ~60–120 s the player understands **DIG → RECYCLE → BUILD → SELL → EXPAND**. Existing saves skip the parts they have already done.
 
 ---
 
-## 11. Revised 0–300 m Onboarding Beat Sheet
+## 7. Mine
 
-Measured first minutes (Phase 3C.5, headless bot at 4 clicks/s): cart departs ~18 s · contractor sale ~26 s (~$170) · yard built ~27–33 s · first truck paid ~64 s · trucks every 10–23 s · earned ~$1,800 by 3:00; real-browser bot (~6 clicks/s): first truck paid 64 s, 7 trucks by 3:00, zero cash outside truck departures.
+### 7.1 Shaft layout (people route and material route never overlap)
+- **LEFT wall:** worker access (ladder → wooden switchback stairs → reinforced stairs → metal stair tower → worker elevator) and rest infrastructure. No central spiral staircase.
+- **CENTRE:** the player, miners, the active work area. Heavy machines occupy designated floor positions.
+- **RIGHT wall:** the cart rail, hoist cable, rubble pile and loading point.
 
-*(Phase 3C seller model, historical:)* Measured first minutes (Phase 3C, headless bot at 4 clicks/s buying the cheapest affordable option every ~3 s): first break 0.5 s · cart departs 16 s · arrives 20 s · first cash 22 s (~$165) · stall built 24 s · first tool 51 s · first digger 76 s · earned $285 by 1:00, $956 by 2:00, $2,200 by 3:00 · depth 29 m at 1:00, 106 m at 3:00. Between purchases the player usually has 2–5 affordable options but cash for one.
-
-Exact seconds are set by playtesting. Rule: **no long dead zones** — something meaningfully changes, unlocks, arrives or becomes actionable every ~15–45 s during onboarding.
-
-| ~Depth / time | Beat |
-|---|---|
-| 0 m, 0:00 | One miner, pickaxe, dirt. First click cracks dirt (THOK, debris). |
-| first seconds | First break: pieces arc into a small rubble pile next to the empty cart. |
-| ~0:15–0:30 | Cart visibly fills while the pile grows; cart dispatches (auto when full, or player taps it). TRANSPORT group appears. |
-| first trip | Cart rattles up the shaft; player is invited to follow it to the surface. |
-| first arrival | The contractor buys the first load → first cash. "I can't haul this forever. Build a recycling yard." → Build Recycling Yard. PROCESSING section appears. |
-| next minutes | Player discovers the three systems (extraction / transport / surface) through visible bottlenecks; first transport and surface upgrades. |
-| ~12 m | FIND: Rusty Coin (+10% digging). |
-| ~20 m | Digger unlock (rope-drop arrival). |
-| ~30 m | Gold Vein interruption (first, scripted). |
-| ~45 m | FIND: Buried Car. |
-| ~75 m | Clay transition (irregular, duller impacts, banner). |
-| ~90 m | Cave-In interruption. |
-| ~105 m | Jackhammer unlock (crate arrival). |
-| ~120 m | FIND: Dinosaur Skull (+15% crew speed). |
-| ~140 m | Critical Pocket interruption. |
-| ~155 m | Stone transition (major breakthrough). |
-| ~175 m | Foreman unlock. |
-| ~195 m | FIND: Sealed Elevator. |
-| ~215 m | Gas Pocket interruption. |
-| ~235 m | Excavator unlock. |
-| ~250 m | Cave Rock transition (cavern opens, echo). |
-| ~265 m | FIND: Underground House. |
-| ~280 m | Rich Vein interruption. |
-| ~292 m | Warning: black stone, workers slow, low rumble. |
-| ~300 m | THE RED DOOR discovered. Cinematic. Control returns; digging continues. |
-
-Transport pressure should grow noticeably from ~150 m (long trips), and selling/storage pressure should alternate with it, so the player's attention moves between the three zones.
-
----
-
-## 12. Finds / Discoveries
-
-Discoveries provide curiosity, story and mystery. They are milestones inside an ongoing game, **not** the primary economy. They surprise, sometimes grant bonuses (never direct cash in the normal loop), and remain visible in the shaft history. Never skipped silently by offline progress.
-
-Reveal cinematics (Phase 4):
-
-**12 m — Rusty Coin.** 0.0 s pick hits something: metallic TING. 0.2 s tiny gold glint in the dirt. 0.5 s worker stops and looks. 0.8 s three quick brush/scrape animations expose the coin. 1.4 s coin spins toward the camera/HUD. 1.8 s RUSTY COIN FOUND. Reward: +10% permanent digging. Teaches finds.
-
-**45 m — Buried Car.** First only a curved piece of metal. Workers uncover roof → windshield → an entire crushed rusty compact car sideways in the earth. Headlight flickers. BEEP! Worker jumps backward. Reward: a bonus (e.g., the car is hauled up as a valuable scrap load; it must physically reach the surface rather than paying instantly).
-
-**120 m — Dinosaur Skull.** Pick exposes white bone. Workers stop, brush dirt. Camera subtly pulls back as the skull keeps getting bigger. The jaw falls open: CLACK. One miner jumps inside the mouth for half a second before being pulled back. Reward: +15% crew speed. The tiny comedy matters.
-
-**195 m — Sealed Elevator.** A perfectly straight metal edge. More digging reveals elevator doors, 195 m underground. Old floor indicator: ↓. Bell: DING. Doors attempt to open 2 cm. Blackness. They slam shut. Reward: bonus + added to a Mysteries collection. Do not explain it.
-
-**265 m — Underground House.** Pick breaks through wallpaper, not rock. Workers uncover window, wall, lamp, table: a tiny furnished room buried in the earth. Nobody inside. Lamp: click — turns on. One worker slowly backs away. Reward: bonus + +10% Find Chance.
-
-**~300 m — THE RED DOOR (milestone, not an ending).** From ~292 m the cave rock becomes almost black. At ~298 m the pick strikes: GONG instead of rock. Workers stop. The player breaks the surrounding stone and something enormous emerges: a red metal/stone door embedded in/adjacent to the shaft — symbols, chains, no handle. Cash UI subtly dims. Silence. KNOCK. (2 s) KNOCK. (1 s) KNOCK. Red dust falls; a hairline of red light appears underneath. Text: **300 m** … **SOMETHING IS BELOW.** Then control returns and the player keeps digging past it. The door stays **closed**, unexplained, and visible when scrolling back. The intended feeling is "WHAT THE HELL IS THIS?", not "GAME OVER." Future content may interact with it.
-
----
-
-## 13. Interruptions (Phase 6)
-
-| Event | Trigger | Duration | Player does | Reward |
-|---|---|---|---|---|
-| Gold Vein | after 25 m; first guaranteed at 30 m | 8 s | rapidly click exposed gold nodes | a burst of high-value material into the rubble pile (must still be hauled and sold) |
-| Cave-In | after 70 m; not within 45 s of another event | 10–15 s | break 5–8 fallen rocks | bonus material + 20 s crew frenzy |
-| Critical Pocket | after 120 m | 10 s | time clicks when the fracture pulses bright | huge dig damage + bonus material |
-| Gas Pocket | after 180 m | 8 s | click 3 flashing vents before the gauge fills | success = 30 s ×2 production; failure = no bonus, no punishment |
-| Rich Vein | ~280 m | 15 s | smash sequence with escalating particles | large bonus material |
-
-Rules: interruptions never punish failure; no random interruption within 20 s of a find or layer transition; random event cooldown 45–90 s after the scripted introductions. Rewards flow through the physical economy (material), not instant cash.
-
----
-
-## 14. Dig Face
-
-Implemented (Steps 2 / 2.5). The face is 8 logical damage regions presented as one continuous mass of earth; damage is localized; cracks are the primary damage indicator.
-
-- **Dirt (3 stages):** indentation + 1–2 hairline cracks → 3–5 branching cracks → chunk detaches. Break: 5–8 irregular chunks, 10–18 dust, 3–6 grains; brown/tan; bounce once; fade ~0.8 s.
-- **Clay (4 stages):** compression/deformation (the lip dents) ×2 → thick dark crack → slab tears loose. Break: 3–5 larger sticky chunks, little bounce. Burnt orange/red-brown. Lower, duller sound.
+### 7.2 Dig face (implemented; keep)
+The face is N logical damage regions presented as one continuous mass of earth; damage is localized; cracks are the primary damage indicator.
+- **Dirt (3 stages):** indentation + 1–2 hairline cracks → 3–5 branching cracks → chunk detaches. 5–8 irregular chunks, 10–18 dust, 3–6 grains; brown/tan; bounce once; fade ~0.8 s.
+- **Clay (4 stages):** compression/deformation (the lip dents) ×2 → thick dark crack → slab tears loose. 3–5 larger sticky chunks, little bounce. Burnt orange/red-brown; lower, duller sound.
 - **Stone (4 stages):** white impact mark → sharp radial crack → fracture network → violent break. 6–12 angular fragments, gray dust, occasional sparks, harder ricochet.
-- **Cave Rock (5 stages):** dark bluish-gray; cracks expose darkness/faint glow behind the wall. Break: 8–14 fragments, pebbles, dust; debris falls into unseen space; subtle echo. From 292 m particles gain dark-red flecks.
-- **Impact hierarchy:** normal hit (local pulse, chips, tiny impulse) < chunk break (fracture, debris, dust, low thump, small impulse, crater reveal) < crit (35–50 ms hit-stop, bright short star, radial shock ring, crack +2 stages, ~2× debris, ~2 px impulse, harder sound). Crits are recognizable without text.
-- **Popups:** never cash at the pickaxe. Break: `+N rubble` with depth gained (`▼ 0.35 m`) underneath; crit break: larger. Crew strikes show no text.
-- Breaks send a few pieces arcing into the rubble pile so production is visibly connected to the pile.
-- Damage cracks belong only to the working face: they are clipped above ~60% of the face band so untouched ground never shows damage. Premature red cracks/flecks near 292–300 m were removed; red returns with the Red Door cinematic.
-- Lighting: the deeper the dig, the darker the shaft (up to 42% at ~260 m); every visible worker's helmet lamp (player strongest) and the excavator's work light carve out the work area with soft gradients.
+- **Cave Rock (5 stages):** dark bluish-gray; cracks expose darkness behind the wall. 8–14 fragments, pebbles, dust; debris falls into unseen space; subtle echo.
+- **Impact hierarchy:** hit (local pulse, chips, tiny impulse) < break (fracture, debris, dust, low thump, small impulse, crater reveal) < crit (35–50 ms hit-stop, short star, shock ring, crack +2 stages, ~2× debris, ~2 px impulse, harder sound). Crits read without text.
+- **Popups:** never cash at the pickaxe. Break: `+N RUBBLE` with depth gained (`▼ 0.35 m`); crew strikes show no text.
+- Damage cracks belong only to the working face (never in untouched ground). No premature red effects; red returns with the Red Door.
+- Lighting: deeper = darker (up to ~42%); helmet lamps (player strongest) and machine/worksite lamps carve out the work area. The mine should become beautiful at depth because of accumulated warm lights.
+
+### 7.3 Equipment changes output
+A bigger tool or machine means **more damage + more material + a larger visual break + a larger sound + a larger debris response.** Never the same tiny `+2 RUBBLE` after an upgrade.
+
+| Tier | Damage / click | Rubble per break | Notes |
+|---|---|---|---|
+| Pickaxe | 1 | ×1 (2) | small chunks |
+| Iron Pickaxe | 1.5 | ×1.5 (3) | more material |
+| Heavy Pickaxe | 2.25 | ×2.5 (5) | larger chunks, heavy THUNK |
+| Jackhammer | 4 × 1.4 burst | ×3.5 (7) | BRRRT burst, obvious DPS jump |
+| Excavator (machine) | a whole chunk per bite | ≈12 per bucket | needs Work Chamber |
+| Drill Rig (future) | huge | huge | needs larger chamber |
+| Tunnel Borer (future) | industrial | industrial | needs Industrial Chamber |
+
+### 7.4 Physical upgrade tiers (minor levels inside major tiers)
+Major progression is equipment, not "Lv 9". Numerical sub-levels exist, but every few levels the player unlocks **a new thing**:
+- Transport: Old Mine Cart → Reinforced Cart → Powered Cart → Ore Wagon → Motorized Hauler.
+- Rail: Wood Track → Reinforced Track → Iron Rail → Steel Rail → Industrial Rail → Powered Track. (Every level already changes something visible: thickness, sleeper spacing, bolts, brackets, bracing, lamps, paint, guard rail.)
+- Loading: Hand Loading → Chute → Mechanical Loader → Powered Hopper → Industrial Loader.
+- Processing: Basic Crusher → Rock Crusher → Rotary Crusher → Twin Crusher → Industrial Pulverizer.
+
+**Upgrade visual rule:** a purchase must visibly change/add/enlarge equipment, change an animation, speed or output, change the environment, add infrastructure, or automate a task. If looking at the world right after buying shows no difference, the upgrade is weak.
+
+### 7.5 Worksite expansion (major progression)
+Too many workers cannot share a tiny hole and machines cannot magically fit — the mine physically expands.
+- **Tier 1 — Narrow Shaft:** player, 1–3 visible miners, small rubble pile, basic cart.
+- **Tier 2 — Work Chamber:** unlocked when the crew grows (≥ 2 diggers) or heavy equipment becomes relevant. **EXPAND WORKSITE**: whistle → workers stop and move clear → charges placed → **BOOM** (shake, flash, big dust cloud, side walls break outward) → debris clears → timber supports install → camera smoothly zooms out → a wider chamber; workers spread out. A **major reward**.
+- **Tier 3 — Industrial Chamber (future):** many workers, excavator + drill rig + loader, larger transport, rest infrastructure.
+- **Space rule:** heavy equipment requires a chamber tier (Excavator → Work Chamber). The UI shows the requirement ("EXCAVATOR — Requires Work Chamber") to create anticipation.
+- **Machine scaling:** never stack 12 identical excavators; scale through larger machines, wider chambers, more stations, new machine classes.
+
+### 7.6 Excavator
+Clearly larger than a person (shared world scale): tracks, base, upper body, cab with operator, boom, stick, bucket on real articulated pivots (no detached arms, no floating bucket). Works from a timber mat on a designated chamber floor position, never overlapping miners or the cart. The bucket removes a bucket-sized bite: much more rubble than a miner.
+
+### 7.7 Future drilling
+Pneumatic Drill Operator → Drill Rig → Industrial Drill → Tunnel Borer, each requiring progressively larger worksite infrastructure.
 
 ---
 
-## 15. Audio
+## 8. Workers
 
-All sound synthesized with Web Audio; context created on first user gesture; ±3–7% pitch randomization on repeated impacts. No music yet.
+### 8.1 Scalable character system
+One reusable **character rig** (`CharacterRig`): position, scale, facing, animation state, role, palette, body variant, equipment, held item, helmet lamp, expression/state. All characters derive from **normalized proportions** (height = 1.0; head, torso, upper arm, forearm, thigh, shin, boot are fractions of it); world scale converts to pixels. No hard-coded pixel anatomy in render code.
 
+Art direction: stylized, readable, friendly, slightly exaggerated 2D game characters ~4.5–5 heads tall — clear head shape, nose/face, hair/facial hair variants, neck, torso volume, arms with thickness, gloves, shaped legs, boots, clothing layers, helmet, belt/tools. Not stick figures, not realistic anatomy, not chibi.
+
+Deterministic variation per worker seed: skin tone, shirt, vest, pants tone, helmet, hair, facial hair, body width, height ±~4%. Cohesive industrial palettes, no clown colours.
+
+Roles share the rig and change clothes/helmet/equipment/idles: PLAYER, MINER, FOREMAN, CONSTRUCTION WORKER, FOSSIL SPECIALIST, DRIVER, MACHINE OPERATOR, future ENGINEER/SCIENTIST.
+
+**Player:** ~1.05–1.15× a worker, distinguished by clothing (orange/red, hi-vis), helmet, the strongest lamp, animation and position — never by giant scale. Only a small soft contact shadow under the feet.
+
+### 8.2 Animation
+Reusable states: idle, walk, work, carry, rest (sit), climb, celebrate, inspect, surprised. Role actions: miner swing, jackhammer, brush fossil, operate machine, construction hammering. Procedural Canvas animation (no sprite sheets yet).
+
+**Personality (rare, never spammed):** wipe sweat, adjust helmet, stretch, drink water, look around/up, talk to a neighbour, sit, check tool, look at watch; builders point at plans; miners examine an unusual rock. Rare comedy: high-fives, jumping back from the cart, a knocked-crooked helmet, the excavator operator drinking coffee.
+
+### 8.3 Helmet lights
+Every underground worker has a lamp that follows facing (soft gradients). Player strongest, workers weaker. Ambient light falls with depth; worksite infrastructure adds lamps.
+
+### 8.4 Fatigue and rest (lightweight, never micromanagement)
+States: WORKING → (tired) TO_REST → RESTING → RETURNING (→ ASSIGNED_SPECIAL later). Work ≈60–120 s, then finish the current action, walk to the left-wall stairs, climb to the rest platform, sit/drink ≈10–20 s, climb down, resume. Phases are **staggered** so the mine never stops; a tired worker keeps working if every seat is taken. The player has no fatigue. Fatigue exists to create movement, life, rest infrastructure, storytelling and upgrade choices — not to annoy. No hunger, bathrooms, disease, complex morale, sleep schedules or health.
+
+**Rest Platform** (first rest infrastructure): a wooden platform on the left wall above the work floor with a bench, water cooler, warm lamp and railing; label `REST 2/3`. Future: larger platform, better benches, water station, break room, canteen, underground rest station (capacity, recovery speed, travel efficiency).
+
+### 8.5 Population scaling / LOD
+- 1–8 workers: full individual characters.
+- 9–20: foreground workers full detail, background workers simplified.
+- 20+: small groups, distant silhouettes, active stations, summary counts.
+- Never "+97 crew" as the only visual evidence — the world implies scale.
+- Character LOD by on-screen size: near = full; medium = no face details/gloves/belt; far = simple silhouette.
+
+---
+
+## 9. Recycling Yard
+INPUT HOPPER → CRUSHER → AUGER → PRESS / FORMING → FINISHED BUILDING MATERIAL (blocks).
+- The cart parks over the hopper in the headframe and tips straight in; large chunks tumble in and settle. The hopper has a **visible fill level** (cut-away window) and raw count.
+- The crusher visibly consumes material (pieces drop from the hopper throat into the drums); the auger visibly carries smaller pieces; the press: anticipation → THUMP → dust → a block slides out; the finished stack visibly grows. Dust during crushing/pressing in the source colour.
+- Upgrades: Processing Speed (Basic → Rock → Rotary → Twin Crusher → Industrial Pulverizer tiers), Block Quality (value of the material the blocks carry into construction), Raw Storage (hopper → bigger hopper → overflow bunker).
+- **The delivery truck lives at the yard:** it parks at the loading bay, loads blocks when enough are stacked, drives along the road to the construction site, unloads, and returns. Truck colour per delivery: `hue = (deliveryIndex × 137.508) mod 360`, saturation 42–54%, lightness 44% (cab) / 31% (bed). Exhaust puffs on start/stop. Truck size: cab ≈1.5 worker heights, length ≈3.6, wheels ≈ a torso wide.
+
+---
+
+## 10. Construction
+
+### 10.1 One plot, reused, ever-bigger projects
+- **Project 1 — Tiny Cabin** (5 stages, ~150 blocks).
+- **Project 2 — Two-Story Home** (7 stages, ~480 blocks).
+- Future escalation: Small House, Family Home, Luxury Home, Apartment, Office, Hotel, Tower, Skyscraper, Stadium, Castle, Resort, Bridge, Grand Civic Building, Monumental Palace, Mega Skyscraper, Arcology, Launch Tower, absurd mega-projects; possibly recognizable landmark-inspired projects. **Every completed project should make the next one feel more ambitious.**
+
+### 10.2 Physical construction (the structure is the progress bar)
+Visual stages over 0–100%: empty lot → site preparation → foundation → floor/frame → walls → second level / roof structure → windows/roof → details → finished landscaping and lights. A percentage may supplement, never replace, the picture.
+
+### 10.3 Material delivery and consumption
+The truck arrives and unloads; the plot's **material stack grows**; builders carry blocks from the stack to the building; **the stack shrinks while the building grows**. Readable with no UI.
+
+### 10.4 Stages (early: the player starts them; later: automation)
+Each stage needs a block amount on site. When enough material is stacked, **BUILD `!`** and the panel offers **START: FOUNDATION** (etc.). Builders then consume material at the build rate; on completion the client pays a **milestone payment** (~8–10% of the property value). Later a **Foreman** auto-starts stages (automation as progression).
+
+### 10.5 Completion and sale
+Workers stop; small celebration; camera frames the building; **BUILDING COMPLETE — PROPERTY VALUE $X**; big **SELL PROPERTY** action (residential). On sale: cash payout, a SOLD sign, a short hold → dissolve/cleanup → an empty, upgraded plot. The next project appears immediately and is visibly **bigger**.
+
+---
+
+## 11. Discoveries (future, documented)
+
+### 11.1 Fossils (signature system; next milestone V2-2)
+Not decorative loot, not an instant reward — a temporary excavation project.
+- **Discovery:** CLINK; bone appears; workers stop near it; **MINE `!`**; *FOSSIL DISCOVERED*; only a small portion visible.
+- **SEND EXCAVATION TEAM $X:** a specialist, brush tools, temporary lamps, a small fossil work platform; then **ASSIGN WORKERS** (e.g. MINING 8 / FOSSIL 2). Workers on the fossil stop contributing mining DPS — a real tradeoff.
+- **Excavation:** 0–20% small bones; 20–40% ribs/spine; 40–60% larger body; 60–80% skull; 80–100% clean full skeleton. Brushes, small picks, careful digging, subtle dust; never jackhammering a fossil.
+- **Scale:** some fossils are BIG (a dinosaur skeleton spanning a large section of wall; the camera pulls out: "Whoa."). Later: mammoth, large dinosaur, giant marine reptile, unknown enormous skeleton. Do not overuse.
+- **Reward:** SELL TO COLLECTOR (high value). Future: SEND TO MUSEUM (permanent bonuses/reputation).
+- **History:** the site remains; if sold, an outline / excavation cavity / plaque remains.
+
+### 11.2 Named discoveries (retained cinematics; later milestones)
+- **12 m — Rusty Coin.** TING; gold glint; worker stops; three brush strokes; coin spins toward the camera; RUSTY COIN FOUND (+10% digging).
+- **45 m — Buried Car.** A curved piece of metal; roof → windshield → a crushed rusty compact car; headlight flickers; BEEP!; worker jumps back.
+- **120 m — Dinosaur Skull** (now part of the fossil system).
+- **195 m — Sealed Elevator.** A straight metal edge; elevator doors underground; floor indicator ↓; DING; doors open 2 cm onto blackness and slam shut. Never explained.
+- **265 m — Underground House.** Wallpaper instead of rock; window, wall, lamp, table — a furnished room in the earth; the lamp clicks on; a worker slowly backs away.
+- **~300 m — THE RED DOOR (milestone, not an ending).** From ~292 m the rock turns almost black; GONG; workers stop; an enormous red door with symbols and chains, no handle; silence; KNOCK … KNOCK … KNOCK; red dust; a hairline of red light; **300 m … SOMETHING IS BELOW.** Control returns; digging continues; the door stays closed and visible in the shaft history. Feeling: "WHAT THE HELL IS THIS?", never "GAME OVER". (Roadmap V2-6.)
+
+### 11.3 Shaft history
+The mine remains a physical timeline: excavation sites, plaques, embedded discoveries, rail improvements, rest platforms, lights and machines stay where they were. The player can scroll/navigate through it. Transient detail (cracks, particles) is reconstructed, not saved: geology is deterministic per `worldSeed + segment`.
+
+---
+
+## 12. Active Events (future; goal: something meaningfully different every ~20–45 s in early active play)
+| Event | Summary | Rule |
+|---|---|---|
+| Critical Vein | ~10 s high-value seam; hit highlighted weak points for huge material bursts | no punishment for poor play |
+| Cave-In | rocks block part of the worksite/rail; clear them fast for bonus material / a temporary frenzy | auto-resolves after a short delay; never destroys progress |
+| Gas Pocket | vent flashing cracks before a gauge fills | success = production boost; failure = no bonus |
+| Side Cave | digging exposes a side chamber; EXPLORE → crystals, old equipment, bones, water, a chest, strange machinery, unknown structures | curiosity |
+| Buried Object | named discoveries (§11.2) | — |
+| Fossil | §11.1 | — |
+| Worksite Expansion / Construction Milestone | already player moments | — |
+Rewards flow through the physical economy. No random event within 20 s of a find or layer change; cooldown 45–90 s.
+
+---
+
+## 13. Geology (implemented; keep)
+One deterministic sampler (`materialAt` logical / `materialAtXY` visual) drives walls, face, debris and rubble. Logical ranges: Dirt 0–75 m, Clay 75–155 m, Stone 155–250 m, Cave Rock 250–300 m, then procedural deep rock. Visual boundaries are irregular: large waves + small noise, lenses/pockets near boundaries, wandering strata, streaks, embedded rocks, faint fissures; painted per 5 m segment and cached. No universal mud-coloured rubble; no giant black damage cracks outside the dig face; no unexplained red.
+
+### Beyond 300 m
+Depth is unbounded; 300 m is a milestone. Procedural deep rock; `hpPerStage(d) = caveHp × (1 + (d − 300)/hardDiv)^hardExp` with `hardExp` ≈ 1.2–1.4; value `(1 + d/valueDiv)^valueExp` continues; transport time stays linear in depth.
+
+---
+
+## 14. Rubble Visibility (material journey)
+Mine: chunks visibly accumulate in the pile. Cart: the load visibly rises. Yard: the hopper visibly fills, the crusher visibly drains it, the auger visibly carries pieces, the press produces blocks, the stack grows. Truck: cargo visibly loads. Construction: the delivered stack grows; the building grows while the stack shrinks. The player can watch material travel through the whole economy.
+
+---
+
+## 15. Surface Atmosphere
+Peaceful counterpoint to the industrial, mysterious mine: mountains, trees, layered painted clouds, birds, cosmetic day/night (~10 min), stars, moon, warm industrial lights at night (yard, mine entrance, construction work lights, vehicle headlights). **No production multiplier tied to day/night.**
+
+**Animals** only if they look good at rendered resolution (no crude blobs). Priority: a rabbit near vegetation (pauses, ears move, hops, looks around, leaves). Later: birds landing, butterflies, fireflies, distant deer. No clicking, no reward — pure life.
+
+---
+
+## 16. Audio
+
+### 16.1 Music (MusicManager)
+Separate music volume, SFX volume and mute, persisted. States with crossfades: **Surface/Yard** calm, warm, optimistic; **Mine** mysterious, rhythmic, subdued; **Construction** productive, slightly energetic; **Fossil** quiet, curious (future); **Major discovery** ducks the music and plays a sting. Comfortable for long idle sessions. Only legally safe material: original procedural (Web Audio) music and/or local, approved, royalty-free files in documented asset slots (`public/music/<state>.ogg|mp3`). Never copyrighted tracks.
+
+### 16.2 SFX (synthesized; ±3–7% pitch randomization on repeated impacts)
 | Sound | Synthesis |
 |---|---|
-| Dirt hit | 90–130 Hz sine/triangle thump, ~60 ms + short brown-noise burst |
-| Clay hit | 70–100 Hz low-pass noise, ~100 ms, soft attack |
+| Dirt hit | 90–130 Hz sine/triangle thump ~60 ms + short brown-noise burst |
+| Clay hit | 70–100 Hz low-pass noise ~100 ms, soft attack |
 | Stone hit | 180–350 Hz short triangle transient + high-pass noise crack |
 | Cave hit | stone hit + quiet 80–120 ms delayed echo |
 | Crit | 1.2–2.5 kHz transient + noise crack + 70 Hz impact |
-| Dirt break | filtered brown noise, 250–350 ms |
-| Stone break | 4–7 randomized short noise/transient bursts over ~300 ms |
+| Break | filtered brown noise 250–350 ms / 4–7 short bursts over ~300 ms |
 | Falling debris | randomized 150–600 Hz ticks, decreasing amplitude |
-| Pick swing | high-pass noise whoosh, ~120 ms |
-| Cart roll / depart | low-passed rolling noise rumble |
-| Rail clack | short low transient + 1–2 kHz tick, spaced by distance travelled |
-| Cart brake | ~1–3 kHz squeal with vibrato |
-| Cart unload | rock-slide noise + debris ticks |
-| Coin | two sine tones ~880 → 1320 Hz, ~120 ms |
-| Cash popup | sine sweep ~600 → 950 Hz, 70 ms |
-| Purchase | three ascending tones ~440/660/880 Hz |
-| Find sting | ~523 → 659 → 784 → 1047 Hz, staggered ~80 ms |
-| Jackhammer | repeated 55–70 Hz impulses at ~16–22 Hz + filtered noise |
-| Excavator engine / slam | saw/triangle 55–80 Hz with slow modulation / 45–65 Hz sine drop + noise |
-| Foreman whistle | sine ~1.8 → 2.5 → 2.0 kHz, ~350 ms |
-| Gold vein start | bright arpeggio ~700–1400 Hz |
-| Cave-in warning | 50–80 Hz rumble + scattered ticks |
-| Gas hiss | band-pass noise 2–6 kHz |
-| Layer breakthrough | 50 Hz rumble → crack → rising tonal sting |
-| Elevator ding | sine ~900 Hz + ~1800 Hz harmonic, 350 ms |
-| Car horn | paired square/saw ~400/500 Hz, two short bursts |
-| Door impact / knock | ~45 Hz sine + low-pass noise, 0.8–1.2 s / 60–90 Hz transient + long cave echo |
-| Mystery ambience | sparse 35–60 Hz sine pulses, extremely quiet |
-
-Sounds from off-screen sources (e.g., the cart far up the shaft) are attenuated by camera distance.
+| Pick swing | high-pass noise whoosh ~120 ms |
+| Cart roll, rail clack, brake, unload | rumble; low knock + 1–2 kHz tick; 1–3 kHz squeal; rock slide |
+| Coin / cash / purchase / sting | 880→1320 Hz pair; 600→950 Hz sweep; 440/660/880; 523→659→784→1047 |
+| Jackhammer | 55–70 Hz impulses at ~16–22 Hz + filtered noise |
+| Excavator engine / slam | saw/triangle 55–80 Hz with slow modulation / 45–65 Hz drop + noise |
+| Whistle | sine ~1.8 → 2.5 → 2.0 kHz ~350 ms |
+| Blast (worksite expansion) | 40 Hz drop + broad noise + debris tail |
+| Construction hammer | short wooden knocks |
+| Event sounds (future) | gold-vein arpeggio, cave-in rumble, gas hiss, layer breakthrough, elevator ding, car horn, door impact/knock, mystery ambience |
+Off-screen sources are attenuated by camera distance.
 
 ---
 
-## 16. Persistence / Save / Offline
-
-- localStorage, saved every 5 s and on unload/pagehide; all access wrapped in try/catch; versioned schema with explicit migration (old versions either migrate or are deliberately discarded).
-- Saved (v4): cash, depth, tool, crew, finds, clicks, rubble pile, cart (state, t, dur, from, load), raw, finished goods, truck (state, t, dur, load, delivery index, paid, visual bed), upgrade levels, yard built, flags (dispatched, arrived, sold, storageSeen), stats (earned, delivered, processed). Every Load carries `{qty, val, mix}`.
-- Migration: v3 (Phase 3A–3C) → v4 maps surface → raw, stall → yard, sellSpeed/sellValue/storage → processSpeed/contractValue/rawStorage, infers a material mix from depth for loads without one; cash and material are preserved exactly. v2 still migrates; v1 is discarded. The old key is deleted only after the new save is written.
-- A truck that departs has already paid: its load is removed from the world at departure (a visual-only `bed` count rides off), so reloads can never pay or count a delivery twice.
-- Not saved: dig-face cracks, particles, popups. The world is reconstructed deterministically (§9).
-- **Offline (interim, unresolved design):** elapsed time (capped) is simulated conservatively through the real production chain — crew digging feeds the pile, the actual cart state machine moves it, the yard processes it and real truck cycles pay for it — and crew digging stops just short of the next find so discoveries are never skipped silently. A proper offline design (summary screen, caps per system, processing/truck behaviour) is still to be decided.
+## 17. UI Philosophy
+- Stop looking like enterprise software. **Location navigation is primary.**
+- **Contextual panels:** MINE (Extraction, Workers, Worksite, Transport, Discoveries) · YARD (Processing, Storage, Loading, Logistics) · BUILD (Current Project, Materials, Stage, Sell). Never show every upgrade in the game at once. Accordions inside a site where needed.
+- **Major vs minor:** major transformations (new tool, new machine, new chamber, new rest facility, new project, start stage, sell) get big cards and animations; minor efficiency (+capacity, +speed, +value) are compact rows.
+- **Attention without annoyance:** red `!` important, yellow dot optional, no badge routine. Do not constantly pulse everything.
+- **Automation as progression:** what starts as a chore later becomes automated (Foreman auto-starts construction stages; an Archaeology Team handles common fossils; a dispatcher manages transport), while new, larger problems appear.
 
 ---
 
-## 17. Beyond 300 m
-
-300 m is a major milestone, not `MAX_DEPTH`. The simulation and rendering must not assume a terminal depth (Phase 3D removes the current 300 m cap).
-- Procedural deep rock after Cave Rock (no hand-authored named layers).
-- **Hardness:** chunk HP per stage scales gently past 300 m: `hpPerStage(d) = caveHp × (1 + (d − 300)/hardDiv)^hardExp` with `hardExp` ≈ 1.2–1.4 (tunable; avoid runaway exponentials).
-- **Value:** `valueAt(d) = (1 + d/valueDiv)^valueExp` continues (polynomial).
-- **Transport:** travel time stays linear in depth; deep transport is solved by upgrades and future technology.
-- Upgrades become increasingly necessary, but progress never stops.
-
----
-
-## 18. Future Leaderboards (documentation only)
-
-Possible categories: deepest depth (primary), fastest milestone times, highest production, event records. Depth must stay simulation-authoritative (never faked for animation). No networking/backend yet.
-
----
-
-## 19. Performance / Technical Constraints
-
-- TypeScript + Vite, HTML5 Canvas 2D, no React for the game, minimal dependencies.
-- 60 FPS on mid-range laptops during several workers + break + crit FX + cart travel; works on mobile (touch, panel stacks below the canvas under 760 px).
-- Particle counts capped; no unbounded DOM creation; no per-unit physics objects for resources.
-- Modular separation: config, economy, simulation, dig-face state, cart/transport sim, rendering, FX, audio, panel, main wiring.
-- Deterministic world reconstruction keeps save files small at any depth.
+## 18. First Five Minutes (target)
+| ~Time | Beat |
+|---|---|
+| 0:00 | beautiful quiet land |
+| 0:05 | start digging |
+| 0:20 | material and the cart become relevant |
+| 0:30–0:50 | first surface delivery |
+| 0:45–1:15 | Recycling Yard introduced |
+| 1:00–1:30 | first processed building material |
+| 1:15–1:45 | truck heads to Construction |
+| 1:30–2:00 | first construction begins |
+| ~2:00 | worker / tool choice |
+| ~2:30 | visible rest behaviour / workforce activity |
+| ~3:00 | first construction substantially changed |
+| ~3:30 | worksite expansion becomes relevant |
+| ~4:00 | larger extraction operation |
+| ~4:30–5:00 | first property completion, or close enough that the player strongly wants to finish |
+**The player should never spend a minute just watching numbers.** Any interval > 20 s with no decision, interaction, meaningful visual change, event, milestone or completing short-term goal is a **dead zone**; > 45 s is a serious problem.
 
 ---
 
-## 20. Explicitly Out of Scope For the Current Phase (3C.5 done, awaiting playtest)
+## 19. Long-Term Game Shape
+Eventually the player zooms/navigates between a peaceful landscape, an industrial recycling yard, a construction skyline, a massive mine shaft, rest stations, machines, fossil sites, deep caves and mystery structures. **The world itself is the progression screen.**
 
-Full free-camera navigation and unlimited-depth architecture (3D), animated Finds, interruptions, Red Door, prestige, leaderboard backend, multiple carts, elevators, underground conveyors, new ores/resources, truck upgrades, final sprite art, external textures, music.
+---
+
+## 20. Persistence / Save / Offline
+- localStorage, saved every 5 s and on unload/pagehide; try/catch; versioned schema; explicit migration that never duplicates material or cash and deletes the old key only after the new save is written.
+- Saved: cash, depth, tool, crew, finds, rubble, cart, raw, finished blocks, truck, upgrade levels, yard built, worksite tier, construction (project, stage, stage progress, site material, properties sold), tutorial progress, navigation unlocks, current site, stats. Music/SFX preferences are a separate settings key.
+- Not saved: animation phases, particles, cracks, worker fatigue phases (regenerated staggered on load).
+- **Offline (interim, unresolved):** elapsed time (capped) runs the real chain conservatively: crew digging → cart → yard → truck → construction stock. Construction stages do not auto-start offline (the player starts them; future Foreman automates). Crew digging stops just short of the next discovery so discoveries are never skipped.
+
+---
+
+## 21. Performance / Technical Constraints
+- TypeScript + Vite, HTML5 Canvas 2D world, DOM UI, minimal dependencies. 60 FPS target on mid-range laptops; works on mobile.
+- Only the active location is drawn at full detail; off-screen sites simulate cheaply (pure sim modules) and are culled from rendering.
+- Character LOD (§8.5); capped particles; reuse procedural geometry; cached geology.
+- Modular separation: config, economy, state, sim, cart, surface/yard, construction, workers, digface, geo, characters (rig), render, fx, audio, music, panel, nav, main (wiring only).
+
+---
+
+## 22. Future Leaderboards (documentation only)
+Deepest depth (primary), fastest milestone times, highest production, event records, possibly largest project. Depth stays simulation-authoritative.
+
+---
+
+## 23. Roadmap
+| Milestone | Scope |
+|---|---|
+| **V2-1 (current)** | macro loop (truck → construction → sale), navigation + attention, contextual panels, introduction, Construction V1 (Cabin + Two-Story Home), tool yield, character rig + personality idles, worker rest V1 (stairs + rest platform), Worksite Expansion V1 (Narrow Shaft → Work Chamber), Excavator space rule + rescale, recycling visibility, MusicManager |
+| V2-2 | Fossil Excavation (discovery, MINE !, excavation team, worker assignment, gradual reveal, big dinosaur, cinematic, sell to collector, persistent site) |
+| V2-3 | Active mining events: Critical Vein, Cave-In, Side Cave |
+| V2-4 | Industrial progression: drill rig, Industrial Chamber, better logistics, named equipment tiers |
+| V2-5 | More construction projects + automation (Foreman, more lots) |
+| V2-6 | Deep mystery progression / the Red Door |
+| later | museum, second mine, research, prestige (possibly "Expeditions"), leaderboards, CrazyGames/Poki SDK |
+
+---
+
+## 30. Superseded Decisions (do not reintroduce)
+- Cash from clicking / breaks / crew / finds (original prototype).
+- Purchasable, stackable minecarts (pre-3A).
+- 300 m / the Red Door as the end of the game (original slice).
+- Scrap Buyer + Scrap Stall seller turning surface stock into a cash drip (Phase 3C).
+- **Truck departure paying cash** as the main income (Phase 3C.5) — trucks now deliver blocks to Construction; cash comes from milestones and sales.
+- One universal upgrade panel showing everything (pre-V2) — panels are contextual per site.
+- Player drawn ~1.25× a worker with a dark "rim" silhouette behind them (3C.5) — player is ~1.1× with only a contact shadow.
+- Central spiral staircase (rejected): worker access runs along the left wall.
+- "+N crew" as the only evidence of a large workforce.
