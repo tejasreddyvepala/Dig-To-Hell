@@ -12,6 +12,9 @@ import { ctx, view } from './view';
 import { hash } from './util';
 
 export const RIG_H = 40;
+/** Phase (0..1 of a hammer cycle) at which the hammer head reaches its target. */
+export const HAMMER_IMPACT = 0.9;
+const HAMMER_LEN = 9;
 const SHOULDER_Y = -27, HIP_Y = -17;
 const THIGH = 8.8, SHIN = 7.6, UPPER = 8.6, FORE = 8.2;
 
@@ -38,6 +41,8 @@ export interface Pose {
   /** 'ladder': seen from behind, facing the wall ladder. Heights are rig units ABOVE the feet baseline (each limb
    *  sits exactly on a rung); hx/fx = half-spacing of hands/feet across the ladder. */
   ladder?: { fl: number; fr: number; hl: number; hr: number; hx: number; fx: number };
+  /** 'hammer': the point the hammer head strikes, in rig units from the feet (x forward, y up). Impact at t%1 = HAMMER_IMPACT. */
+  aim?: { x: number; y: number };
 }
 
 const SKINS: [string, string][] = [['#f1c9a0', '#d9a77e'], ['#e0ae84', '#c58f68'], ['#c98d62', '#a8714b'], ['#9a6644', '#7d5135'], ['#6e4630', '#573623']];
@@ -321,16 +326,39 @@ export function drawRig(x: number, y: number, scale: number, dir: number, L: Loo
       break;
     }
     case 'hammer': {
-      // kneel-ish stance, hammer raised then struck down on the beat
-      const ph = t % 1, up = ph < 0.6 ? ph / 0.6 : 1 - (ph - 0.6) / 0.4;
-      ctx.rotate(0.12);
-      leg(-1.6, -0.25, 0.1, L, true); leg(1.6, 0.55, -0.3, L, false);
-      arm(-0.5, SHOULDER_Y, 1.1, 1.6, L, true);
+      // the hammer head travels to the AIM point and lands on it at HAMMER_IMPACT: raise back over the shoulder, then
+      // an accelerating swing; the body leans toward low targets (feet stay planted)
+      const aim = p.aim ?? { x: 16, y: 20 };
+      const ph = t % 1, I = HAMMER_IMPACT;
+      const lean = Math.max(0, Math.min(0.45, (16 - aim.y) * 0.03));
+      leg(-1.8, -0.1 - lean * 0.6, 0.05 + lean * 0.4, L, true); leg(1.8, 0.2 + lean * 0.5, -0.1, L, false);
+      const hipY = HIP_Y, sx0 = 0.5, sy0 = SHOULDER_Y;
+      // shoulder after the torso rotates `lean` about the hip (clockwise = forward)
+      const sx = sx0 * Math.cos(lean) - (sy0 - hipY) * Math.sin(lean), sy = hipY + sx0 * Math.sin(lean) + (sy0 - hipY) * Math.cos(lean);
+      ctx.save(); ctx.translate(0, hipY); ctx.rotate(lean); ctx.translate(0, -hipY);
+      arm(-0.5, SHOULDER_Y, 0.9, 1.5, L, true); // the other hand steadies the work
       torso(L, lod); head(L, lod, lit);
-      const h = arm(0.5, SHOULDER_Y, 0.9 + up * 1.6, 1.4 + up * 2.0, L, false);
-      ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(1.2 + up * 1.8);
-      seg(0, 0, 0, -8, 1.6, '#7a5532'); ctx.fillStyle = '#5b636c'; ctx.fillRect(-2.6, -10, 5.2, 3);
       ctx.restore();
+      const tx = aim.x, ty = -aim.y;
+      let dx = tx - sx, dy = ty - sy; const dist = Math.hypot(dx, dy) || 1; dx /= dist; dy /= dist;
+      const reach = UPPER + FORE - 0.4;
+      let hix = tx - dx * HAMMER_LEN, hiy = ty - dy * HAMMER_LEN; // hand at impact
+      const hd = Math.hypot(hix - sx, hiy - sy); if (hd > reach) { hix = sx + (hix - sx) * reach / hd; hiy = sy + (hiy - sy) * reach / hd; }
+      const hrx = sx - 3, hry = sy - 12; // hand raised over the shoulder
+      const angI = Math.atan2(dy, dx), angR = angI - 2.4;
+      const k = ph < 0.5 ? 1 - (1 - ph / 0.5) ** 2 : ph < I ? 1 - ((ph - 0.5) / (I - 0.5)) ** 3 : 0; // 1 = raised, 0 = impact
+      const hx = hix + (hrx - hix) * k, hy = hiy + (hry - hiy) * k, ang = angI + (angR - angI) * k;
+      // two-link arm: shoulder -> elbow (bends down/out) -> hand
+      const ax = hx - sx, ay = hy - sy, ad = Math.min(reach, Math.hypot(ax, ay)) || 1;
+      const ca = Math.max(-1, Math.min(1, (UPPER * UPPER + ad * ad - FORE * FORE) / (2 * UPPER * ad)));
+      const base = Math.atan2(ay, ax), ea = base + Math.acos(ca);
+      const ex = sx + Math.cos(ea) * UPPER, ey = sy + Math.sin(ea) * UPPER;
+      seg(sx, sy, ex, ey, 3.9 * L.build, L.shirt); seg(ex, ey, hx, hy, 3.4 * L.build, L.sleeve);
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(ang);
+      seg(0, 0, HAMMER_LEN - 1.5, 0, 1.6, '#7a5532'); // handle
+      ctx.fillStyle = '#5b636c'; ctx.fillRect(HAMMER_LEN - 2.4, -2.6, 3, 5.2); // head (strikes at the aim point)
+      ctx.restore();
+      ctx.fillStyle = L.glove; ctx.beginPath(); ctx.arc(hx, hy, 2.1, 0, 6.283); ctx.fill();
       break;
     }
   }

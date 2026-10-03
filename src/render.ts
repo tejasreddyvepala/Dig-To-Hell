@@ -10,6 +10,7 @@ import { TRACKUP } from './track';
 import { reinforceY } from './trackfx';
 import { drawExcavator, drawExcavatorLight, drawLampBeam } from './characters';
 import { RIG_H, drawRig, lookFor, type Look, type Pose } from './rig';
+import { ladderFrame } from './ladder';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { pathPos, restAreaBuilt, restingCount, seatsTotal, workers, type Worker } from './workers';
 import { pileX, railX, shaftOff, worksiteDef } from './layout';
@@ -215,33 +216,7 @@ const looks = new Map<number, Look>();
 const minerLook = (seed: number) => { let l = looks.get(seed); if (!l) looks.set(seed, (l = lookFor('miner', seed))); return l; };
 const RS = CFG.rest;
 
-// ---------- wall-ladder climbing (rung-locked, opposite-limb rhythm) ----------
-// Rungs sit at RUNG0 above the ladder's foot, then every RUNG (drawRestArea). The floor counts as rung -1. Two limb
-// pairs alternate: A = left hand + right foot (even rungs), B = right hand + left foot (odd rungs). A pair moves up two
-// rungs while the other holds; everything is a function of HEIGHT only, so planted hands/feet never slide and the
-// same motion plays in reverse going down. Hands hold the rung five above their foot (above the helmet).
-const RUNG0 = 6, RUNG = 8;
-const rungH = (k: number) => (k >= 0 ? RUNG0 + RUNG * k : RUNG0 + RUNG0 * k); // k = -1 is the floor
-const climbU = (h: number) => (h >= RUNG0 ? (h - RUNG0) / RUNG : (h - RUNG0) / RUNG0); // inverse of rungH
-const ease = (r: number) => r * r * (3 - 2 * r);
-function pairRung(u: number, odd: boolean) {
-  const w = odd ? u + 1 : u, n = Math.floor(w / 2), r = w - 2 * n;
-  return (r < 1 ? 2 * n + 2 * ease(r) : 2 * n + 2) - (odd ? 1 : 0);
-}
-/** Ladder pose + feet position for a worker at height `h` above the ladder foot (topH = ladder top / ground). */
-function ladderFrame(h: number, topH: number, look: Look) {
-  const hc = Math.max(0, Math.min(h, topH));
-  const u = Math.max(-1, climbU(hc));
-  const base = rungH(u); // feet baseline: never above the lowest planted foot
-  const kA = pairRung(u, false), kB = pairRung(u, true);
-  const k = CFG.crewScale * look.height; // logical -> rig units
-  const foot = (kk: number) => (Math.min(rungH(kk), topH) - base + 0.8) / k; // sole on top of the rung
-  const hand = (kk: number) => (Math.min(rungH(kk + 5), topH + 4) - base) / k; // grip above the helmet
-  return {
-    base,
-    pose: { k: 'ladder', t: 0, ladder: { fr: foot(kA), hl: hand(kA), fl: foot(kB), hr: hand(kB), hx: 5.6 / k, fx: 3.2 / k } } as Pose, // gloves close over the rung ends at the rails
-  };
-}
+// ---------- wall-ladder climbing: rung-locked (shared with the construction site, ladder.ts) ----------
 
 /** Pose for a crew member from its behaviour state. */
 function workerPose(w: Worker): Pose {

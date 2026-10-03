@@ -32,6 +32,7 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 - Save: localStorage `digtohell_v5` every 5 s + unload/pagehide; versioned migration (v4/v3/v2 → v5); old key deleted only after the new save is written. Accordion state `dth_acc`.
 - Modules (src/):
   - `config` tuning · `economy` pure formulas · `state` save schema/migration · `util` · `layout` work-floor positions relative to the centred shaft
+  - `sitecrew` construction builders: work targets per stage, scaffold + ladder, targeted hammering (presentation only) · `ladder` shared rung-locked climbing
   - `toast` notices that drop from a site tab (unlocks, locked-site notes, construction events)
   - `track` Track Strength purchase + reinforcement job · `trackfx` track strain feedback + first-overload story
   - `sim` strikes, finds, offline · `workers` crew behaviour: strikes, fatigue, rest paths, idles, arrival, `initSim`/`applyWorksite` · `miner` player strike scheduling · `cart` cart state machine · `surface` contractor, processing, truck route · `construction` projects/stages/sale · `expansion` Work Chamber blast sequence · `digface` chunk damage (width per worksite tier) · `geo` geology sampler + painter
@@ -60,7 +61,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 ## STATUS LOG
 - Step 1 port `e4d758d` · Step 2 dig feel `fc51a70` · Step 2.5 polish `72800ed` · design update `6ea5c2b` · 3A+3B `b4a2c08` · 3C `ce168ca` · 3C.5 `4bfadeb` (hash commits `3c30846`, `1278c76`, `3cf1c7a`, `81d4023`) · reset confirm `2011020`
 - V2 design consolidation `719166f`
-- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `86a9dca` · toast/swipe fix `4136d95` · economy rebuild `943d59e`
+- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `86a9dca` · toast/swipe fix `4136d95` · economy rebuild `943d59e` · construction-worker positioning `CREW_HASH`
 
 ### History in brief (details in git history and older Spec revisions)
 - Steps 1–2.5: TS/Vite port; destructible dig face (per-material stages, cracks, crits with hit-stop/star/ring); impact hierarchy; synthesized SFX; face reads as one mass of earth; popup hierarchy.
@@ -70,7 +71,6 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 
 ## KNOWN ISSUES (after V2-1 + economy rebuild)
 - Economy rebuild is a first pass: verified by typecheck/build, material conservation and save migration; one 15-min active-player sim; NOT yet tuned against the automation/infrastructure/idle player sims or a human playtest. Excavator ($4,000) was never bought by a cheapest-first bot in 15 min; 300 m is still reached by ~11–12 min of active play.
-- Construction workers hammer one fixed spot regardless of what is being built (queued visual fix: work zones, ladders/scaffold, hammer hits the structure).
 - Transport is still the most common bottleneck and is not flagged when the cart simply can't keep up (only track overload is flagged).
 - Track reinforcement has no workers walking over (the job is shown by the sweeping rebuild, hammering and dust). Wood's STRAINED band (53–70) is rarely seen because the base cart is 50 and the first upgrade jumps to 73.
 - 0:45 → 1:22 of a fresh game: the first truck brings ~18 of the 30 Foundation blocks; ~35 s of digging with no new decision.

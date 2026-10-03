@@ -279,6 +279,14 @@ Workers stop; small celebration; camera frames the building; **BUILDING COMPLETE
 
 ---
 
+### 10.6 Builders work where the building grows (built; presentation only)
+The worker's position and hammer target must explain the visible build progress.
+- Each stage exposes a few **work targets on its advancing edge**, from the same geometry that draws it: the slab's pouring edge (Foundation), the newest stud and the top plate (Frame), the top log/brick/siding course, the roof's fill line, the next stud of the upper floor, the window or door being fitted, the landscaping item being placed.
+- A builder **walks** to a standing spot within reach of a target, or **climbs the scaffold ladder** (the Mine's rung-locked climb) to the right plank. They hammer that target for ~3–5 s (the hammer head lands on it, with a puff of dust), then pick another target. Builders spread out (never two on one spot on the same level), with offset hammer timing; ground workers sometimes fetch a block from the stack first.
+- **Scaffold:** planks at the needed heights (0.7-worker steps), poles and an access ladder left of the building. They appear only while someone works, walks or climbs up there and disappear when everyone is back on the ground.
+- Idle (waiting for blocks): the crew stands by the stack; finished property: they cheer.
+- Never affects construction rate, block use, payments or saves.
+
 ## 11. Discoveries (future, documented)
 
 ### 11.1 Fossils (signature system; next milestone V2-2)

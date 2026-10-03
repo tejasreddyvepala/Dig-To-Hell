@@ -39,3 +39,8 @@ Technical companion to `Spec.md` (what the game should do) and `claude.md` (stat
 
 ## Testing
 - Headless sims import the real modules with `npx tsx` (scratchpad `audit2.mts <policy> <secs> [idleAfter] [quiet]`; policies active/auto/infra). Material conservation check: compare dug vs held + contractor + built.
+
+## Construction crew presentation (no economy effect)
+- `src/sitecrew.ts`: `workTargets()` returns targets on the current stage's advancing edge (building space in worker units; mirrors `cabin()/home()` geometry in `site.ts` — update both together). `standFor()` picks ground vs plank height (`REACH_H`, `PLANK_STEP`) and a spot 0.42 u from the target. `updateSiteCrew(dt)` moves agents (walk on a level, climb only at `LADDER_X`), assigns/spreads targets, and fires hammer impacts (dust + sound) at `HAMMER_IMPACT`. `drawScaffold()` draws planks for levels in use + the ladder; `drawSiteCrew()` draws each agent (ladder pose via `ladder.ts`, targeted `hammer` pose via `rig.ts` `Pose.aim`).
+- `src/ladder.ts`: rung-locked climbing shared with the Mine (`ladderFrame(h, top, look, s, rigScale)`).
+- Number of agents = `builders(S)` (capped at 8 drawn).
