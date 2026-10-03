@@ -57,7 +57,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 ## STATUS LOG
 - Step 1 port `e4d758d` · Step 2 dig feel `fc51a70` · Step 2.5 polish `72800ed` · design update `6ea5c2b` · 3A+3B `b4a2c08` · 3C `ce168ca` · 3C.5 `4bfadeb` (hash commits `3c30846`, `1278c76`, `3cf1c7a`, `81d4023`) · reset confirm `2011020`
 - V2 design consolidation `719166f`
-- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `RET_HASH`
+- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `86a9dca`
 
 ### History in brief (details in git history and older Spec revisions)
 - Steps 1–2.5: TS/Vite port; destructible dig face (per-material stages, cracks, crits with hit-stop/star/ring); impact hierarchy; synthesized SFX; face reads as one mass of earth; popup hierarchy.
