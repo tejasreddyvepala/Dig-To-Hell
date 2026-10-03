@@ -17,7 +17,7 @@ import { hash, rgb } from './util';
 const C = CFG.cart, Y = CFG.yard;
 const FONT_UI = "'Rubik',system-ui,sans-serif";
 const STEEL = '#5b636c', STEEL_D = '#3f464e', STEEL_L = '#8a949e', YELLOW = '#e6a91a';
-const CONTRACTOR = lookFor('contractor', 7);
+const CONTRACTOR = { ...lookFor('contractor', 7), height: 1.04 };
 const HAND = lookFor('hand', 11);
 
 /** 0..1 progress of one construction step within the yard build. */
@@ -454,19 +454,22 @@ function drawContractor(L: ReturnType<typeof surfaceLayout>) {
   const u = L.u, gone = SV.contractorGone, off = gone * gone * (view.vx1 - L.stackX + u * 4);
   const x = L.stackX + u * 0.2 + off, y = L.roadY;
   ctx.save(); ctx.globalAlpha = 1 - Math.max(0, gone - 0.8) * 5;
-  // pickup truck: bigger than a person (length ≈ 2.6, cab ≈ 1.3 worker heights)
-  const len = u * 2.6, wr = u * 0.25;
-  ctx.fillStyle = '#7d3b26'; ctx.fillRect(x, y - u * 0.75, len * 0.58, u * 0.32); // bed
-  ctx.fillStyle = '#93492e'; ctx.beginPath(); ctx.roundRect(x + len * 0.58, y - u * 1.3, len * 0.42, u * 0.88, [u * 0.12, u * 0.18, 2, 2]); ctx.fill();
-  ctx.fillStyle = '#9fd0ea'; ctx.fillRect(x + len * 0.66, y - u * 1.2, len * 0.26, u * 0.32);
-  ctx.fillStyle = '#2a2c30'; ctx.fillRect(x, y - u * 0.45, len, u * 0.12);
-  for (const wx of [x + u * 0.45, x + len - u * 0.45]) { ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(wx, y - wr, wr, 0, 6.283); ctx.fill(); }
-  ctx.font = `700 ${Math.round(u * 0.13)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9c0';
-  ctx.fillText('CONTRACTOR', x + len * 0.29, y - u * 0.52);
+  // pickup truck at the shared world scale: length ≈ 3.4, cab ≈ 1.7 worker heights (delivery truck is 4.5 long)
+  const T = u * 1.3, len = T * 2.6, wr = T * 0.25;
+  ctx.fillStyle = '#7d3b26'; ctx.fillRect(x, y - T * 0.75, len * 0.58, T * 0.32); // bed
+  ctx.fillStyle = '#93492e'; ctx.beginPath(); ctx.roundRect(x + len * 0.58, y - T * 1.3, len * 0.42, T * 0.88, [T * 0.12, T * 0.18, 2, 2]); ctx.fill();
+  ctx.fillStyle = '#9fd0ea'; ctx.fillRect(x + len * 0.66, y - T * 1.2, len * 0.26, T * 0.32);
+  ctx.fillStyle = '#2a2c30'; ctx.fillRect(x, y - T * 0.45, len, T * 0.12);
+  for (const wx of [x + T * 0.45, x + len - T * 0.45]) {
+    ctx.fillStyle = '#1c1c1e'; ctx.beginPath(); ctx.arc(wx, y - wr, wr, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#8a9198'; ctx.beginPath(); ctx.arc(wx, y - wr, wr * 0.45, 0, 6.283); ctx.fill();
+  }
+  ctx.font = `700 ${Math.round(T * 0.13)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9c0';
+  ctx.fillText('CONTRACTOR', x + len * 0.29, y - T * 0.52);
   // the contractor himself (only while the truck is parked)
   if (gone <= 0) {
     const buying = !S.flags.sold && S.flags.arrived && S.raw.qty > 0;
-    drawRig(L.hopperX + u * 0.75, L.gy, u / RIG_H, -1, CONTRACTOR, { k: 'gesture', t: 0, a: buying ? (Math.sin(view.t * 8) + 1) / 2 : 0.15 });
+    drawRig(L.hopperX + u * 0.75, L.gy, (u / RIG_H) * 1.1, -1, CONTRACTOR, { k: 'gesture', t: 0, a: buying ? (Math.sin(view.t * 8) + 1) / 2 : 0.15 }); // a flat cap, not a helmet: drawn a touch larger so he reads as full height
   }
   ctx.restore();
 }
