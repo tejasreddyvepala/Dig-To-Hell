@@ -22,6 +22,7 @@ export function drawPile(cx: number, baseY: number, l: Load, max: number, unit: 
     ctx.lineTo(cx - w / 2 + w * k, baseY - h * (Math.sin(Math.PI * k) * (0.92 + bump)));
   }
   ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = rgb([main[0] * 0.45, main[1] * 0.45, main[2] * 0.45], 0.7); ctx.lineWidth = 1.1 * unit; ctx.stroke(); // local-colour outline
   // rocks on the surface of the mound, each coloured by the material it came from
   const n = Math.min(46, Math.max(3, Math.round(f * 34)));
   for (let i = 0; i < n; i++) {
@@ -31,6 +32,7 @@ export function drawPile(cx: number, baseY: number, l: Load, max: number, unit: 
     const r = (1.6 + hash(seed + i * 5.9) * 2.6) * unit;
     ctx.fillStyle = rgb(rubbleRGB(mixPick(l, hash(seed + i * 4.1))), 0.8 + hash(seed + i * 9.7) * 0.45);
     ctx.beginPath(); ctx.ellipse(px, py, r * 1.2, r, hash(seed + i) * 3, 0, 6.283); ctx.fill();
+    if (r > 2.4 * unit) { ctx.fillStyle = 'rgba(255,235,205,.28)'; ctx.beginPath(); ctx.ellipse(px - r * 0.35, py - r * 0.4, r * 0.5, r * 0.32, -0.5, 0, 6.283); ctx.fill(); } // lit upper-left
   }
   if (f > 1) { // overflowing: rocks spill out to the sides
     for (let i = 0; i < Math.round((f - 1) * 20); i++) {

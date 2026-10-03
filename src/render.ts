@@ -11,6 +11,7 @@ import { reinforceY } from './trackfx';
 import { drawExcavator, drawExcavatorLight, drawLampBeam } from './characters';
 import { RIG_H, drawRig, lookFor, type Look, type Pose } from './rig';
 import { ladderFrame } from './ladder';
+import { PAL, beam, contactShadow, outline, post, texture } from './art';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { pathPos, restAreaBuilt, restingCount, seatsTotal, workers, type Worker } from './workers';
 import { pileX, railX, shaftOff, worksiteDef } from './layout';
@@ -160,6 +161,7 @@ function drawFace(s: number) {
     ctx.save();
     ctx.clip();
     drawTexture(c, b);
+    texture('rock', b.x0 - 2, b.y0 - 6, b.x1 - b.x0 + 4, F.height + 6, 0.16); // shared rock mottling (face space: never slides)
     for (const m of c.marks) drawMark(m);
     // damage cracks belong to the working face only: they fade out before the face blends into untouched ground
     ctx.beginPath(); ctx.rect(b.x0 - 4, b.y0 - 8, b.x1 - b.x0 + 8, F.height * F.crackDepthFrac + 8); ctx.clip();
@@ -257,7 +259,7 @@ function drawReserve() {
   ctx.fillText(`+${extra} more crew working`, 4, RS.platformY - 40);
 }
 
-const TIMBER = '#6e4a2a', TIMBER_D = '#4e341d', TIMBER_L = '#8a6238';
+const TIMBER_D = '#4e341d', TIMBER_L = '#8a6238';
 
 /** Work Chamber: the carved-out cavity, ceiling, and timber supports (supports go up after the blast). */
 function drawChamber() {
@@ -285,13 +287,12 @@ function drawChamber() {
   posts.forEach((x, i) => {
     const kk = Math.max(0, Math.min(1, k * posts.length - i));
     if (kk <= 0) return;
-    ctx.fillStyle = TIMBER; ctx.fillRect(x - 3.5, -h * kk, 7, h * kk);
-    ctx.fillStyle = TIMBER_D; ctx.fillRect(x - 3.5, -h * kk, 1.6, h * kk);
-    if (kk >= 1) { ctx.fillStyle = TIMBER_L; ctx.fillRect(x - 12, -h + 2, 24, 6); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(x - 12, -h + 7, 24, 1.5); }
+    post(x - 3.5, -h * kk, 7, h * kk, PAL.wood, 'mid', 11 + i);
+    if (kk >= 1) beam(x - 12, -h + 2, 24, 6, PAL.wood, 'mid', -1, 1);
+    contactShadow(x, 0.5, 6, 1.4, 0.3);
   });
   if (k >= 1) { // cap beams between the posts over the side bays
-    ctx.fillStyle = TIMBER;
-    ctx.fillRect(70, -h + 2, off - 64, 5); ctx.fillRect(off + CFG.face.logicalW - 6, -h + 2, w - 8 - (off + CFG.face.logicalW - 6), 5);
+    beam(70, -h + 2, off - 64, 5, PAL.wood, 'mid', 3); beam(off + CFG.face.logicalW - 6, -h + 2, w - 8 - (off + CFG.face.logicalW - 6), 5, PAL.wood, 'mid', 7);
     // hanging work lamps in the bays
     for (const lx of [(70 + off) / 2, (off + CFG.face.logicalW + w) / 2]) {
       ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(lx, -h + 7); ctx.lineTo(lx, -h + 30); ctx.stroke();
@@ -307,41 +308,48 @@ function drawRestArea(groundY: number) {
   // access ladder: surface -> platform (or the floor while the shaft is shallow)
   ctx.strokeStyle = TIMBER_L; ctx.lineWidth = 1.6;
   const lx = RS.ladderX, top = Math.max(groundY, -2400), bot = built ? py : 0;
-  if (bot > top) {
-    ctx.beginPath(); ctx.moveTo(lx - 5, top); ctx.lineTo(lx - 5, bot); ctx.moveTo(lx + 5, top); ctx.lineTo(lx + 5, bot); ctx.stroke();
-    for (let y = bot - 6; y > top; y -= 8) { ctx.beginPath(); ctx.moveTo(lx - 5, y); ctx.lineTo(lx + 5, y); ctx.stroke(); }
+  if (bot > top) { // wood ladder: dark outline pass, then the lit wood
+    for (const [col, lw] of [[PAL.wood.dark, 2.8], [PAL.wood.light, 1.6]] as const) {
+      ctx.strokeStyle = col; ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(lx - 5, top); ctx.lineTo(lx - 5, bot); ctx.moveTo(lx + 5, top); ctx.lineTo(lx + 5, bot);
+      for (let y = bot - 6; y > top; y -= 8) { ctx.moveTo(lx - 5, y); ctx.lineTo(lx + 5, y); }
+      ctx.stroke();
+    }
   }
   if (top === groundY && top < bot - 20) { // shaft collar: planks at the surface where the ladder starts
-    ctx.fillStyle = TIMBER; ctx.fillRect(-18, top - 1, lx + 12 + 18, 4);
+    beam(-18, top - 1, lx + 12 + 18, 4, PAL.wood, 'mid', 5);
     ctx.fillStyle = 'rgba(0,0,0,.3)'; for (let x = -12; x < lx + 10; x += 8) ctx.fillRect(x, top - 1, 1, 4);
     ctx.fillStyle = TIMBER_D; ctx.fillRect(lx + 6, top - 1, 3, 10);
   }
   if (!built) return;
   // flight 1: floor (stairFootX, 0) -> landing (landingX, landingY)
   const flight = (x0: number, y0: number, x1: number, y1: number) => {
-    ctx.strokeStyle = TIMBER_D; ctx.lineWidth = 3;
+    ctx.strokeStyle = PAL.wood.dark; ctx.lineWidth = 4.2; // stringer: outline, then wood
     ctx.beginPath(); ctx.moveTo(x0, y0 + 2); ctx.lineTo(x1, y1 + 2); ctx.stroke();
+    ctx.strokeStyle = PAL.wood.shadow; ctx.lineWidth = 2.6; ctx.stroke();
     const n = Math.round(Math.abs(y1 - y0) / 6);
-    ctx.fillStyle = TIMBER_L;
-    for (let i = 1; i <= n; i++) { const k = i / (n + 1); ctx.fillRect(x0 + (x1 - x0) * k - 4, y0 + (y1 - y0) * k - 1, 8, 2.2); }
+    for (let i = 1; i <= n; i++) { const k = i / (n + 1); beam(x0 + (x1 - x0) * k - 4, y0 + (y1 - y0) * k - 1.2, 8, 2.6, PAL.wood, 'mid'); }
     ctx.strokeStyle = 'rgba(200,170,120,.6)'; ctx.lineWidth = 1; // hand rail
     ctx.beginPath(); ctx.moveTo(x0, y0 - 14); ctx.lineTo(x1, y1 - 14); ctx.stroke();
   };
   flight(RS.stairFootX, 0, RS.landingX, fy);
-  ctx.fillStyle = TIMBER; ctx.fillRect(0, fy - 1, RS.landingX + 12, 4); // landing
+  beam(0, fy - 1, RS.landingX + 12, 4, PAL.wood, 'mid', 9); // landing
   flight(RS.landingX + 8, fy, pw - 8, py);
   // platform: planks on brackets, railing on the open side
-  ctx.fillStyle = TIMBER; ctx.fillRect(0, py - 1, pw + 4, 5);
-  ctx.fillStyle = 'rgba(0,0,0,.25)'; for (let x = 6; x < pw; x += 8) ctx.fillRect(x, py - 1, 1, 5);
+  beam(0, py - 1, pw + 4, 5, PAL.wood, 'fg', 21);
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; for (let x = 6; x < pw; x += 8) ctx.fillRect(x, py - 1, 1, 5);
   ctx.strokeStyle = TIMBER_D; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(2, py + 4); ctx.lineTo(16, py + 18); ctx.moveTo(pw - 4, py + 4); ctx.lineTo(pw - 18, py + 18); ctx.stroke();
   ctx.strokeStyle = TIMBER_L; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(pw + 3, py); ctx.lineTo(pw + 3, py - 15); ctx.lineTo(pw - 26, py - 15); ctx.stroke();
   // bench, water barrel, lamp
-  ctx.fillStyle = TIMBER_L; ctx.fillRect(4, py - 11, 48, 3);
-  ctx.fillStyle = TIMBER_D; ctx.fillRect(6, py - 8, 2.5, 8); ctx.fillRect(48, py - 8, 2.5, 8);
+  post(6, py - 8, 2.5, 8, PAL.wood, 'mid'); post(48, py - 8, 2.5, 8, PAL.wood, 'mid');
+  beam(4, py - 11, 48, 3, PAL.wood, 'fg', 4);
+  contactShadow(pw - 7.5, py - 0.6, 5.5, 1.2, 0.35);
   ctx.fillStyle = '#4b6b7a'; ctx.beginPath(); ctx.roundRect(pw - 12, py - 13, 9, 13, 2); ctx.fill();
+  ctx.fillStyle = '#365260'; ctx.fillRect(pw - 6, py - 12, 2.6, 11); // barrel shadow side
   ctx.fillStyle = '#7fb0c4'; ctx.fillRect(pw - 11, py - 13, 7, 2);
+  ctx.beginPath(); ctx.roundRect(pw - 12, py - 13, 9, 13, 2); outline('#4b6b7a', 'mid');
   ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(30, py - 40); ctx.lineTo(30, py - 30); ctx.stroke();
   ctx.fillStyle = '#ffe2a0'; ctx.beginPath(); ctx.arc(30, py - 28, 2.6, 0, 6.283); ctx.fill();
   // REST sign
@@ -386,11 +394,13 @@ function drawFaceAndCrew() {
   drawFace(s);
   // rubble waiting at the dig site, coloured by what it is, with its count right on the pile
   const px = pileX();
+  if (S.rubble.qty > 0.05) contactShadow(px, 0.6, (12 + 26 * Math.min(1.25, S.rubble.qty / CFG.rubble.pileVisualMax)), 2.4, 0.4);
   drawPile(px, 0, S.rubble, CFG.rubble.pileVisualMax, 1, 17);
   if (S.rubble.qty >= 1) pileLabel(px, -pileHeight(S.rubble.qty, CFG.rubble.pileVisualMax, 1) - 5, Math.floor(S.rubble.qty), 10, S.rubble.qty > CFG.rubble.pileVisualMax);
   const ES = CFG.excavatorScale;
   for (const w of workers) {
     if (w.id === 'exc') {
+      contactShadow(w.x, 0.8, 36 * ES, 2.6, 0.42);
       ctx.save(); ctx.translate(w.x, 0); ctx.scale(ES, ES);
       drawExcavator(0, w.dir, expanding() ? 0 : machineK(w.timer, w.since), CFG.excavatorReach / ES, w.since < 0.4 ? Math.sin(w.since * 25) * (0.4 - w.since) * 2.5 : 0);
       ctx.restore();
@@ -614,6 +624,7 @@ function drawTrackTier(tier: number, top: number, bot: number, flex: (y: number)
     for (let y = top, first = true; y <= bot + 8; y += 8, first = false) { const yy = Math.min(y, bot); const px = x + ox + flex(yy) * k; first ? ctx.moveTo(px, yy) : ctx.lineTo(px, yy); }
     ctx.stroke();
   };
+  ctx.save(); ctx.translate(1.6, 0.6); ctx.strokeStyle = 'rgba(8,5,3,.45)'; ctx.lineWidth = st.w + 0.6; rail(-half, 1); rail(half, 0.6); ctx.restore();
   ctx.strokeStyle = st.rail; ctx.lineWidth = st.w;
   rail(-half, 1); rail(half, 0.6);
   if (st.metal) { ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 0.8; rail(-half + 1, 1); rail(half + 1, 0.6); }
@@ -653,6 +664,7 @@ function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, 
   const w = b.w * s, h = b.h * s, r = b.wheel * s;
   ctx.save();
   ctx.translate(x, y);
+  if (tip < 0.05) contactShadow(0, 0.6 * s, w * 0.55, 1.8 * s, 0.4);
   ctx.translate(w / 2, -r); ctx.rotate(tip); ctx.translate(-w / 2, r); // tips over its right wheel, toward the stockpile
   // open top (seen slightly from above): back lip + dark interior; the load fills it so 25/50/75/100% read at a glance,
   // and an overloaded cart is heaped well above the rim
@@ -678,8 +690,12 @@ function drawCartAt(x: number, y: number, s: number, fill: number, tip: number, 
   // body (slightly tapered tub)
   ctx.fillStyle = b.body;
   ctx.beginPath(); ctx.moveTo(-w / 2, -r - h); ctx.lineTo(w / 2, -r - h); ctx.lineTo(w / 2 - 2.5 * s, -r); ctx.lineTo(-w / 2 + 2.5 * s, -r); ctx.closePath(); ctx.fill();
+  outline(b.body, 'fg', s * 0.8);
+  ctx.fillStyle = shadeHex(b.body, 0.72); // shadow side (light from the upper-left)
+  ctx.beginPath(); ctx.moveTo(w / 2 - w * 0.22, -r - h); ctx.lineTo(w / 2, -r - h); ctx.lineTo(w / 2 - 2.5 * s, -r); ctx.lineTo(w / 2 - w * 0.22 - 1.5 * s, -r); ctx.closePath(); ctx.fill();
   ctx.fillStyle = b.band; ctx.fillRect(-w / 2 + 1.5 * s, -r - h * 0.55, w - 3 * s, 2 * s);
   ctx.fillStyle = b.rim; ctx.fillRect(-w / 2 - 1 * s, -r - h - 1.5 * s, w + 2 * s, 2.2 * s);
+  ctx.fillStyle = 'rgba(255,240,215,.35)'; ctx.fillRect(-w / 2 - 0.5 * s, -r - h - 1.5 * s, w * 0.7, 0.8 * s); // lit rim
   if (b === CART_BODIES[2] || b === CART_BODIES[3]) { // rivets
     ctx.fillStyle = 'rgba(0,0,0,.35)';
     for (let i = 0; i < 4; i++) ctx.fillRect(-w / 2 + (4 + i * (w / s - 8) / 3) * s - 1, -r - h * 0.3, 2, 2);
@@ -727,6 +743,23 @@ function drawCart() {
 }
 
 
+/** Shaft walls as broken rock instead of straight strips: a jagged dark lip per metre, lit warm on its upper edge. */
+function drawShaftWalls(cx: number, sw: number, sTop: number, sBot: number) {
+  const PPM = CFG.ppm, step = PPM * 0.75;
+  const m0 = Math.floor(((sTop - yOf(0)) / step)) - 1, m1 = Math.ceil((sBot - yOf(0)) / step);
+  for (const side of [-1, 1]) {
+    const ex = cx + side * sw / 2;
+    ctx.beginPath(); ctx.moveTo(ex, sTop);
+    for (let i = m0; i <= m1; i++) {
+      const y = Math.min(sBot, Math.max(sTop, yOf(0) + i * step));
+      ctx.lineTo(ex - side * (6 + hash(i * 3.1 + side) * 9), y);
+    }
+    ctx.lineTo(ex, sBot); ctx.closePath();
+    ctx.fillStyle = 'rgba(6,4,3,.42)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(160,116,75,.18)'; ctx.lineWidth = 1; ctx.stroke(); // faint rim where the lamp catches the rock
+  }
+}
+
 function drawWorld() {
   const { H, t } = view;
   const PPM = CFG.ppm;
@@ -737,14 +770,20 @@ function drawWorld() {
   if (gy > view.vy0) drawLandscape(gy, X0, XW);
   // painted, deterministic geology
   drawGeology(ctx, cx, yOf, Math.max(0, top + view.vy0 / PPM), top + view.vy1 / PPM, view.vx0, view.vx1);
+  // background earth: muted + world-anchored mottling so it reads as one mass behind the gameplay (art rule: bg recedes)
+  const eTop = Math.max(view.vy0, gy + 6);
+  if (view.vy1 > eTop) {
+    ctx.fillStyle = PAL.bgMute; ctx.fillRect(X0, eTop, XW, view.vy1 - eTop);
+    texture('earth', X0, eTop, XW, view.vy1 - eTop, 0.1, cx, gy);
+  }
   if (gy > view.vy0 - 20 && gy < view.vy1) drawGround(gy, X0, XW);
   // shaft interior: the same rock, in shadow, down to the face
   const sTop = Math.max(view.vy0, gy), sBot = faceOrigin().y;
   if (sBot > sTop) {
     ctx.fillStyle = 'rgba(12,8,6,.62)';
     ctx.fillRect(cx - sw / 2, sTop, sw, sBot - sTop);
-    ctx.fillStyle = 'rgba(0,0,0,.3)';
-    ctx.fillRect(cx - sw / 2, sTop, 10, sBot - sTop); ctx.fillRect(cx + sw / 2 - 10, sTop, 10, sBot - sTop);
+    texture('rock', cx - sw / 2, sTop, sw, sBot - sTop, 0.06, cx, gy); // kept faint: a dark backdrop must not sparkle
+    drawShaftWalls(cx, sw, sTop, sBot);
     // depth: the shaft darkens upward, and the work light pools on the face so the action is the focus
     const L = CFG.light;
     const gd = ctx.createLinearGradient(0, sBot - H * L.fadeSpan, 0, sBot);
