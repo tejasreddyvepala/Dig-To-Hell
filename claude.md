@@ -44,6 +44,7 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 ## CURRENT ECONOMY (economy rebuild — details Spec §3.1, code map AGENT_CONTEXT.md)
 - **Opening:** the contractor buys a 20-unit sample at market price (~$3/unit × block value) and pays a labelled CONTRACT ADVANCE up to the Recycling Yard's **$250**.
 - **Block value travels with the material:** `V(d) = 1 + d/120` per unit dug (×3.5 at 300 m); the press stamps Block Quality (+8%/level, max 10, $400 ×1.8) onto blocks as they are made (never retroactive).
+- **Construction starts as soon as any blocks are on the plot** (crew works with what it has, pauses mid-stage if the plot runs dry).
 - **Construction pays for what it is built from:** stage = base × 50% × (stage blocks / project blocks) × that stage's avg block value; sale = base × the house's avg block value. Cabin base $1,200 (150 blocks), Two-Story $3,500 (460). Repeats of the Two-Story sell −10% each (floor 60%, temporary).
 - **Construction Crew** ($400 ×1.7, 10 levels): +1 builder (1.25 blocks/s each; base 2 = 2.5/s), visible on site; truck runs +50%/level. Revealed when ≥ 120 blocks wait on the plot during a stage (yellow BUILD `!`).
 - **Extraction:** Pickaxe → Iron $60 (×1.25 yield) → Heavy $450 @25 m (×1.6) → Jackhammer $2,500 @75 m (3 × 1.2 power, ×2). Digger $120 ×1.22 (1.2 power/s). Work Chamber $900. Excavator $4,000: a whole chunk every 1.6 s × 20 rubble (~750/min at any depth) — one formula (`crewBreaksPerSec`) for strikes, the panel and offline.
@@ -80,7 +81,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 - Two-Story Home repeats after its sale (no Project #3 yet, by scope). Build site ground beyond the painted geology is a blended flat fill.
 - Music is procedural and verified only as running (state switching, crossfade, no errors) — not judged by ear. Same for SFX.
 - Finds (coin, buried car) are placeholder banners; depth is capped at 300 m in code.
-- Offline progression design is still interim (crew dig + chain runs; stages never auto-start).
+- Offline progression design is still interim (crew dig + chain + construction run; stages start automatically).
 
 ## CURRENT IMPLEMENTATION TASK
 **None — V2-1 is complete and waiting for Tejas's playtest.** Next milestone after approval: **V2-2 Fossil Excavation** (Spec §11.1). Do not start it until the playtest feedback is in.

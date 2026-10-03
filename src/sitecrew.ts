@@ -8,6 +8,7 @@
 import { CFG, PROJECTS } from './config';
 import { S } from './state';
 import { builders } from './economy';
+import { waitingForBlocks } from './construction';
 import { HAMMER_IMPACT, RIG_H, drawRig, lookFor, type Look } from './rig';
 import { ladderFrame, rungHeights, LADDER_HALF_W } from './ladder';
 import { addPart } from './fx';
@@ -90,7 +91,7 @@ export function updateSiteCrew(dt: number, visible: boolean) {
   const n = Math.min(MAX_SHOWN, builders(S));
   while (crew.length < n) { const i = crew.length; crew.push({ i, x: STACK_X + 0.4 + i * 0.3, h: 0, dir: 1, path: [], mode: 'idle', target: null, stand: null, left: 0, key: '', ph: rnd(0, 1), rate: rnd(1.35, 1.65), cycle: i, carry: false }); }
   crew.length = n;
-  const b = S.build, working = b.active && !b.done;
+  const b = S.build, working = b.active && !b.done && !waitingForBlocks(); // no blocks on the plot: they wait by the stack
   const targets = working ? workTargets() : [];
   const key = `${b.project}|${b.stage}|${working}`;
   const w = projW();

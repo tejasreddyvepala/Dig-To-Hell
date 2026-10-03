@@ -10,7 +10,7 @@ import {
 } from './economy';
 import { syncWorkers, restingCount, workers } from './workers';
 import { buildYard } from './surface';
-import { canStartStage, currentProject, currentStage, sellProperty, type BuildEvent } from './construction';
+import { canStartStage, currentProject, currentStage, sellProperty, waitingForBlocks, type BuildEvent } from './construction';
 import { buyExpansion, expanding } from './expansion';
 import { buyTrack, trackBusy } from './track';
 import { trackOverloaded } from './cart';
@@ -363,8 +363,8 @@ export function updatePanel() {
   act.classList.toggle('sell', b.done);
   const sellLabel = `SELL PROPERTY · ${money(projectValue(S))}`;
   if (b.done && act.textContent !== sellLabel) act.textContent = sellLabel;
-  setText('buildState', b.done ? '' : b.active ? `🏗 Building ${st.name}… ${Math.floor(b.used)}/${st.blocks}`
-    : canStartStage() ? `🏗 ${st.name} starting…` : `Next: ${st.name} · ${Math.floor(b.material.qty)}/${st.blocks} blocks on site · starts automatically`);
+  setText('buildState', b.done ? '' : b.active ? `🏗 Building ${st.name}… ${Math.floor(b.used + 1e-6)}/${st.blocks}${waitingForBlocks() ? ' · waiting for the next delivery' : ''}`
+    : canStartStage() ? `🏗 ${st.name} starting…` : `Next: ${st.name} · starts as soon as blocks arrive`);
   $('buildState').hidden = b.done;
   setText('buildInfo', b.done ? 'Sell it, clear the plot, start something bigger.'
     : `Blocks on site ${Math.floor(b.material.qty)} · on the truck ${Math.floor(S.truck.load.qty)} · at the yard ${Math.floor(S.goods.qty)}. ${st.name} pays ≈ ${money(stagePayment(S))}. The house is worth what it is built from: average block value ×${projectValueFactor(S).toFixed(2)} → sale ≈ ${money(projectValue(S))}.` +

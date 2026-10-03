@@ -21,9 +21,13 @@ export function stageShortfall() {
   return Math.max(0, st.blocks - S.build.material.qty);
 }
 
+/** A stage starts as soon as ANY blocks are on the plot: the crew works with what they have and pauses mid-stage if
+ *  the plot runs dry (the stage finishes when its full block count has been laid). */
 export function canStartStage() {
-  return !S.build.active && !S.build.done && !!currentStage() && S.build.material.qty >= currentStage().blocks - 1e-6;
+  return !S.build.active && !S.build.done && !!currentStage() && S.build.material.qty >= 1 - 1e-6;
 }
+/** The crew is mid-stage but the plot is empty: waiting for the next delivery. */
+export const waitingForBlocks = () => S.build.active && !S.build.done && S.build.material.qty < 1e-6;
 
 export function startStage(out: BuildEvent[] = []): boolean {
   if (!canStartStage()) return false;
