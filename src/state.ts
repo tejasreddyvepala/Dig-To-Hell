@@ -65,7 +65,8 @@ export interface State {
   build: BuildState;
   site: Site; // where the camera is (restored on load)
   tut: number; // first-time introduction step (see intro.ts; TUT_DONE = finished)
-  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean }; // trackStory: first-overload moment shown
+  // trackStory: first-overload moment shown · ann*: site-unlock announced · seen*: the player has visited the unlocked site
+  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean; annYard: boolean; annBuild: boolean; seenYard: boolean; seenBuild: boolean };
   trackSchema: number; // 1 = upg.rail is a Track Strength tier (older saves stored Rail Quality levels)
   stats: { earned: number; delivered: number; processed: number; sold: number }; // lifetime cash, blocks delivered to the plot, units processed, properties sold
 }
@@ -87,7 +88,7 @@ export function fresh(): State {
     build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false },
     site: 'mine',
     tut: 0,
-    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false, trackStory: false },
+    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false, trackStory: false, annYard: false, annBuild: false, seenYard: false, seenBuild: false },
     trackSchema: 1,
     stats: { earned: 0, delivered: 0, processed: 0, sold: 0 },
   };
@@ -127,7 +128,7 @@ export function sanitize(o: any): State | null {
   s.found = Math.floor(num(o.found, 0, FINDS.length, 0));
   s.last = num(o.last, 0, Date.now(), Date.now());
   s.clicks = Math.floor(num(o.clicks, 0, 1e9, 0));
-  if (v === 2) { s.tut = s.depth > 0 ? 1 : 0; return s; } // v2 had no transport: cart starts empty at the bottom
+  if (v === 2) { s.tut = s.depth > 0 ? 1 : 0; return settleSiteFlags(s, o); } // v2 had no transport: cart starts empty at the bottom
 
   s.rubble = load(o.rubble, s.depth);
   s.flags.dispatched = !!o.flags?.dispatched;
@@ -135,6 +136,7 @@ export function sanitize(o: any): State | null {
   s.flags.sold = !!o.flags?.sold;
   s.flags.storageSeen = !!o.flags?.storageSeen;
   s.flags.trackStory = !!o.flags?.trackStory;
+  for (const k of ['annYard', 'annBuild', 'seenYard', 'seenBuild'] as const) s.flags[k] = !!o.flags?.[k];
   s.stats.earned = num(o.stats?.earned, 0, 1e18, 0);
   const c = o.cart;
   if (c && CART_STATES.includes(c.state)) {
@@ -160,7 +162,7 @@ export function sanitize(o: any): State | null {
     s.stats.delivered = 0;
     if (s.yard) s.truck.state = 'PARKED';
     s.tut = s.yard ? 5 : s.flags.sold ? 3 : s.flags.arrived ? 3 : s.flags.dispatched ? 2 : s.depth > 0 ? 1 : 0;
-    return s;
+    return settleSiteFlags(s, o);
   }
 
   s.raw = load(o.raw, s.depth * 0.6);
@@ -178,7 +180,7 @@ export function sanitize(o: any): State | null {
     s.truck = { state: st, t: 0, dur: st === 'ARRIVING' ? num(t?.dur, 0, 60, 3.6) : 0, load: st === 'LOADING' ? load(t?.load, s.depth * 0.6) : emptyLoad(), n: Math.floor(num(t?.n, 0, 1e9, 0)), paid: 0, bed: 0 };
     // introduction: a v4 player already has the yard (or is mid-tutorial); construction is new to them
     s.tut = s.yard ? 5 : s.flags.sold ? 3 : s.flags.arrived ? 3 : s.flags.dispatched ? 2 : s.depth > 0 ? 1 : 0;
-    return s;
+    return settleSiteFlags(s, o);
   }
   if (t && TRUCK_STATES.includes(t.state)) {
     s.truck = {
@@ -203,6 +205,14 @@ export function sanitize(o: any): State | null {
   s.site = SITES.includes(o.site) ? o.site : 'mine';
   s.tut = Math.floor(num(o.tut, 0, 99, 0));
   s.stats.sold = Math.floor(num(o.stats?.sold, 0, 1e9, 0));
+  return settleSiteFlags(s, o);
+}
+
+/** Saves from before site foreshadowing: sites the player already had open count as announced and visited. */
+function settleSiteFlags(s: State, o: any): State {
+  if (o.flags && 'annYard' in o.flags) return s;
+  if (s.tut >= 3 || s.flags.dispatched) s.flags.annYard = s.flags.seenYard = true;
+  if (s.stats.processed > 0 || s.stats.delivered > 0 || s.tut >= 5) s.flags.annBuild = s.flags.seenBuild = true;
   return s;
 }
 

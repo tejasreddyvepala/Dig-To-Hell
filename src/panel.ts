@@ -9,7 +9,7 @@ import {
 } from './economy';
 import { syncWorkers, restingCount, workers } from './workers';
 import { buildYard } from './surface';
-import { canStartStage, currentProject, currentStage, sellProperty, startStage, type BuildEvent } from './construction';
+import { canStartStage, currentProject, currentStage, sellProperty, type BuildEvent } from './construction';
 import { buyExpansion, expanding } from './expansion';
 import { buyTrack, trackBusy } from './track';
 import { trackOverloaded } from './cart';
@@ -155,7 +155,6 @@ function buyUpgrade(id: UpgradeId) {
 function buildAction() {
   const ev: BuildEvent[] = [];
   if (S.build.done) { sellProperty(ev); }
-  else if (canStartStage()) { startStage(ev); }
   else return;
   presentBuild(ev);
   saveState();
@@ -353,16 +352,16 @@ export function updatePanel() {
   }).join('');
   const stages = $('stages');
   if (stages.dataset.k !== sh) { stages.innerHTML = sh; stages.dataset.k = sh; }
+  // stages start by themselves; the only button left is the decision to SELL a finished property
   const act = $('buildAct') as HTMLButtonElement;
   const st = currentStage();
-  let label = '', ready = false;
-  if (b.done) { label = `SELL PROPERTY · ${money(projectValue(S))}`; ready = true; }
-  else if (b.active) label = `Building ${st.name}… ${Math.floor(b.used)}/${st.blocks}`;
-  else if (canStartStage()) { label = `START: ${st.name.toUpperCase()}`; ready = true; }
-  else label = `Waiting for blocks · ${Math.floor(b.material.qty)}/${st.blocks}`;
-  act.disabled = !ready;
+  act.hidden = !b.done;
   act.classList.toggle('sell', b.done);
-  if (act.textContent !== label) act.textContent = label;
+  const sellLabel = `SELL PROPERTY · ${money(projectValue(S))}`;
+  if (b.done && act.textContent !== sellLabel) act.textContent = sellLabel;
+  setText('buildState', b.done ? '' : b.active ? `🏗 Building ${st.name}… ${Math.floor(b.used)}/${st.blocks}`
+    : canStartStage() ? `🏗 ${st.name} starting…` : `Next: ${st.name} · ${Math.floor(b.material.qty)}/${st.blocks} blocks on site · starts automatically`);
+  $('buildState').hidden = b.done;
   setText('buildInfo', b.done ? 'Sell it, clear the plot, start something bigger.'
     : `Blocks on site ${Math.floor(b.material.qty)} · on the truck ${Math.floor(S.truck.load.qty)} · at the yard ${Math.floor(S.goods.qty)}. Each finished stage pays ${money(stagePayment(S))}; the sale pays ${money(projectValue(S))}.` +
       (S.build.project === PROJECTS.length - 1 && S.stats.sold >= PROJECTS.length ? ' (More projects arrive in a later build.)' : ''));

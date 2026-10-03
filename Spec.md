@@ -76,15 +76,22 @@ Future locations (documented only): Fossil Lab / Museum, Second Mine, Deep Facil
 
 ## 5. Navigation
 
-A permanent, game-like navigation bar: **[MINE] [YARD] [BUILD]** — as built in V2-1 it sits **top-centre over the game view** on desktop and mobile (the bottom of the mobile screen belongs to the panel), with keyboard shortcuts 1/2/3. Each button: short label, active state (filled yellow), attention badge. Buttons appear as the tutorial unlocks them (MINE → YARD at the first cart departure → BUILD when the first truck heads to the site) with a short pop animation. One "follow" hint pill under the bar (FOLLOW THE CART / FOLLOW THE TRUCK / BLOCKS ARRIVED / MORE BLOCKS NEEDED: DIG) points at the site that matters during the introduction.
+A permanent, game-like navigation bar: **[MINE] [🔒 YARD] [🔒 BUILD]** — top-centre over the game view on desktop and mobile, keyboard shortcuts 1/2/3. **All three tabs are visible from the first second** (foreshadowing: "there is more than mining"). Locked tabs are dimmed with a lock.
 
-### Attention indicators
-- **Red `!`** = "GO HERE. SOMETHING IS HAPPENING." Only for meaningful attention:
-  - MINE: worksite expansion ready and affordable; the whole chain is idle because nothing is being dug (no crew yet, nothing in the pipeline); fossil discovered (future), cave-in (future), major discovery.
-  - YARD: raw storage full and the cart blocked (production stopped), Recycling Yard ready to build (tutorial), major machinery unlock.
-  - BUILD: enough material to start the next stage, building complete / ready to sell, new project to choose, the first truck arriving (tutorial).
-- **Yellow dot** = an optional upgrade is affordable there. Subtle, no pulsing.
-- **No badge** = routine operation. Never red-badge a routine affordable +5% upgrade. Badges are not shown on the site you are viewing.
+### Locked-site foreshadowing (built)
+- Tapping a locked tab drops a short note from it — **YARD**: *"Turn what you dig up into building material."* / **Send your first cart to the surface.** · **BUILD**: *"Turn recycled blocks into real buildings."* / **Produce your first construction blocks.** — and the camera **peeks** at that site for ~2 s, then returns. No modal, no tutorial.
+- The locked sites are drawn in an inactive state: the YARD is an idle lot (cracked pad, grey machinery silhouettes, a weathered RECYCLING sign, a sagging fence — visible from the Mine at the start); BUILD is an empty surveyed plot (stakes with flags, string line, construction fence, a FUTURE BUILD SITE board; no crew).
+- **Unlocks are events:** YARD opens when the first cart leaves for the surface → toast **YARD UNLOCKED** / *Turn your rubble into building blocks.* + a tab glow + a sting + YELLOW `!`. BUILD opens when the first block comes off the press → **BUILD SITE UNLOCKED** / *Your recycled material can become something bigger.* The first block itself is announced (**FIRST BLOCK** / *Now this is useful.*). The yellow `!` clears once the camera has actually arrived at the site. Saved: `flags.annYard/annBuild` (announced), `flags.seenYard/seenBuild` (visited).
+- One "follow" hint pill under the bar (FOLLOW THE CART / FOLLOW THE TRUCK / BLOCKS ARRIVED / MORE BLOCKS NEEDED: DIG) still guides the introduction; it steps aside while a toast is showing.
+
+### Site toasts (built)
+Short notices that drop from a tab (~2.4–3.6 s), stack under it, never block, never move the camera. Used for site unlocks, locked-site notes and construction events (§10.4).
+
+### Attention indicators (one rule set — `siteAttention()` in `nav.ts` is the only place a badge can come from)
+- **RED `!`** = an ACTIVE PROBLEM that is reducing operation right now: MINE — the track is overloaded (transport slowed, §7.8); YARD — raw storage is full and the cart can't unload (the mine stalls). Future: cave-in.
+- **YELLOW `!`** = an OPPORTUNITY / something new worth looking at: a site just unlocked (until visited); the Recycling Yard can be built (introduction); a finished property is ready to sell. Future: new project, major machine, major discovery.
+- **Nothing** = everything else — **including every ordinary affordable upgrade** (the old yellow "affordable" dot is removed), routine operation, a stage waiting for blocks, a site not visited recently.
+- Red outranks yellow: while any red exists, yellows are hidden. Badges never show on the site being viewed. Most of the time there should be no `!` at all.
 
 ### Transitions
 Short camera moves (≈0.3–0.8 s), no loading screens: **vertical** travel for Mine ↔ Yard (up/down the shaft), **horizontal** road pan for Yard ↔ Build. Repeated quick navigation uses the shorter duration. Mouse wheel / trackpad still scrolls the shaft at the Mine (history browsing); touch drag later.
@@ -240,8 +247,10 @@ Visual stages over 0–100%: empty lot → site preparation → foundation → f
 ### 10.3 Material delivery and consumption
 The truck arrives and unloads; the plot's **material stack grows**; builders carry blocks from the stack to the building; **the stack shrinks while the building grows**. Readable with no UI.
 
-### 10.4 Stages (early: the player starts them; later: automation)
-Each stage needs a block amount on site. When enough material is stacked, **BUILD `!`** and the panel offers **START: FOUNDATION** (etc.). Builders then consume material at the build rate; on completion the client pays a **milestone payment** (~8–10% of the property value). Later a **Foreman** auto-starts stages (automation as progression).
+### 10.4 Stages start automatically (built)
+The construction site is a living part of the economy, not a paused menu. Each stage needs a block amount on the plot; when the next stage's blocks are there and nothing is being built, it **starts by itself** after a short beat (`CFG.build.autoStartSecs` 1.2 s) — whatever site the player is viewing, and during offline progress too. Builders consume the blocks at the build rate (material is never fabricated or double-counted: the stage only starts with its full block count on the plot, and consumption moves exactly those blocks); on completion the client pays the **milestone payment** (8% of the property value) normally, wherever the player is. There is no START button; the BUILD panel shows the state (*Building Frame… 12/30* · *Next: Walls · 18/40 blocks on site · starts automatically*). The only build decision left in V2-1 is **SELL PROPERTY**. Future agency comes from upgrades (which project, crew size, delivery capacity, build speed, automation), not button chores.
+
+**BUILD toasts** (only meaningful state changes, never progress ticks): **🏗 FOUNDATION STARTED** · **✓ FOUNDATION COMPLETE +$72** · **🏠 TINY CABIN COMPLETE / PROPERTY READY** (stronger style) → yellow BUILD `!` until sold. Every toast comes from a real simulation event; visiting BUILD shows exactly that physical state.
 
 ### 10.5 Completion and sale
 Workers stop; small celebration; camera frames the building; **BUILDING COMPLETE — PROPERTY VALUE $X**; big **SELL PROPERTY** action (residential). On sale: cash payout, a SOLD sign, a short hold → dissolve/cleanup → an empty, upgraded plot. The next project appears immediately and is visibly **bigger**.

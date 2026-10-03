@@ -1,5 +1,5 @@
 // Construction simulation: one plot, reused, ever-bigger projects. Pure logic (no DOM/audio).
-// Blocks delivered by the truck stack on the plot; the player starts each stage once its blocks are on site;
+// Blocks delivered by the truck stack on the plot; each stage STARTS AUTOMATICALLY once its blocks are on site;
 // builders consume them; a completed stage pays a milestone; the finished property is sold for the main payout.
 // This module and the tutorial contractor are the ONLY cash sources (Spec §3).
 import { CFG, PROJECTS } from './config';
@@ -33,8 +33,16 @@ export function startStage(out: BuildEvent[] = []): boolean {
   return true;
 }
 
+let autoT = 0; // anticipation before a stage starts by itself (presentation beat; not saved)
+
 export function updateConstruction(dt: number, out: BuildEvent[] = []): BuildEvent[] {
   const b = S.build;
+  // AUTOMATIC STAGES: the site is a living part of the economy, not a menu. When the next stage's blocks are on the
+  // plot and nothing is being built, it starts on its own (whatever site the player is looking at).
+  if (!b.active && !b.done) {
+    if (canStartStage()) { autoT += dt; if (autoT >= CFG.build.autoStartSecs) { autoT = 0; startStage(out); } }
+    else autoT = 0;
+  }
   if (!b.active || b.done) return out;
   const st = currentStage();
   sink.qty = 0; sink.val = 0; sink.mix = {};

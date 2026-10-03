@@ -15,10 +15,11 @@
     <canvas id="c" aria-label="Your mine. Click the rock to dig."></canvas>
     <nav id="nav" aria-label="Sites">
       <button class="site" data-site="mine"><span class="lbl">Mine</span><span class="badge" aria-hidden="true"></span></button>
-      <button class="site" data-site="yard" hidden><span class="lbl">Yard</span><span class="badge" aria-hidden="true"></span></button>
-      <button class="site" data-site="build" hidden><span class="lbl">Build</span><span class="badge" aria-hidden="true"></span></button>
+      <button class="site" data-site="yard"><span class="lbl">Yard</span><span class="badge" aria-hidden="true"></span></button>
+      <button class="site" data-site="build"><span class="lbl">Build</span><span class="badge" aria-hidden="true"></span></button>
     </nav>
     <div id="hint" hidden></div>
+    <div id="toasts" aria-live="polite"></div>
     <button id="setBtn" aria-label="Sound settings" aria-expanded="false">♪</button>
     <div id="settings" hidden>
       <label>Music <input type="range" id="volMusic" min="0" max="1" step="0.05"></label>
@@ -80,7 +81,8 @@
               <div class="proj-h"><span id="projName"></span><span id="projValue"></span></div>
               <div class="bar"><i id="projBar"></i></div>
               <ol id="stages"></ol>
-              <button id="buildAct" class="act"></button>
+              <div class="bstate" id="buildState"></div>
+              <button id="buildAct" class="act" hidden></button>
               <div class="status" id="buildInfo"></div>
             </div>
           </div>

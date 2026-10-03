@@ -238,6 +238,7 @@ export const CFG = {
   // ---- construction ----
   build: {
     rate: 3, // blocks/s the builders consume during an active stage
+    autoStartSecs: 1.2, // a stage starts by itself this long after its blocks are on the plot (anywhere, any site, offline too)
     stagePay: 0.08, // milestone payment per completed stage (fraction of property value)
     soldHoldSecs: 2.4, // SOLD sign hold before the plot clears
     clearSecs: 2.2, // bulldozer cleanup

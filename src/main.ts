@@ -153,6 +153,7 @@ function frame(now: number) {
   buildEvents.length = 0;
   updateConstruction(dt, buildEvents);
   presentBuild(buildEvents);
+  for (const e of buildEvents) if (e.type === 'stageStart') introEvent('stageStart');
   updateSite(dt);
   presentLandings();
   updateFace(dt, CFG.cameraFollow);

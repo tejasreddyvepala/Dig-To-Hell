@@ -1,53 +1,72 @@
-// Site navigation bar (Spec §5): MINE / YARD / BUILD, always visible once unlocked, active state, and attention:
-//   red "!"  = something needs the player there (blocked, ready to act, tutorial "follow" step)
-//   yellow • = an optional upgrade there is affordable
-//   nothing  = routine operation. Badges never show on the site you are looking at.
+// Site navigation bar (Spec §5): MINE / YARD / BUILD are ALL visible from the first second. Locked sites show a lock;
+// tapping one explains what it will do, how it unlocks, and gives a brief camera peek at the (inactive) site.
+// Attention (one rule set, Spec §5):
+//   RED !    = an active problem that is reducing operation RIGHT NOW (track overloaded, yard storage full).
+//   YELLOW ! = an opportunity / new content worth looking at (a site just unlocked, the Recycling Yard can be built,
+//              a finished property is ready to sell).
+//   nothing  = everything else — including any ordinary affordable upgrade.
+// If any red exists, yellows are suppressed. Badges never show on the site being viewed.
 import { CFG } from './config';
 import { S, type Site } from './state';
-import { worksiteAvailable, nextWorksite } from './economy';
+import { buildUnlocked, yardUnlocked } from './economy';
 import { cartBlocked, trackOverloaded } from './cart';
 import { canStartStage } from './construction';
-import { expanding } from './expansion';
-import { optionalAffordable, showSitePanel, updatePanel } from './panel';
+import { showSitePanel, updatePanel } from './panel';
 import { goSite, view } from './view';
 import { setMusicState } from './music';
-import { unlockAudio } from './audio';
+import { unlockAudio, playSting } from './audio';
+import { toast } from './toast';
 
-let buildVisited = false;
 const buttons = [...document.querySelectorAll<HTMLButtonElement>('#nav .site')];
 
-export const siteUnlocked = (site: Site) =>
-  site === 'mine' ? true : site === 'yard' ? S.tut >= 3 || S.flags.dispatched : S.tut >= 5 || S.stats.delivered > 0 || S.yard && S.truck.state === 'TO_SITE';
+export const siteUnlocked = (site: Site) => (site === 'mine' ? true : site === 'yard' ? yardUnlocked(S) : buildUnlocked(S));
 
-/** Red attention: only real reasons (Spec §5). */
-export function attention(site: Site): boolean {
+export type Attention = 'red' | 'yellow' | '';
+/** Every condition that can light a badge lives here (and only here). */
+export function siteAttention(site: Site): Attention {
+  if (!siteUnlocked(site)) return '';
+  if (site === 'mine') return trackOverloaded() ? 'red' : '';
   if (site === 'yard') {
-    if (S.tut === 3 && !S.flags.sold) return true; // FOLLOW THE CART
-    if (S.flags.sold && !S.yard && S.cash >= CFG.yard.cost) return true; // the yard can be built
-    return S.yard && cartBlocked(); // storage full: the mine is stalled
+    if (S.yard && cartBlocked()) return 'red'; // raw storage full: the cart can't unload, the mine stalls
+    if (!S.flags.seenYard) return 'yellow'; // new site
+    if (S.flags.sold && !S.yard && S.cash >= CFG.yard.cost) return 'yellow'; // the Recycling Yard can be built
+    return '';
   }
-  if (site === 'build') {
-    if (S.tut === 5 && !buildVisited && (S.truck.state !== 'PARKED' || S.build.material.qty > 0)) return true; // FOLLOW THE TRUCK
-    return S.build.done || canStartStage();
-  }
-  if (trackOverloaded()) return true; // a real active problem: the cart carries more than the track safely can
-  const n = nextWorksite(S);
-  if (n && worksiteAvailable(S) && S.cash >= n.cost && !expanding()) return true;
-  return chainStarved();
+  if (!S.flags.seenBuild) return 'yellow'; // new site
+  if (S.build.done) return 'yellow'; // property ready to sell
+  return '';
 }
 
-/** The whole chain is idle because nothing is being dug (no crew yet, nothing in the pipeline): go dig. */
+/** The whole chain is idle because nothing is being dug (no crew yet, nothing in the pipeline). Used only by the
+ *  introduction's follow-hint, never for a badge. */
 export function chainStarved() {
   return S.yard && S.crew.dig === 0 && S.rubble.qty < 1 && S.raw.qty < 1 && S.goods.qty < CFG.yard.truck.pickupMin &&
     S.truck.state === 'PARKED' && (S.cart.state === 'BOTTOM_EMPTY' || S.cart.state === 'LOADING') && !S.build.active && !S.build.done && !canStartStage();
 }
 
+const LOCKED: Record<'yard' | 'build', { title: string; what: string; how: string }> = {
+  yard: { title: 'YARD', what: 'Turn what you dig up into building material.', how: 'Send your first cart to the surface.' },
+  build: { title: 'BUILD', what: 'Turn recycled blocks into real buildings.', how: 'Produce your first construction blocks.' },
+};
+
+let peekTimer = 0;
+/** Locked tab: explain it, and glance at the inactive site for a moment (the camera comes back on its own). */
+function previewLocked(site: 'yard' | 'build') {
+  const l = LOCKED[site];
+  toast(site, `🔒 ${l.title}`, `${l.what}<br><b>${l.how}</b>`, 'info', 3.4);
+  if (peekTimer || view.tween || S.tut === 0) return;
+  const back = view.site;
+  goSite(site);
+  peekTimer = window.setTimeout(() => { goSite(back); peekTimer = 0; }, 2100);
+}
+export const peeking = () => !!peekTimer;
+
 export function navigate(site: Site) {
-  if (!siteUnlocked(site)) return;
   unlockAudio();
+  if (!siteUnlocked(site)) { previewLocked(site as 'yard' | 'build'); return; }
+  if (peekTimer) { clearTimeout(peekTimer); peekTimer = 0; }
   goSite(site);
   S.site = site;
-  if (site === 'build') buildVisited = true;
   showSitePanel(site);
   setMusicState(site);
   updatePanel();
@@ -61,25 +80,55 @@ export function initNav() {
     const k = { Digit1: 'mine', Digit2: 'yard', Digit3: 'build' }[e.code] as Site | undefined;
     if (k) navigate(k);
   });
-  showSitePanel(view.site);
-  setMusicState(view.site);
+  showSitePanel(S.site);
+  setMusicState(S.site);
+}
+
+/** A site opening is an event: a big toast from its tab, a glow, and a yellow ! until the player looks. */
+function announceUnlocks() {
+  if (yardUnlocked(S) && !S.flags.annYard) {
+    S.flags.annYard = true;
+    toast('yard', 'YARD UNLOCKED', 'Turn your rubble into building blocks.', 'big', 3.2);
+    pulse('yard'); playSting();
+  }
+  if (buildUnlocked(S) && !S.flags.annBuild) {
+    S.flags.annBuild = true;
+    toast('build', 'BUILD SITE UNLOCKED', 'Your recycled material can become something bigger.', 'big', 3.2);
+    pulse('build'); playSting();
+  }
+}
+function pulse(site: Site) {
+  const b = buttons.find((x) => x.dataset.site === site);
+  if (!b) return;
+  b.classList.remove('new'); void b.offsetWidth; b.classList.add('new');
+  setTimeout(() => b.classList.remove('new'), 1700);
 }
 
 export function updateNav() {
-  for (const b of buttons) {
+  announceUnlocks();
+  // a site counts as seen once the camera has actually arrived there (not during a locked peek)
+  if (!view.tween && !peekTimer) {
+    if (view.site === 'yard' && yardUnlocked(S)) S.flags.seenYard = true;
+    if (view.site === 'build' && buildUnlocked(S)) S.flags.seenBuild = true;
+  }
+  const att = buttons.map((b) => siteAttention(b.dataset.site as Site));
+  const anyRed = att.includes('red');
+  buttons.forEach((b, i) => {
     const site = b.dataset.site as Site;
     const unlocked = siteUnlocked(site);
-    if (b.hidden === unlocked) {
-      b.hidden = !unlocked;
-      if (unlocked && site !== 'mine') { b.classList.add('new'); setTimeout(() => b.classList.remove('new'), 1600); }
-    }
-    const here = view.site === site;
+    b.hidden = false;
+    b.classList.toggle('locked', !unlocked);
+    const lbl = b.querySelector<HTMLElement>('.lbl')!;
+    const text = unlocked ? site.toUpperCase() : `🔒 ${site.toUpperCase()}`;
+    if (lbl.textContent !== text) lbl.textContent = text;
+    const here = S.site === site;
     b.classList.toggle('on', here);
     b.setAttribute('aria-current', here ? 'page' : 'false');
+    let a = here ? '' : att[i];
+    if (anyRed && a === 'yellow') a = ''; // a real problem outranks opportunities
     const badge = b.querySelector<HTMLElement>('.badge')!;
-    const red = !here && attention(site), dot = !here && !red && optionalAffordable(site);
-    const cls = red ? 'badge red' : dot ? 'badge dot' : 'badge';
-    if (badge.className !== cls) { badge.className = cls; badge.textContent = red ? '!' : ''; }
-    b.setAttribute('aria-label', `${site}${red ? ' — needs attention' : dot ? ' — upgrade available' : ''}`);
-  }
+    const cls = a ? `badge ${a}` : 'badge';
+    if (badge.className !== cls) { badge.className = cls; badge.textContent = a ? '!' : ''; }
+    b.setAttribute('aria-label', `${site}${!unlocked ? ' (locked)' : a === 'red' ? ' — problem' : a === 'yellow' ? ' — something new' : ''}`);
+  });
 }

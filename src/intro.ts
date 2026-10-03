@@ -9,7 +9,7 @@
 import { CFG } from './config';
 import { S } from './state';
 import { view } from './view';
-import { attention, chainStarved } from './nav';
+import { chainStarved } from './nav';
 
 const box = document.getElementById('intro')!;
 const text = document.getElementById('introText')!;
@@ -42,7 +42,7 @@ export function startDigging() {
 /** Sim/presentation notifications. */
 export function introEvent(e: 'break' | 'pressed' | 'stageStart') {
   if (e === 'break' && S.tut === 1 && !firstBreak) { firstBreak = true; line("RUBBLE ISN'T MONEY."); }
-  if (e === 'pressed' && S.tut === 4 && S.stats.processed <= CFG.yard.pressBatch * 1.5) line('Now this is useful.', false);
+  if (e === 'pressed' && S.tut === 4 && S.stats.processed <= CFG.yard.pressBatch * 1.5) { line('FIRST BLOCK', true, 1.8); line('Now this is useful.', false, 2.2); }
   if (e === 'stageStart' && S.tut === 5) S.tut = 6;
 }
 
@@ -72,8 +72,8 @@ export function updateIntro(dt: number) {
   // the one "follow" hint
   let h = '';
   if (S.tut === 3 && view.site !== 'yard') h = 'FOLLOW THE CART ▲  (YARD)';
-  else if (S.tut === 5 && view.site !== 'build' && S.stats.sold === 0 && S.build.stage === 0 && !S.build.active && attention('build') && !S.build.material.qty) h = 'FOLLOW THE TRUCK ▶  (BUILD)';
-  else if (S.tut === 5 && view.site !== 'build' && S.stats.sold === 0 && attention('build')) h = 'BLOCKS ARRIVED ▶  (BUILD)';
+  else if (S.tut === 5 && view.site !== 'build' && !S.flags.seenBuild && !S.build.material.qty && S.truck.state !== 'PARKED') h = 'FOLLOW THE TRUCK ▶  (BUILD)';
+  else if (S.tut === 5 && view.site !== 'build' && !S.flags.seenBuild && S.build.material.qty > 0) h = 'BLOCKS ARRIVED ▶  (BUILD)';
   else if (S.tut >= 4 && S.stats.sold === 0 && view.site !== 'mine' && chainStarved()) h = 'MORE BLOCKS NEEDED: DIG ▼  (MINE)';
   hint.hidden = !h;
   if (hint.textContent !== h) hint.textContent = h;

@@ -50,6 +50,7 @@ export function drawSurface(gy: number) {
   drawRoad(L);
   if (S.yard) drawYard(L, night);
   else {
+    drawIdleYard(L);
     // before the yard: raw material sits on the ground beside the headframe
     drawPile(L.hopperX, gy - 2, S.raw, rawCap(S) * 0.6, u / 30, 91);
     if (S.raw.qty >= 1 || S.flags.arrived) pileLabel(L.hopperX, gy - 2 - pileHeight(S.raw.qty, rawCap(S) * 0.6, u / 30) - 8, Math.floor(S.raw.qty), Math.round(11 + u * 0.08), false);
@@ -60,6 +61,37 @@ export function drawSurface(gy: number) {
     const sx = S.yard && SV.contractorGone >= 1 ? L.pressX - u * 0.9 : L.stackX + u * 0.2;
     bubble(sx, gy - u * 1.55, SV.speech.text, '#2a2420', SV.speech.hold);
   }
+}
+
+/** Before the Recycling Yard exists: an idle industrial lot — cracked pad, ghostly machine silhouettes, a weathered
+ *  RECYCLING sign and a sagging fence. Foreshadowing: "what happens over there?" */
+function drawIdleYard(L: ReturnType<typeof surfaceLayout>) {
+  const { gy, u } = L;
+  ctx.save();
+  ctx.fillStyle = 'rgba(139,135,128,.55)'; ctx.fillRect(L.right + 2, gy - 3, L.stackX - L.right + u * 0.9, 5); // old pad
+  ctx.fillStyle = 'rgba(0,0,0,.2)'; for (let i = 0; i < 6; i++) ctx.fillRect(L.right + u * (0.3 + i * 0.6), gy - 3, 1.5, 5); // cracks
+  ctx.globalAlpha = 0.28; ctx.fillStyle = '#4a4f55'; ctx.strokeStyle = '#4a4f55'; ctx.lineWidth = Math.max(1.5, u * 0.04);
+  // silent machinery: hopper, crusher drum, inclined conveyor, press frame
+  const hw = u * 0.55, top = gy - u * 1.45, bot = gy - u * 0.68;
+  ctx.beginPath(); ctx.moveTo(L.hopperX - hw, top); ctx.lineTo(L.hopperX + hw, top); ctx.lineTo(L.hopperX + hw * 0.32, bot); ctx.lineTo(L.hopperX - hw * 0.32, bot); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(L.hopperX, gy - u * 0.42, u * 0.28, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(L.hopperX + u * 0.38, gy - u * 0.3); ctx.lineTo(L.pressX - u * 0.5, gy - u * 1.45); ctx.lineWidth = u * 0.22; ctx.stroke();
+  ctx.fillRect(L.pressX - u * 0.5, gy - u * 2.4, u * 0.13, u * 2.4); ctx.fillRect(L.pressX + u * 0.37, gy - u * 2.4, u * 0.13, u * 2.4); ctx.fillRect(L.pressX - u * 0.5, gy - u * 2.4, u, u * 0.18);
+  ctx.globalAlpha = 1;
+  // weathered sign on a leaning post
+  ctx.save(); ctx.translate(L.pressX + u * 0.95, gy); ctx.rotate(0.06);
+  ctx.fillStyle = '#5b4632'; ctx.fillRect(-2, -u * 1.25, 4, u * 1.25);
+  ctx.fillStyle = 'rgba(164,121,63,.75)'; ctx.fillRect(-u * 0.62, -u * 1.55, u * 1.24, u * 0.34);
+  ctx.font = `${Math.round(u * 0.15)}px 'Bungee',Impact,sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(43,26,12,.7)';
+  ctx.fillText('RECYCLING', 0, -u * 1.3);
+  ctx.restore();
+  // sagging fence along the front of the lot
+  ctx.strokeStyle = 'rgba(120,120,115,.6)'; ctx.lineWidth = 1;
+  for (let x = L.right + u * 0.9; x < L.stackX + u * 0.8; x += u * 0.55) {
+    ctx.fillStyle = 'rgba(90,90,88,.7)'; ctx.fillRect(x, gy - u * 0.42, 2, u * 0.42);
+    ctx.beginPath(); ctx.moveTo(x, gy - u * 0.36); ctx.quadraticCurveTo(x + u * 0.27, gy - u * 0.3, x + u * 0.55, gy - u * 0.36); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawHeadframe(gy: number, s: number, night: number) {

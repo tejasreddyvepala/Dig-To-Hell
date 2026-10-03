@@ -4,7 +4,7 @@
 // Drawing in surface virtual px (scale from the worker unit u); all state read from S + presentation-only SITE.
 import { CFG, PROJECTS } from './config';
 import { S } from './state';
-import { mixPick, projectValue } from './economy';
+import { buildUnlocked, mixPick, projectValue } from './economy';
 import { rubbleRGB } from './geo';
 import type { BuildEvent } from './construction';
 import { drawRig, lookFor, RIG_H } from './rig';
@@ -12,6 +12,7 @@ import { pileLabel } from './draw';
 import { FX, addPart, popup } from './fx';
 import { playHammer, playKnock, playSold, playSting, playCoin } from './audio';
 import { duckMusic } from './music';
+import { toast } from './toast';
 import { ctx, faceScale, surfaceLayout, view } from './view';
 import { hash, money, rgb, rnd } from './util';
 
@@ -51,6 +52,11 @@ export function presentBuild(events: BuildEvent[]) {
   const L = surfaceLayout(), u = L.u;
   const bx = L.plotX0 + 2.6 * u;
   for (const e of events) {
+    // the BUILD tab reports meaningful changes wherever the player is (never progress ticks)
+    const nm = (e.name ?? '').toUpperCase();
+    if (e.type === 'stageStart') toast('build', `🏗 ${nm} STARTED`, '', 'event', 2.4);
+    else if (e.type === 'stageDone') toast('build', `✓ ${nm} COMPLETE`, '+' + money(e.cash ?? 0), 'cash', 2.8);
+    else if (e.type === 'complete') toast('build', `🏠 ${nm} COMPLETE`, 'PROPERTY READY', 'big', 3.6);
     if (e.type === 'stageStart') { playKnock(0.8); SITE.hammerT = 0; }
     else if (e.type === 'stageDone') {
       popup(bx + 1.8 * u, L.gy - 3.2 * u, '+' + money(e.cash ?? 0), '#ffd84a', 24 * Math.sqrt(faceScale() / CFG.fxScaleRef), { life: 2.2, pop: 0.5, sub: (e.name ?? '').toUpperCase() + ' ✓', rise: 0.5 });
@@ -58,7 +64,7 @@ export function presentBuild(events: BuildEvent[]) {
       dustBurst(bx + 1.8 * u, L.gy - 0.2 * u, 8, u);
     } else if (e.type === 'complete') {
       playSting();
-      FX.banner = { s: (e.name ?? '').toUpperCase() + ' COMPLETE', sub: `Sell it for ${money(e.cash ?? 0)}`, t: 0 };
+      if (view.site === 'build') FX.banner = { s: (e.name ?? '').toUpperCase() + ' COMPLETE', sub: `Sell it for ${money(e.cash ?? 0)}`, t: 0 };
     } else if (e.type === 'sold') {
       SITE.sold = { t: 0, project: e.project ?? 0, value: e.cash ?? 0 };
       popup(bx + 1.8 * u, L.gy - 3.6 * u, '+' + money(e.cash ?? 0), '#ffd84a', 40 * Math.sqrt(faceScale() / CFG.fxScaleRef), { life: 3.2, pop: 0.8, sub: 'PROPERTY SOLD', rise: 0.3 });
@@ -107,6 +113,7 @@ export function drawSite() {
   ctx.strokeStyle = 'rgba(255,120,60,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 0.1 * u, gy - 0.45 * u); ctx.lineTo(x1 - 0.1 * u, gy - 0.45 * u); ctx.stroke();
 
   const bx = x0 + 2.6 * u;
+  if (!buildUnlocked(S)) { drawLockedPlot(x0, x1, gy, u); return; } // foreshadowing: an empty, surveyed lot
   const sold = SITE.sold;
   if (sold) {
     // the finished building stands with a SOLD sign, then is cleared
@@ -140,6 +147,29 @@ export function drawSite() {
 
   drawStack(x0 + 1.0 * u, gy, u);
   drawBuilders(x0 + 1.0 * u, bx, gy, u);
+}
+
+/** Before BUILD unlocks: survey stakes with flags, a construction fence and a blank sign board. No crew, no stack. */
+function drawLockedPlot(x0: number, x1: number, gy: number, u: number) {
+  for (let i = 0; i < 4; i++) { // survey stakes with orange flags
+    const sx = x0 + (x1 - x0) * (0.2 + i * 0.2);
+    ctx.fillStyle = '#c99a5a'; ctx.fillRect(sx - 1.5, gy - 0.42 * u, 3, 0.42 * u);
+    ctx.fillStyle = '#ff7a3c'; ctx.beginPath(); ctx.moveTo(sx + 1.5, gy - 0.42 * u); ctx.lineTo(sx + 0.16 * u, gy - 0.36 * u); ctx.lineTo(sx + 1.5, gy - 0.3 * u); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(255,140,60,.55)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + (x1 - x0) * 0.2, gy - 0.3 * u, (x1 - x0) * 0.6, 0.3 * u); ctx.setLineDash([]);
+  // construction fence panels along the front
+  for (let x = x0 - 0.6 * u; x < x1 + 0.4 * u; x += 0.9 * u) {
+    ctx.fillStyle = 'rgba(140,145,150,.8)'; ctx.fillRect(x, gy - 0.62 * u, 2, 0.62 * u);
+    ctx.strokeStyle = 'rgba(170,175,180,.45)'; ctx.lineWidth = 1;
+    for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(x, gy - k * 0.15 * u); ctx.lineTo(x + 0.9 * u, gy - k * 0.15 * u); ctx.stroke(); }
+  }
+  // blank sign board: something will be built here
+  const bxs = x1 + 0.9 * u;
+  ctx.fillStyle = '#5b3d22'; ctx.fillRect(bxs - 0.5 * u, gy - 0.9 * u, 3, 0.9 * u); ctx.fillRect(bxs + 0.5 * u - 3, gy - 0.9 * u, 3, 0.9 * u);
+  ctx.fillStyle = '#2f3a2f'; ctx.fillRect(bxs - 0.75 * u, gy - 1.45 * u, 1.5 * u, 0.6 * u);
+  ctx.font = `${Math.round(u * 0.14)}px 'Bungee',Impact,sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,224,138,.8)';
+  ctx.fillText('FUTURE BUILD SITE', bxs, gy - 1.08 * u);
 }
 
 function drawStack(cx: number, gy: number, u: number) {

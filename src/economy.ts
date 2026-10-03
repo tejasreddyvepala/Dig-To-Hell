@@ -114,3 +114,9 @@ export function buildProgress(s: State) {
 // ---- worksite ----
 export const nextWorksite = (s: State) => WORKSITES[s.worksite + 1];
 export const worksiteAvailable = (s: State) => !!nextWorksite(s) && s.crew.dig >= nextWorksite(s).unlockCrew;
+
+// ---- site unlocks (pure; nav + art read these) ----
+/** YARD opens when the first cart leaves for the surface. */
+export const yardUnlocked = (s: State) => s.tut >= 3 || s.flags.dispatched;
+/** BUILD opens when the first construction block comes off the press. */
+export const buildUnlocked = (s: State) => s.stats.processed > 0 || s.stats.delivered > 0 || s.tut >= 5;
