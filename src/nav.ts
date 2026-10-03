@@ -33,6 +33,7 @@ export function siteAttention(site: Site): Attention {
     return '';
   }
   if (!S.flags.seenBuild) return 'yellow'; // new site
+  if (S.flags.crewSeen && !S.flags.crewAck) return 'yellow'; // CONSTRUCTION CREW just became available (blocks are waiting)
   if (S.build.done) return 'yellow'; // property ready to sell
   return '';
 }

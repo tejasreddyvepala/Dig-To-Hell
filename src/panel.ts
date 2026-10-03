@@ -5,7 +5,8 @@ import { CFG, CREW, FINDS, PROJECTS, TOOLS, UPGRADES, WORKSITES, type CrewId, ty
 import { S, saveState, type Site } from './state';
 import {
   addTo, cartCapacity, cartSpeed, crewAvailable, crewCost, crewRubbleRate, loadRate, materialAt, nextWorksite, processRate,
-  nextTrack, projectValue, rawCap, stagePayment, trackDef, trackSafe, unitValue, upgCost, worksiteAvailable,
+  nextTrack, blockQualityMult, builders, constructionRate, projectValue, projectValueFactor, rawCap, repeatFactor, stagePayment,
+  trackDef, trackSafe, truckCapacity, unitValue, upgCost, valueAt, worksiteAvailable,
 } from './economy';
 import { syncWorkers, restingCount, workers } from './workers';
 import { buildYard } from './surface';
@@ -112,6 +113,8 @@ export function buildPanel() {
   $('processing').innerHTML = UPGRADES.filter((u) => u.group === 'processing').map(row).join('');
   document.querySelectorAll<HTMLButtonElement>('[data-upg]').forEach((b) => (b.onclick = () => buyUpgrade(b.dataset.upg as UpgradeId)));
   $('buildAct').onclick = buildAction;
+  $('crewCard').innerHTML = card('id="crewBuy"', '👷');
+  $('crewBuy').onclick = () => buyUpgrade('crew');
   if (import.meta.env.DEV) buildDebug();
 }
 
@@ -192,8 +195,9 @@ function upgStat(id: UpgradeId): string {
     case 'rail': return trackDef(S).name;
     case 'loadSpeed': return `${loadRate(S).toFixed(1)}/s`;
     case 'processSpeed': return `${processRate(S).toFixed(1)}/s`;
-    case 'contractValue': return `+${Math.round(Y.price.perLevel * S.upg.contractValue * 100)}% property value`;
+    case 'contractValue': return `blocks ×${blockQualityMult(S).toFixed(2)} value`;
     case 'rawStorage': return `${rawCap(S)}`;
+    case 'crew': return `${builders(S)} builders · ${constructionRate(S).toFixed(1)} blocks/s`;
   }
 }
 
@@ -324,7 +328,7 @@ export function updatePanel() {
   const cap = rawCap(S);
   setText('recStat', S.yard ? `Raw ${Math.floor(S.raw.qty)}/${cap} · Blocks ${Math.floor(S.goods.qty)}` : `Raw ${Math.floor(S.raw.qty)}`);
   $('yardHint').hidden = S.yard;
-  setText('yardHint', S.flags.sold ? 'The contractor paid you seed money. A Recycling Yard presses rubble into building blocks.' : 'The contractor is looking at your rubble…');
+  setText('yardHint', S.flags.sold ? 'The contractor bought a sample and advanced you the money for a Recycling Yard: it presses rubble into building blocks.' : 'The contractor is looking at your rubble…');
   const by = $('buildYard') as HTMLButtonElement;
   by.hidden = S.yard || !S.flags.sold;
   by.disabled = S.cash < Y.cost;
@@ -335,12 +339,12 @@ export function updatePanel() {
   document.querySelectorAll<HTMLButtonElement>('#processing [data-upg]').forEach((b) => updRow(b, procRowVisible(b.dataset.upg as UpgradeId)));
   reveal('y-log', $('g-log'), S.yard);
   setText('logStat', `Truck ${TRUCK_LABEL[S.truck.state]}`);
-  setText('logInfo', `The truck takes finished blocks (${Y.truck.pickupMin}+) to the construction site, ${Y.truck.capacity} per trip. Delivered so far: ${fmt(S.stats.delivered)}.`);
+  setText('logInfo', `The truck takes finished blocks (${Y.truck.pickupMin}+) to the construction site, up to ${truckCapacity(S)} per trip (bigger crews run bigger loads). Delivered so far: ${fmt(S.stats.delivered)}. Each block carries its value: depth ×${valueAt(S.depth).toFixed(2)} · quality ×${blockQualityMult(S).toFixed(2)}.`);
 
   // ===== BUILD =====
   const pr = currentProject(), b = S.build;
   setText('projName', `#${S.stats.sold + 1} ${pr.name}`);
-  setText('projValue', money(projectValue(S)));
+  setText('projValue', (b.done ? '' : '≈ ') + money(projectValue(S)));
   const total = pr.stages.reduce((a, s) => a + s.blocks, 0);
   const doneBlocks = pr.stages.slice(0, b.stage).reduce((a, s) => a + s.blocks, 0) + (b.active ? b.used : 0);
   ($('projBar') as HTMLElement).style.width = `${b.done ? 100 : Math.round((doneBlocks / total) * 100)}%`;
@@ -363,8 +367,20 @@ export function updatePanel() {
     : canStartStage() ? `🏗 ${st.name} starting…` : `Next: ${st.name} · ${Math.floor(b.material.qty)}/${st.blocks} blocks on site · starts automatically`);
   $('buildState').hidden = b.done;
   setText('buildInfo', b.done ? 'Sell it, clear the plot, start something bigger.'
-    : `Blocks on site ${Math.floor(b.material.qty)} · on the truck ${Math.floor(S.truck.load.qty)} · at the yard ${Math.floor(S.goods.qty)}. Each finished stage pays ${money(stagePayment(S))}; the sale pays ${money(projectValue(S))}.` +
-      (S.build.project === PROJECTS.length - 1 && S.stats.sold >= PROJECTS.length ? ' (More projects arrive in a later build.)' : ''));
+    : `Blocks on site ${Math.floor(b.material.qty)} · on the truck ${Math.floor(S.truck.load.qty)} · at the yard ${Math.floor(S.goods.qty)}. ${st.name} pays ≈ ${money(stagePayment(S))}. The house is worth what it is built from: average block value ×${projectValueFactor(S).toFixed(2)} → sale ≈ ${money(projectValue(S))}.` +
+      (S.build.project === PROJECTS.length - 1 && S.stats.sold >= PROJECTS.length ? ` (Repeat build: ×${repeatFactor(S).toFixed(1)} until new projects arrive.)` : ''));
+  // CONSTRUCTION CREW: revealed when blocks pile up faster than the builders lay them (an opportunity, never red)
+  const crewU = UPGRADES.find((u) => u.id === 'crew')!;
+  const cb = $('crewBuy') as HTMLButtonElement;
+  $('g-crew').hidden = !(S.flags.crewSeen || S.upg.crew > 0);
+  if (S.site === 'build' && S.flags.crewSeen) S.flags.crewAck = true;
+  const crewMax = S.upg.crew >= crewU.maxLevel, crewPrice = upgCost(S, 'crew');
+  cb.disabled = crewMax || S.cash < crewPrice;
+  set(cb, '.nm', crewMax ? 'Construction Crew (full)' : `Hire builder #${builders(S) + 1}`);
+  set(cb, '.ds', `${builders(S)} builders · ${constructionRate(S).toFixed(1)} blocks/s → ${(constructionRate(S) + CFG.build.perBuilder).toFixed(1)}/s · bigger truck runs`);
+  set(cb, '.pr', crewMax ? '' : money(crewPrice));
+  set(cb, '.ct', S.upg.crew ? `Lv ${S.upg.crew}` : '');
+  setText('crewStat', `${constructionRate(S).toFixed(1)} blocks/s`);
   // crew status for the extraction header
   if (S.crew.dig) setText('extStat', `${S.crew.dig} crew${restingCount() ? ` · ${restingCount()} resting` : ''} · ${crewRubbleRate(S).toFixed(1)} rubble/s`);
 }

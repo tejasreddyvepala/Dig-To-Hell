@@ -45,10 +45,29 @@ DIG → RAW MATERIAL (rubble) → LOAD CART → TRANSPORT TO SURFACE → RECYCLI
 
 - **Mining creates matter. Industry transforms matter. Construction creates value.**
 - Digging never generates cash. Cart arrival never generates cash. Processing never generates cash. Truck departure never generates cash.
-- **Main cash:** selling a completed property. **Secondary construction cash:** small milestone payments when a construction stage completes (the client pays per milestone, ~8–10% of the property value each).
-- **Tutorial seed money:** the contractor buys the very first raw load once (and keeps buying only while the player cannot afford the Recycling Yard — a no-soft-lock safety net).
+- **Main cash:** selling a completed property. **Secondary construction cash:** stage milestone payments (see §3.1).
+- **Opening (built):** the contractor buys a small **sample** of the first load at **market price** (what raw rubble is really worth, ~$3/unit × block value) and then pays a separately labelled **CONTRACT ADVANCE** that tops the player up to the Recycling Yard's cost. The advance is a bootstrap ("pay me back in blocks"), never evidence that rubble is valuable. If the player somehow still can't afford the yard he keeps buying raw at market price (no soft-lock).
 - **Future secondary cash:** fossil sales to collectors, special discoveries, bonus contracts. Never normal mining.
-- Every quantity of material is a **Load** `{qty, val, mix}`: units, accumulated value, and material composition (units per source material). Composition travels pile → cart → hopper → blocks → truck → construction stack and drives every colour on the way.
+- Every quantity of material is a **Load** `{qty, val, mix}`: units, accumulated **block value**, and material composition. Value and composition travel pile → cart → hopper → blocks → truck → construction stack → into the building.
+
+### 3.1 Economy rules (built in the economy rebuild; numbers live in `config.ts`, formulas in `economy.ts`)
+**Value hierarchy.** Small action → small reward; bigger operation → bigger reward; major achievement → major payoff. Prices follow physical scale: hand tools < a worker < transport/processing levels < the Recycling Yard < track rebuilds < the Work Chamber < the Jackhammer < the Excavator; payouts: rubble sample < a construction stage < a finished cabin < a finished house.
+
+**Material value follows the material (depth matters).** Every unit dug at depth *d* carries block value `V(d) = 1 + d/120` (×1.17 at 20 m, ×1.83 at 100 m, ×3.5 at 300 m). The press multiplies the value of each block it makes by **Block Quality** (+8% per level, max 10) at that moment. Value never appears from nowhere and is never applied retroactively: deeper rock and better quality pay off only through the blocks that actually go into a building. There is no cash reward for depth itself.
+
+**Construction pays for what it is built from.**
+- Stage payment = property base value × **50%** × (stage blocks ÷ project blocks) × average block value used in that stage. Big structural stages pay more than small finishing ones.
+- Sale = property base value × average block value of the whole house. The sale stays the biggest single cash event.
+- Base values (at block value ×1.0): **Tiny Cabin $1,200** (150 blocks), **Two-Story Home $3,500** (460 blocks).
+- Temporary until more projects exist: each repeat of the Two-Story Home sells for 10% less (floor 60%), so the repeating house can't run away.
+
+**Construction capacity grows (no permanent cap).** Builders lay 1.25 blocks/s each; the base crew is 2 (2.5/s). **Construction Crew** (BUILD panel) hires one more builder per level (`$400 × 1.7^L`, 10 levels): more builders visibly work the site, and the truck runs proportionally bigger loads (+50% per level), so delivery never becomes the new hard cap. It is revealed only when ≥ 120 blocks wait on the plot while a stage is underway (a real backlog), with a **yellow** BUILD `!` until seen. Never red.
+
+**Moving bottlenecks.** Growth should repeatedly move the limit: digging → transport (cart/track) → processing (hopper fills; processing base 1.5/s) → construction (crew) → transport again as depth rises. No system may be an unsolvable permanent cap.
+
+**Money spikes.** A property sale is the big moment, but it should buy one major item or several small ones, not the whole shop.
+
+**Major prices (current):** Recycling Yard $250 · Iron Pickaxe $60 · Heavy Pickaxe $450 (25 m) · Jackhammer $2,500 (75 m) · Digger $120 ×1.22 · Work Chamber $900 · Excavator $4,000 (needs the chamber; bites a whole chunk every 1.6 s for 20 rubble ≈ 750/min at any depth) · Track $250 / $1,200 / $5,000 · Cart Capacity $120 ×1.55 · Cart Speed $90 ×1.55 · Loading $50 ×1.5 · Processing $100 ×1.55 · Raw Storage $150 ×1.6 · Block Quality $400 ×1.8 · Construction Crew $400 ×1.7.
 
 ### Visible bottlenecks
 | Bottleneck | What the player sees |
@@ -56,7 +75,7 @@ DIG → RAW MATERIAL (rubble) → LOAD CART → TRANSPORT TO SURFACE → RECYCLI
 | Extraction | empty cart waiting at the bottom; idle trucks |
 | Transport | rubble pile growing at the dig site; cart always travelling |
 | Processing | hopper full (RAW FULL); cart waiting at the top to unload |
-| Construction | material stack empty at the plot; builders idle; or a big stack waiting for the player to start the next stage |
+| Construction | a big stack waiting on the plot while the builders work → hire Construction Crew (more builders appear) |
 
 ---
 
@@ -106,7 +125,7 @@ Short camera moves (≈0.3–0.8 s), no loading screens: **vertical** travel for
 1. **Land.** Calm landscape (mountains, trees, clouds, birds), almost no infrastructure. The player stands beside a tiny staked patch of ground. Text: **YOU BOUGHT THIS LAND FOR $1.** … *Someone said there's something valuable underneath it.* … **START DIGGING** (the patch glows; nothing else competes).
 2. **First dig.** WHACK, crack, material breaks loose, visible rubble, a small **+N RUBBLE** (never cash). After several breaks: **RUBBLE ISN'T MONEY.** … **GET IT TO THE SURFACE.**
 3. **Cart.** The headframe goes up, rails drop, the cart is lowered. It fills from the pile and starts up. **YARD `!`** appears: **FOLLOW THE CART.**
-4. **Yard.** The cart dumps raw rubble beside the headframe. A contractor drives up and inspects it: *"Raw rubble isn't worth much."* … *"But processed material is."* He buys **only enough of it for seed money** (≈ the yard's cost + a little, `CFG.intro.seedCash`) — the rest stays on the ground so the brand-new yard has something to press immediately → **BUILD RECYCLING YARD**. (Safety net: while the player cannot afford the yard he keeps buying, so there is no soft-lock.)
+4. **Yard.** The cart dumps raw rubble beside the headframe. A contractor drives up and inspects it: *"Raw rubble isn't worth much."* … *"But processed material is."* He buys a **20-unit sample at market price** (≈$60–70: "SAMPLE · 20 RUBBLE") and pays a **CONTRACT ADVANCE** for the rest of the Recycling Yard's $250 ("Advance for a Recycling Yard. Pay me back in blocks.") — the rest of the load stays on the ground so the new yard has something to press immediately → **BUILD RECYCLING YARD**. (Safety net: while the player cannot afford the yard he keeps buying raw at market price, so there is no soft-lock.)
 5. **Recycling.** Hopper, crusher, auger and press go up. Raw rubble visibly enters; the first finished block slides out: *"Now this is useful."* The delivery truck loads blocks. **BUILD `!`**: **FOLLOW THE TRUCK.**
 6. **Construction.** An empty plot. The truck drives in and unloads blocks. **BUILD SOMETHING.** → start the Tiny Cabin.
 
@@ -302,7 +321,7 @@ Rewards flow through the physical economy. No random event within 20 s of a find
 One deterministic sampler (`materialAt` logical / `materialAtXY` visual) drives walls, face, debris and rubble. Logical ranges: Dirt 0–75 m, Clay 75–155 m, Stone 155–250 m, Cave Rock 250–300 m, then procedural deep rock. Visual boundaries are irregular: large waves + small noise, lenses/pockets near boundaries, wandering strata, streaks, embedded rocks, faint fissures; painted per 5 m segment and cached. No universal mud-coloured rubble; no giant black damage cracks outside the dig face; no unexplained red.
 
 ### Beyond 300 m
-Depth is unbounded; 300 m is a milestone. Procedural deep rock; `hpPerStage(d) = caveHp × (1 + (d − 300)/hardDiv)^hardExp` with `hardExp` ≈ 1.2–1.4; value `(1 + d/valueDiv)^valueExp` continues; transport time stays linear in depth.
+Depth is unbounded; 300 m is a milestone. Procedural deep rock; `hpPerStage(d) = caveHp × (1 + (d − 300)/hardDiv)^hardExp` with `hardExp` ≈ 1.2–1.4; block value `V(d) = 1 + d/120` continues (and keeps flowing into construction value); transport time stays linear in depth.
 
 ---
 
@@ -464,5 +483,7 @@ Deepest depth (primary), fastest milestone times, highest production, event reco
 - Player drawn ~1.25× a worker with a dark "rim" silhouette behind them (3C.5) — player is ~1.1× with only a contact shadow.
 - Central spiral staircase (rejected): worker access runs along the left wall.
 - "+N crew" as the only evidence of a large workforce.
-- The contractor buying the entire first load (V2 draft): he now buys only the seed money so the yard has material to press immediately.
+- The contractor buying the entire first load (V2 draft) and the "$95 seed money" for a cart of rubble (pre-rebuild): he now buys a small sample at market price and pays a clearly labelled contract advance.
+- Flat 8% stage payments and Block Quality as a retroactive +25% on the whole property (pre-rebuild): stage pay follows stage size × block value; quality is stamped on blocks when pressed.
+- A fixed 3 blocks/s construction rate with no upgrade (pre-rebuild): Construction Crew adds builders.
 - Blocking "find" modals (pre-V2): finds are non-blocking banners until V2-2 rebuilds discoveries.

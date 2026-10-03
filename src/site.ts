@@ -4,7 +4,7 @@
 // Drawing in surface virtual px (scale from the worker unit u); all state read from S + presentation-only SITE.
 import { CFG, PROJECTS } from './config';
 import { S } from './state';
-import { buildUnlocked, mixPick, projectValue } from './economy';
+import { buildUnlocked, builders, mixPick, projectValue } from './economy';
 import { rubbleRGB } from './geo';
 import type { BuildEvent } from './construction';
 import { drawRig, lookFor, RIG_H } from './rig';
@@ -19,7 +19,8 @@ import { hash, money, rgb, rnd } from './util';
 const FONT_UI = "'Rubik',system-ui,sans-serif";
 const FONT_D = "'Bungee',Impact,sans-serif";
 const B = CFG.build;
-const BUILDERS = [lookFor('builder', 31), lookFor('builder', 58)];
+const BUILDERS = [31, 58, 77, 104, 139, 163, 191, 222, 250, 277, 301, 333].map((seed) => lookFor('builder', seed));
+const MAX_DRAWN_BUILDERS = 8; // beyond this the crew is implied (the rate still counts every builder)
 
 /** Presentation-only site state (never saved). */
 export const SITE = {
@@ -190,21 +191,28 @@ function drawStack(cx: number, gy: number, u: number) {
   }
 }
 
+/** One builder per crew member (Construction Crew adds builders): alternating carriers (stack → building) and
+ *  hammerers along the building. Buying crew is visible as more people working. */
 function drawBuilders(stackX: number, bx: number, gy: number, u: number) {
   const sc = u / RIG_H;
+  const n = Math.min(MAX_DRAWN_BUILDERS, builders(S));
   if (S.build.active) {
-    // carrier: stack -> building with a block, back empty
-    const per = 3.2, ph = (view.t % per) / per;
-    const a = stackX + 0.35 * u, b = bx - 0.15 * u;
-    const going = ph < 0.5, k = going ? ph / 0.5 : (ph - 0.5) / 0.5;
-    const x = going ? a + (b - a) * k : b + (a - b) * k;
-    drawRig(x, gy, sc, going ? 1 : -1, BUILDERS[0], going ? { k: 'carry', t: view.t * 1.6, carryCol: rgb(blockCol(), 1) } : { k: 'walk', t: view.t * 1.6 });
-    // hammerer at the building
-    drawRig(bx + 0.5 * u, gy, sc, 1, BUILDERS[1], { k: 'hammer', t: (SITE.hammerT / 0.62) });
+    for (let i = 0; i < n; i++) {
+      if (i % 2 === 0) { // carrier: stack -> building with a block, back empty (staggered)
+        const per = 3.2, ph = ((view.t + i * 0.83) % per) / per;
+        const a = stackX + 0.35 * u, b = bx - 0.15 * u + (i >> 1) * 0.25 * u;
+        const going = ph < 0.5, k = going ? ph / 0.5 : (ph - 0.5) / 0.5;
+        const x = going ? a + (b - a) * k : b + (a - b) * k;
+        drawRig(x, gy, sc, going ? 1 : -1, BUILDERS[i], going ? { k: 'carry', t: view.t * 1.6 + i, carryCol: rgb(blockCol(), 1) } : { k: 'walk', t: view.t * 1.6 + i });
+      } else { // hammerer along the building
+        drawRig(bx + (0.5 + (i >> 1) * 0.85) * u, gy, sc, 1, BUILDERS[i], { k: 'hammer', t: SITE.hammerT / 0.62 + i * 0.37 });
+      }
+    }
   } else {
     const look = Math.floor(view.t / 7) % 3 === 0;
     drawRig(stackX + 0.75 * u, gy, sc, 1, BUILDERS[0], look ? { k: 'look', t: (view.t % 7) / 2.5 } : { k: 'stand', t: 0 });
     drawRig(stackX - 0.7 * u, gy, sc, 1, BUILDERS[1], S.build.done ? { k: 'cheer', t: 0 } : { k: 'stand', t: 0 });
+    for (let i = 2; i < n; i++) drawRig(bx + (i - 1.6) * 0.55 * u, gy, sc, i % 2 ? -1 : 1, BUILDERS[i], S.build.done ? { k: 'cheer', t: 0 } : { k: 'stand', t: 0 });
   }
 }
 

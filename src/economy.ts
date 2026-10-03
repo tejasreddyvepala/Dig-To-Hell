@@ -6,7 +6,11 @@ import type { MaterialId } from './config';
 export { materialAt } from './geo';
 import { materialAt } from './geo';
 
-/** Value of one unit of material dug at depth d (realised only when sold). */
+// ===== ECONOMY: the one authoritative source of production rates and payouts (Spec §3.1). UI, sim and offline all
+// call these; never re-derive a rate elsewhere. =====
+
+/** BLOCK VALUE of one unit of material dug at depth d. It travels with the material (Load.val) all the way into the
+ *  building, so deeper rock pays off through construction (never as a direct depth reward). */
 export const valueAt = (d: number) => Math.pow(1 + d / CFG.valueDiv, CFG.valueExp);
 export const unitValue = (d: number) => RESOURCES.rubble.baseValue * valueAt(d);
 /** HP of one face chunk at depth d. */
@@ -24,12 +28,21 @@ export const crewTypeDps = (s: State, id: CrewId) => crewDef(id).dps * s.crew[id
 export const crewDps = (s: State) => CREW.reduce((a, c) => a + crewTypeDps(s, c.id), 0);
 /** Share of time a crew type is actually digging (diggers rest; machines don't). */
 const uptime = (id: CrewId) => (id === 'dig' ? CFG.rest.uptime : 1);
-/** Meters per second crew dig at depth d (analytic; used offline). */
+/** Chunk breaks per second of one crew type at depth d. Diggers wear the rock down (dps vs chunk HP); a machine bites
+ *  a whole chunk every swing whatever the rock (that is why the Excavator matters deep down). Online strikes, the UI
+ *  rate and offline progress all use THIS. */
+export const crewBreaksPerSec = (s: State, id: CrewId, d = s.depth) => {
+  if (d >= MAX_DEPTH || !s.crew[id]) return 0;
+  const c = crewDef(id);
+  if (id === 'exc') return s.worksite >= c.needsTier ? s.crew[id] / c.swingSecs : 0;
+  return (crewTypeDps(s, id) * uptime(id)) / chunkHp(d);
+};
+/** Meters per second crew dig at depth d. */
 export const crewMps = (s: State, d = s.depth) =>
-  d >= MAX_DEPTH ? 0 : (CREW.reduce((a, c) => a + crewTypeDps(s, c.id) * uptime(c.id), 0) / chunkHp(d)) * materialAt(d).metersPerBreak;
-/** Rubble units per second crew produce (analytic): bigger machines yield more per break. */
+  CREW.reduce((a, c) => a + crewBreaksPerSec(s, c.id, d), 0) * materialAt(d).metersPerBreak;
+/** Rubble units per second crew produce at depth d. */
 export const crewRubbleRate = (s: State, d = s.depth) =>
-  d >= MAX_DEPTH ? 0 : CREW.reduce((a, c) => a + (crewTypeDps(s, c.id) * uptime(c.id) / chunkHp(d)) * CFG.rubble.perBreak * c.yield, 0);
+  CREW.reduce((a, c) => a + crewBreaksPerSec(s, c.id, d) * CFG.rubble.perBreak * c.yield, 0);
 /** Can this crew type be hired now (depth, worksite tier, ownership cap)? */
 export const crewAvailable = (s: State, id: CrewId) => {
   const c = crewDef(id);
@@ -93,16 +106,50 @@ const P = CFG.yard;
 export const rawCap = (s: State) => Math.round(P.rawStorage.base * (1 + P.rawStorage.perLevel * s.upg.rawStorage));
 /** Raw units/s the crusher + press turn into finished blocks. */
 export const processRate = (s: State) => P.processRate.base * (1 + P.processRate.perLevel * s.upg.processSpeed);
-/** $ per unit of carried material value, paid when a loaded truck departs. */
-export const contractPrice = (s: State) => P.price.base * (1 + P.price.perLevel * s.upg.contractValue);
+/** $ the contractor pays per unit of raw material value (his small sample purchase before the yard exists). */
+export const contractPrice = (_s: State) => P.marketPrice;
+/** Block Quality: multiplier stamped onto the value of every block pressed from now on (never retroactive). */
+export const blockQualityMult = (s: State) => 1 + P.qualityPerLevel * s.upg.contractValue;
+
+// ---- construction capacity (Construction Crew): builders lay blocks; the truck's runs grow with the crew ----
+export const builders = (s: State) => CFG.build.baseBuilders + s.upg.crew;
+export const constructionRate = (s: State) => CFG.build.perBuilder * builders(s);
+const truckK = (s: State) => 1 + P.truck.perCrew * s.upg.crew;
+export const truckCapacity = (s: State) => Math.round(P.truck.capacity * truckK(s));
+export const truckLoadRate = (s: State) => P.truck.loadRate * truckK(s);
+export const truckUnloadRate = (s: State) => P.truck.unloadRate * truckK(s);
 
 // ---- construction (where value is created) ----
-/** Sale value of the current project's property (Block Quality raises it). */
-export const projectValue = (s: State, project = s.build.project) =>
-  Math.round(PROJECTS[project].value * (1 + P.price.perLevel * s.upg.contractValue));
-/** Milestone payment for completing one stage. */
-export const stagePayment = (s: State) => Math.round(projectValue(s) * CFG.build.stagePay);
+// A property's money follows the MATERIAL actually built into it:
+//   stage payment = base value × milestoneShare × (stage blocks / project blocks) × avg block value of THAT stage
+//   sale          = base value × avg block value of the WHOLE house × repeat factor
+// Block value = depth value × Block Quality at pressing time, so neither depth nor quality can be applied retroactively.
 export const projectBlocks = (project: number) => PROJECTS[project].stages.reduce((a, st) => a + st.blocks, 0);
+/** TEMPORARY (until more projects exist): repeats of the last project sell for a little less each time. */
+export function repeatFactor(s: State, project = s.build.project) {
+  if (project !== PROJECTS.length - 1) return 1;
+  const repeats = Math.max(0, s.stats.sold - (PROJECTS.length - 1));
+  return Math.max(CFG.build.repeatFloor, 1 - CFG.build.repeatDecay * repeats);
+}
+/** Average block value going into the current project so far (falls back to what is on the plot, then to fresh rock). */
+export function projectValueFactor(s: State) {
+  const b = s.build;
+  if (b.projQty > 1e-9) return b.projVal / b.projQty;
+  if (b.material.qty > 1e-9) return b.material.val / b.material.qty;
+  return valueAt(s.depth) * blockQualityMult(s);
+}
+/** Sale price of the current property (estimate while building; exact once complete). */
+export const projectValue = (s: State, project = s.build.project) =>
+  Math.round(PROJECTS[project].value * projectValueFactor(s) * repeatFactor(s, project));
+/** Stage payment for stage `i` given the average block value `factor` used in it. */
+export const stagePaymentFor = (s: State, i: number, factor: number, project = s.build.project) =>
+  Math.round(PROJECTS[project].value * CFG.build.milestoneShare * (PROJECTS[project].stages[i].blocks / projectBlocks(project)) * factor * repeatFactor(s, project));
+/** Estimated payment for the current/next stage (UI). */
+export const stagePayment = (s: State) => {
+  const b = s.build, i = Math.min(b.stage, PROJECTS[b.project].stages.length - 1);
+  const f = b.active && b.used > 1e-9 ? b.stageVal / b.used : projectValueFactor(s);
+  return stagePaymentFor(s, i, f);
+};
 /** 0..1 physical completion of the current project (drives the building drawing). */
 export function buildProgress(s: State) {
   const p = PROJECTS[s.build.project];

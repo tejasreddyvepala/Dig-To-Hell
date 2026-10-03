@@ -1,14 +1,16 @@
 // Surface simulation: contractor (tutorial seed), Recycling Yard processing, and the delivery truck route.
 //   raw material --(crusher + auger + press)--> finished blocks --(truck)--> construction plot
 // The truck NEVER pays: it delivers building material. Cash is created by construction (construction.ts).
-// Before the yard exists, a contractor buys raw loads once (seed money) and keeps buying only while the player
-// cannot afford the Recycling Yard (no soft-lock).
+// Before the yard exists, the contractor inspects the first load, buys a small SAMPLE at market price (that is what
+// raw rubble is worth), then pays a CONTRACT ADVANCE that tops the player up to the Recycling Yard's cost (a bootstrap,
+// not the rubble's value). The rest of the load stays for the yard's first blocks. If the player still can't afford
+// the yard (shouldn't happen), he keeps buying raw at market price: no soft-lock.
 import { CFG } from './config';
 import { S, emptyLoad, type TruckState } from './state';
-import { contractPrice, moveLoad, processRate } from './economy';
+import { blockQualityMult, contractPrice, moveLoad, processRate, truckCapacity, truckLoadRate, truckUnloadRate } from './economy';
 
 export type SurfaceEventType =
-  | 'contractorSold' | 'firstSaleStart' | 'firstSaleDone'
+  | 'contractorSold' | 'firstSaleStart' | 'firstSaleDone' | 'advance'
   | 'pressed' | 'truckArrive' | 'truckLoad' | 'truckDepart' | 'truckAtSite' | 'siteUnload' | 'truckReturned';
 export interface SurfaceEvent { type: SurfaceEventType; qty?: number; cash?: number }
 
@@ -44,13 +46,11 @@ export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEven
       }
       if (!tutorial.active) { tutorial = { active: true, qty: 0, cash: 0, wait: CFG.intro.contractorTalkSecs }; out.push({ type: 'firstSaleStart' }); }
       if (tutorial.wait > 0) { tutorial.wait -= dt; return out; }
-      // he buys just enough to fund the yard; whatever is left becomes the yard's very first blocks
-      const unitCash = S.raw.qty > 0 ? (S.raw.val / S.raw.qty) * contractPrice(S) : 1;
-      const need = Math.max(0, (CFG.intro.seedCash - S.cash) / Math.max(1e-6, unitCash));
-      const r = contractorBuy(Math.min(Y.contractorRate * dt, need + 1e-6));
+      // a small sample at market price; then the advance (finishTutorial)
+      const r = contractorBuy(Math.min(Y.contractorRate * dt, CFG.intro.sampleQty - tutorial.qty));
       tutorial.qty += r.qty; tutorial.cash += r.cash;
       out.push({ type: 'contractorSold', qty: r.qty, cash: r.cash });
-      if (S.raw.qty <= 1e-6 || S.cash >= CFG.intro.seedCash - 1e-6) finishTutorial(out);
+      if (S.raw.qty <= 1e-6 || tutorial.qty >= CFG.intro.sampleQty - 1e-6) finishTutorial(out);
       return out;
     }
     // safety net: while the player can't afford the yard, the contractor keeps buying (no soft-lock)
@@ -61,9 +61,13 @@ export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEven
     return out;
   }
 
-  // PROCESSING: crusher + auger + press turn raw material into finished blocks (no cash here)
+  // PROCESSING: crusher + auger + press turn raw material into finished blocks (no cash here). Block Quality is stamped
+  // onto the blocks pressed NOW (their value travels on to the building; earlier blocks keep theirs).
   if (S.raw.qty > 0) {
-    const moved = moveLoad(S.raw, S.goods, processRate(S) * dt);
+    sink.qty = 0; sink.val = 0; sink.mix = {};
+    moveLoad(S.raw, sink, processRate(S) * dt);
+    sink.val *= blockQualityMult(S);
+    const moved = moveLoad(sink, S.goods, sink.qty);
     S.stats.processed += moved;
     pressAcc += moved;
     while (pressAcc >= Y.pressBatch) { pressAcc -= Y.pressBatch; out.push({ type: 'pressed', qty: Y.pressBatch }); }
@@ -81,9 +85,10 @@ export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEven
       if (S.goods.qty >= T.pickupMin) enterTruck('LOADING', 0);
       break;
     case 'LOADING': {
-      const q = moveLoad(S.goods, tr.load, Math.min(T.loadRate * dt, T.capacity - tr.load.qty));
+      const cap = truckCapacity(S);
+      const q = moveLoad(S.goods, tr.load, Math.min(truckLoadRate(S) * dt, cap - tr.load.qty));
       if (q > 0) out.push({ type: 'truckLoad', qty: q });
-      const full = tr.load.qty >= T.capacity - 1e-6;
+      const full = tr.load.qty >= cap - 1e-6;
       const done = tr.t >= T.minLoadSecs && S.goods.qty <= 1e-6 && (tr.load.qty >= T.pickupMin * 0.5 || tr.t >= T.waitSecs);
       if (full || (done && tr.load.qty > 0)) { enterTruck('TO_SITE', T.driveSecs); out.push({ type: 'truckDepart', qty: tr.load.qty }); }
       break;
@@ -93,7 +98,7 @@ export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEven
       break;
     case 'UNLOADING': {
       // blocks go onto the plot's material stack (material is conserved: the truck carries, the plot receives)
-      const q = moveLoad(tr.load, S.build.material, T.unloadRate * dt);
+      const q = moveLoad(tr.load, S.build.material, truckUnloadRate(S) * dt);
       S.stats.delivered += q;
       if (q > 0) out.push({ type: 'siteUnload', qty: q });
       if (tr.load.qty <= 1e-6) { tr.load = emptyLoad(); tr.n++; enterTruck('RETURNING', T.driveSecs); }
@@ -109,6 +114,9 @@ export function updateSurface(dt: number, out: SurfaceEvent[] = []): SurfaceEven
 function finishTutorial(out: SurfaceEvent[]) {
   S.flags.sold = true;
   out.push({ type: 'firstSaleDone', qty: tutorial.qty, cash: tutorial.cash });
+  // CONTRACT ADVANCE: the contractor bankrolls the first Recycling Yard (paid back in blocks, narratively)
+  const adv = Math.max(0, Y.cost - S.cash);
+  if (adv > 0) { S.cash += adv; S.stats.earned += adv; out.push({ type: 'advance', cash: adv }); }
   tutorial.active = false;
 }
 

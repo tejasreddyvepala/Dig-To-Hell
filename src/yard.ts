@@ -4,7 +4,7 @@
 // Scale rules (worker height u = 1): cart ≈ 1, truck cab ≈ 1.5, truck length ≈ 3.6, plant ≈ 2–3, headframe ≈ 2.5+.
 import { CFG } from './config';
 import { S } from './state';
-import { mixPick, processRate, rawCap, tierOf } from './economy';
+import { mixPick, processRate, rawCap, tierOf, truckCapacity } from './economy';
 import { rubbleRGB } from './geo';
 import { SV, truckPose } from './juice';
 import { drawRig, lookFor, RIG_H } from './rig';
@@ -339,7 +339,7 @@ function drawTruck(night: number) {
   susp.kick *= Math.exp(-dt * 6);
   if (p.speed !== susp.lastSpeed) { susp.pitch = p.speed - susp.lastSpeed; susp.lastSpeed = p.speed; }
   susp.pitch *= Math.exp(-dt * 4);
-  const fill = Math.min(1, tr.load.qty / Y.truck.capacity);
+  const fill = Math.min(1, tr.load.qty / truckCapacity(S));
   const sag = (fill * 0.045 + susp.kick * 0.02) * u; // rear drop
   const pitch = -susp.pitch * 0.014; // squats at the rear on pull-away, dips the nose when stopping
   const r = 0.31 * u, rearA = 0.62 * u, rearB = 1.3 * u, frontA = 3.62 * u;

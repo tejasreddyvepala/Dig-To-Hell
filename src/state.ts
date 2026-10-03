@@ -34,6 +34,10 @@ export interface BuildState {
   used: number; // blocks consumed in the current stage
   material: Load; // blocks stacked on the plot
   done: boolean; // every stage complete: ready to sell
+  // value of the material actually built in (block value travels with the blocks; Spec §3.1)
+  stageVal: number; // total block value consumed by the current stage
+  projVal: number; // total block value consumed by the whole project so far
+  projQty: number; // blocks consumed by the whole project so far
 }
 export interface TruckSave {
   state: TruckState;
@@ -66,7 +70,8 @@ export interface State {
   site: Site; // where the camera is (restored on load)
   tut: number; // first-time introduction step (see intro.ts; TUT_DONE = finished)
   // trackStory: first-overload moment shown · ann*: site-unlock announced · seen*: the player has visited the unlocked site
-  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean; annYard: boolean; annBuild: boolean; seenYard: boolean; seenBuild: boolean };
+  // crewSeen: Construction Crew revealed (construction became a bottleneck) · crewAck: the player has seen it at BUILD
+  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean; annYard: boolean; annBuild: boolean; seenYard: boolean; seenBuild: boolean; crewSeen: boolean; crewAck: boolean };
   trackSchema: number; // 1 = upg.rail is a Track Strength tier (older saves stored Rail Quality levels)
   stats: { earned: number; delivered: number; processed: number; sold: number }; // lifetime cash, blocks delivered to the plot, units processed, properties sold
 }
@@ -82,13 +87,13 @@ export function fresh(): State {
     raw: emptyLoad(),
     goods: emptyLoad(),
     truck: { state: 'NONE', t: 0, dur: 0, load: emptyLoad(), n: 0, paid: 0, bed: 0 },
-    upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0, processSpeed: 0, contractValue: 0, rawStorage: 0 },
+    upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0, processSpeed: 0, contractValue: 0, rawStorage: 0, crew: 0 },
     yard: false,
     worksite: 0,
-    build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false },
+    build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false, stageVal: 0, projVal: 0, projQty: 0 },
     site: 'mine',
     tut: 0,
-    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false, trackStory: false, annYard: false, annBuild: false, seenYard: false, seenBuild: false },
+    flags: { dispatched: false, arrived: false, sold: false, storageSeen: false, trackStory: false, annYard: false, annBuild: false, seenYard: false, seenBuild: false, crewSeen: false, crewAck: false },
     trackSchema: 1,
     stats: { earned: 0, delivered: 0, processed: 0, sold: 0 },
   };
@@ -110,6 +115,20 @@ function load(o: any, guessDepth: number): Load {
   if (sum <= 0) l.mix = { [matIdAt(guessDepth)]: l.qty };
   else if (Math.abs(sum - l.qty) > 1e-6) for (const id of IDS) if (l.mix[id]) l.mix[id] = (l.mix[id]! * l.qty) / sum; // renormalise
   return l;
+}
+
+/** Representative dig depth per material (pre-v6 loads stored values from the old depth curve). */
+const REF_DEPTH: Record<MaterialId, number> = { dirt: 37, clay: 115, stone: 200, cave: 275 };
+const v6Value = (d: number) => Math.pow(1 + d / CFG.valueDiv, CFG.valueExp);
+/** Pre-v6 saves: recompute every load's value from its material mix with the v6 curve (quantities untouched), and give
+ *  a project in progress the value of the blocks it has already consumed. Never changes cash or quantities. */
+function revalue(s: State) {
+  const rv = (l: Load) => { l.val = 0; for (const id of IDS) if (l.mix[id]) l.val += l.mix[id]! * v6Value(REF_DEPTH[id]); };
+  for (const l of [s.rubble, s.cart.load, s.raw, s.goods, s.truck.load, s.build.material]) rv(l);
+  const b = s.build, p = PROJECTS[b.project];
+  const doneBlocks = p.stages.slice(0, Math.min(b.stage, p.stages.length)).reduce((a, st) => a + st.blocks, 0) + (b.active ? b.used : 0);
+  const f = b.material.qty > 0 ? b.material.val / b.material.qty : v6Value(s.depth * 0.6);
+  b.projQty = doneBlocks; b.projVal = doneBlocks * f; b.stageVal = (b.active ? b.used : 0) * f;
 }
 
 /** Old Rail Quality level -> Track Strength tier (any bought level keeps at least Reinforced Wood). */
@@ -136,7 +155,7 @@ export function sanitize(o: any): State | null {
   s.flags.sold = !!o.flags?.sold;
   s.flags.storageSeen = !!o.flags?.storageSeen;
   s.flags.trackStory = !!o.flags?.trackStory;
-  for (const k of ['annYard', 'annBuild', 'seenYard', 'seenBuild'] as const) s.flags[k] = !!o.flags?.[k];
+  for (const k of ['annYard', 'annBuild', 'seenYard', 'seenBuild', 'crewSeen', 'crewAck'] as const) s.flags[k] = !!o.flags?.[k];
   s.stats.earned = num(o.stats?.earned, 0, 1e18, 0);
   const c = o.cart;
   if (c && CART_STATES.includes(c.state)) {
@@ -162,6 +181,7 @@ export function sanitize(o: any): State | null {
     s.stats.delivered = 0;
     if (s.yard) s.truck.state = 'PARKED';
     s.tut = s.yard ? 5 : s.flags.sold ? 3 : s.flags.arrived ? 3 : s.flags.dispatched ? 2 : s.depth > 0 ? 1 : 0;
+    revalue(s);
     return settleSiteFlags(s, o);
   }
 
@@ -180,6 +200,7 @@ export function sanitize(o: any): State | null {
     s.truck = { state: st, t: 0, dur: st === 'ARRIVING' ? num(t?.dur, 0, 60, 3.6) : 0, load: st === 'LOADING' ? load(t?.load, s.depth * 0.6) : emptyLoad(), n: Math.floor(num(t?.n, 0, 1e9, 0)), paid: 0, bed: 0 };
     // introduction: a v4 player already has the yard (or is mid-tutorial); construction is new to them
     s.tut = s.yard ? 5 : s.flags.sold ? 3 : s.flags.arrived ? 3 : s.flags.dispatched ? 2 : s.depth > 0 ? 1 : 0;
+    revalue(s);
     return settleSiteFlags(s, o);
   }
   if (t && TRUCK_STATES.includes(t.state)) {
@@ -199,9 +220,11 @@ export function sanitize(o: any): State | null {
   s.build = {
     project: Math.floor(num(b?.project, 0, PROJECTS.length - 1, 0)), stage: Math.floor(num(b?.stage, 0, 99, 0)),
     active: !!b?.active, used: num(b?.used, 0, 1e9, 0), material: load(b?.material, s.depth * 0.6), done: !!b?.done,
+    stageVal: num(b?.stageVal, 0, 1e15, 0), projVal: num(b?.projVal, 0, 1e15, 0), projQty: num(b?.projQty, 0, 1e9, 0),
   };
   const stages = PROJECTS[s.build.project].stages.length;
   if (s.build.stage >= stages) { s.build.stage = stages; s.build.done = true; s.build.active = false; }
+  if (v < 6) revalue(s); // economy rebuild: material value now follows the v6 depth curve; the house in progress gets its built-in value
   s.site = SITES.includes(o.site) ? o.site : 'mine';
   s.tut = Math.floor(num(o.tut, 0, 99, 0));
   s.stats.sold = Math.floor(num(o.stats?.sold, 0, 1e9, 0));

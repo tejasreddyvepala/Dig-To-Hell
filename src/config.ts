@@ -70,17 +70,19 @@ export const RESOURCES: Record<ResourceId, Resource> = {
 };
 
 // ---- level upgrades (the cart and the stall are permanent; these improve them) ----
-export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail' | 'processSpeed' | 'contractValue' | 'rawStorage';
-export type UpgradeGroup = 'transport' | 'processing';
+export type UpgradeId = 'cartCap' | 'cartSpeed' | 'loadSpeed' | 'rail' | 'processSpeed' | 'contractValue' | 'rawStorage' | 'crew';
+export type UpgradeGroup = 'transport' | 'processing' | 'construction';
 export interface Upgrade { id: UpgradeId; group: UpgradeGroup; name: string; ic: string; baseCost: number; growth: number; maxLevel: number }
 export const UPGRADES: Upgrade[] = [
-  { id: 'cartCap', group: 'transport', name: 'Cart Capacity', ic: '🛒', baseCost: 80, growth: 1.6, maxLevel: 30 },
-  { id: 'cartSpeed', group: 'transport', name: 'Cart Speed', ic: '💨', baseCost: 100, growth: 1.6, maxLevel: 30 },
-  { id: 'loadSpeed', group: 'transport', name: 'Loading Speed', ic: '🪣', baseCost: 50, growth: 1.55, maxLevel: 30 },
+  // ECONOMY (Spec §3.1): every price is ceil(baseCost × growth^level); levels and costs live ONLY here.
+  { id: 'cartCap', group: 'transport', name: 'Cart Capacity', ic: '🛒', baseCost: 120, growth: 1.55, maxLevel: 30 },
+  { id: 'cartSpeed', group: 'transport', name: 'Cart Speed', ic: '💨', baseCost: 90, growth: 1.55, maxLevel: 30 },
+  { id: 'loadSpeed', group: 'transport', name: 'Loading Speed', ic: '🪣', baseCost: 50, growth: 1.5, maxLevel: 30 },
   { id: 'rail', group: 'transport', name: 'Track Strength', ic: '🛤️', baseCost: 0, growth: 1, maxLevel: 3 }, // level = track tier (TRACK_TIERS); cost per tier lives there
-  { id: 'processSpeed', group: 'processing', name: 'Processing Speed', ic: '⚙️', baseCost: 75, growth: 1.6, maxLevel: 30 },
-  { id: 'contractValue', group: 'processing', name: 'Block Quality', ic: '💎', baseCost: 140, growth: 1.75, maxLevel: 30 }, // raises property value + milestone pay
-  { id: 'rawStorage', group: 'processing', name: 'Raw Storage', ic: '📦', baseCost: 110, growth: 1.65, maxLevel: 30 },
+  { id: 'processSpeed', group: 'processing', name: 'Processing Speed', ic: '⚙️', baseCost: 100, growth: 1.55, maxLevel: 30 },
+  { id: 'contractValue', group: 'processing', name: 'Block Quality', ic: '💎', baseCost: 400, growth: 1.8, maxLevel: 10 }, // +value per block PRESSED from now on (never retroactive)
+  { id: 'rawStorage', group: 'processing', name: 'Raw Storage', ic: '📦', baseCost: 150, growth: 1.6, maxLevel: 30 },
+  { id: 'crew', group: 'construction', name: 'Construction Crew', ic: '👷', baseCost: 400, growth: 1.7, maxLevel: 10 }, // +1 builder each (also bigger truck runs)
 ];
 
 // ---- track strength: each tier is a physical track with a SAFE LOAD (Spec §7.8) ----
@@ -90,9 +92,9 @@ export const UPGRADES: Upgrade[] = [
 export interface TrackTier { name: string; safe: number; speed: number; cost: number }
 export const TRACK_TIERS: TrackTier[] = [
   { name: 'Wood Track', safe: 70, speed: 1, cost: 0 },
-  { name: 'Reinforced Wood Track', safe: 140, speed: 1.15, cost: 150 }, // relief until Cart Capacity Lv 5 (163)
-  { name: 'Iron Rail', safe: 260, speed: 1.3, cost: 700 }, // ... until Lv 10 (275)
-  { name: 'Steel Rail', safe: 450, speed: 1.5, cost: 2500 },
+  { name: 'Reinforced Wood Track', safe: 140, speed: 1.15, cost: 250 }, // relief until Cart Capacity Lv 5 (163)
+  { name: 'Iron Rail', safe: 260, speed: 1.3, cost: 1200 }, // ... until Lv 10 (275)
+  { name: 'Steel Rail', safe: 450, speed: 1.5, cost: 5000 },
 ];
 
 // ---- player tools: a short early ladder, then the Jackhammer changes how digging works ----
@@ -109,9 +111,9 @@ export interface Tool {
 }
 export const TOOLS: Tool[] = [
   { name: 'Pickaxe', ic: '⛏️', kind: 'pick', pow: 1, burst: 1, cost: 0, unlockDepth: 0, head: '#aab3bd', headScale: 1, handle: '#8a5a2b', fx: 1, thud: 0, yield: 1 },
-  { name: 'Iron Pickaxe', ic: '⛏️', kind: 'pick', pow: 1.5, burst: 1, cost: 75, unlockDepth: 0, head: '#6f7882', headScale: 1.18, handle: '#6b4423', fx: 1.25, thud: 0.35, yield: 1.5 },
-  { name: 'Heavy Pickaxe', ic: '⚒️', kind: 'pick', pow: 2.25, burst: 1, cost: 260, unlockDepth: 25, head: '#4a5058', headScale: 1.5, handle: '#4e3320', fx: 1.5, thud: 0.8, yield: 2.5 },
-  { name: 'Jackhammer', ic: '🔨', kind: 'jack', pow: 1.4, burst: 4, cost: 1800, unlockDepth: 75, head: '#ffcf3a', headScale: 1, handle: '#3b3f45', fx: 1.3, thud: 0.5, yield: 3.5 },
+  { name: 'Iron Pickaxe', ic: '⛏️', kind: 'pick', pow: 1.5, burst: 1, cost: 60, unlockDepth: 0, head: '#6f7882', headScale: 1.18, handle: '#6b4423', fx: 1.25, thud: 0.35, yield: 1.25 },
+  { name: 'Heavy Pickaxe', ic: '⚒️', kind: 'pick', pow: 2.25, burst: 1, cost: 450, unlockDepth: 25, head: '#4a5058', headScale: 1.5, handle: '#4e3320', fx: 1.5, thud: 0.8, yield: 1.6 },
+  { name: 'Jackhammer', ic: '🔨', kind: 'jack', pow: 1.2, burst: 3, cost: 2500, unlockDepth: 75, head: '#ffcf3a', headScale: 1, handle: '#3b3f45', fx: 1.3, thud: 0.5, yield: 2 },
 ];
 
 // ---- crew ----
@@ -125,8 +127,9 @@ export interface Crew {
   max: number; // how many can be owned (machines scale by class, not by stacking copies)
 }
 export const CREW: Crew[] = [
-  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Climbs down and digs all day', cost: 80, unlockDepth: 0, dps: 0.6, swingSecs: 1.1, yield: 1, needsTier: 0, max: 999 },
-  { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'Takes a whole chunk per bucket', cost: 900, unlockDepth: 0, dps: 2.2, swingSecs: 2.4, yield: 6, needsTier: 1, max: 1 },
+  { id: 'dig', name: 'Digger', ic: '👷', ds: 'Keeps digging while you do anything else', cost: 120, unlockDepth: 0, dps: 1.2, swingSecs: 1.1, yield: 1, needsTier: 0, max: 999 },
+  // the Excavator bites a whole chunk every swingSecs whatever the rock: rubble/s = perBreak × yield / swingSecs (crewRubbleRate)
+  { id: 'exc', name: 'Excavator', ic: '🚜', ds: 'Takes a whole chunk per bucket', cost: 4000, unlockDepth: 0, dps: 0, swingSecs: 1.6, yield: 10, needsTier: 1, max: 1 },
 ];
 
 // ---- worksite tiers (the mine physically expands; face-logical units, x = 0 at the left wall) ----
@@ -145,17 +148,17 @@ export interface Worksite {
 }
 export const WORKSITES: Worksite[] = [
   { name: 'Narrow Shaft', width: 260, chunks: 8, ceiling: 0, visible: 3, slots: [76, 112, 148], slotsWithExc: [], excX: 0, playerX: 104, cost: 0, unlockCrew: 0 },
-  { name: 'Work Chamber', width: 420, chunks: 13, ceiling: 150, visible: 5, slots: [150, 196, 352, 392, 116], slotsWithExc: [262, 352, 392], excX: 112, playerX: 240, cost: 450, unlockCrew: 2 },
+  { name: 'Work Chamber', width: 420, chunks: 13, ceiling: 150, visible: 5, slots: [150, 196, 352, 392, 116], slotsWithExc: [262, 352, 392], excX: 112, playerX: 240, cost: 900, unlockCrew: 2 },
 ];
 
 // ---- construction projects (one plot, reused; each project is bigger than the last) ----
 export interface BuildStage { name: string; blocks: number }
 export interface Project { id: 'cabin' | 'home'; name: string; value: number; stages: BuildStage[] }
 export const PROJECTS: Project[] = [
-  { id: 'cabin', name: 'Tiny Cabin', value: 900, stages: [
+  { id: 'cabin', name: 'Tiny Cabin', value: 1200, stages: [ // value = sale price at block value ×1.0
     { name: 'Foundation', blocks: 30 }, { name: 'Frame', blocks: 30 }, { name: 'Walls', blocks: 40 }, { name: 'Roof', blocks: 30 }, { name: 'Finishing', blocks: 20 },
   ] },
-  { id: 'home', name: 'Two-Story Home', value: 4200, stages: [
+  { id: 'home', name: 'Two-Story Home', value: 3500, stages: [
     { name: 'Foundation', blocks: 60 }, { name: 'Ground Floor', blocks: 70 }, { name: 'Upper Floor', blocks: 80 }, { name: 'Walls & Siding', blocks: 80 },
     { name: 'Roof', blocks: 70 }, { name: 'Windows & Doors', blocks: 60 }, { name: 'Landscaping', blocks: 40 },
   ] },
@@ -170,17 +173,17 @@ export const FINDS: Find[] = [
 ];
 
 export const CFG = {
-  saveKey: 'digtohell_v5',
-  saveVersion: 5,
+  saveKey: 'digtohell_v6',
+  saveVersion: 6,
   // older saves migrate (progress, cash and material kept): v4 = Phase 3C.5 (truck paid cash), v3 = 3A–3C, v2 = cash-from-digging
-  migrateFrom: [{ key: 'digtohell_v4', version: 4 }, { key: 'digtohell_v3', version: 3 }, { key: 'digtohell_v2', version: 2 }],
+  migrateFrom: [{ key: 'digtohell_v5', version: 5 }, { key: 'digtohell_v4', version: 4 }, { key: 'digtohell_v3', version: 3 }, { key: 'digtohell_v2', version: 2 }],
   legacySaveKeys: ['digtohell_v1'], // deliberately discarded: old 15,000 m economy
   saveIntervalMs: 5000,
 
   // ---- economy ----
-  valueDiv: 40, // material value per unit V(d) = (1 + d/div)^exp (realised only when sold, Phase 3C)
-  valueExp: 1.3,
-  crewCostGrowth: 1.28,
+  valueDiv: 120, // BLOCK VALUE of material dug at depth d: V(d) = (1 + d/div)^exp → ×1.17 @20 m, ×1.83 @100 m, ×3.5 @300 m
+  valueExp: 1,
+  crewCostGrowth: 1.22,
   findMultBonus: 0.1, // +10% digging per find (finds give no cash)
   overflowCarry: 0.99, // fraction of a stage that excess damage may carry into the fresh chunk
   critChance: 0.07,
@@ -218,15 +221,17 @@ export const CFG = {
   // raw material -> hopper -> crusher + auger -> press -> finished blocks -> delivery truck -> cash.
   yard: {
     workerUnit: 30, // logical px of a person's height at the surface (× face scale) — all yard scale derives from it
-    cost: 80,
+    cost: 250, // the first real industrial installation (contract advance tops the player up to this)
     buildSecs: 2.6,
     rawStorage: { base: 120, perLevel: 0.5 }, // raw units the hopper/yard holds; when full the cart waits
-    processRate: { base: 2, perLevel: 0.35 }, // raw units/s turned into finished blocks
-    price: { base: 3, perLevel: 0.25 }, // $ per unit of carried material value, paid on truck departure
+    processRate: { base: 1.5, perLevel: 0.35 }, // raw units/s turned into finished blocks
+    marketPrice: 3, // $ the contractor pays per unit of raw material value (his small sample purchase)
+    qualityPerLevel: 0.08, // Block Quality: +8% value on every block PRESSED after the purchase
     pressBatch: 4, // units per press cycle (visual cadence; a block appears each THUMP)
     contractorRate: 30, // units/s the contractor (tutorial buyer) takes before the yard exists
     // the delivery truck lives at the yard: PARKED -> LOADING -> TO_SITE -> UNLOADING (at the plot) -> RETURNING -> PARKED
-    truck: { capacity: 60, pickupMin: 15, arriveSecs: 3.6, driveSecs: 4, loadRate: 16, unloadRate: 20, minLoadSecs: 1.8, waitSecs: 4 },
+    // capacity / loadRate / unloadRate are the BASE crew's values; each Construction Crew level adds truckPerCrew of them
+    truck: { capacity: 60, pickupMin: 15, arriveSecs: 3.6, driveSecs: 4, loadRate: 16, unloadRate: 20, minLoadSecs: 1.8, waitSecs: 4, perCrew: 0.5 },
     processTiers: [0, 3, 6], // faster parts, then a second crusher drum, then a bigger press
     valueTiers: [0, 2, 4, 6], // painted sign -> contract board -> weigh station -> company livery
     storageTiers: [0, 2, 4], // hopper -> bigger hopper -> overflow bunker
@@ -237,9 +242,13 @@ export const CFG = {
 
   // ---- construction ----
   build: {
-    rate: 3, // blocks/s the builders consume during an active stage
+    perBuilder: 1.25, // blocks/s each builder lays; builders = baseBuilders + Construction Crew level
+    baseBuilders: 2,
+    revealBacklog: 120, // blocks waiting on the plot while a stage is underway (a real backlog, not one truckload) → CONSTRUCTION CREW is revealed
     autoStartSecs: 1.2, // a stage starts by itself this long after its blocks are on the plot (anywhere, any site, offline too)
-    stagePay: 0.08, // milestone payment per completed stage (fraction of property value)
+    milestoneShare: 0.5, // all stage payments together = this × property value; each stage gets its block share
+    repeatDecay: 0.1, // TEMPORARY until more projects exist: each repeat of the same project sells for 10% less…
+    repeatFloor: 0.6, // …never below 60%
     soldHoldSecs: 2.4, // SOLD sign hold before the plot clears
     clearSecs: 2.2, // bulldozer cleanup
     plotOffsetU: 4.6, // plot centre, in surface worker units right of the yard's truck bay end
@@ -265,7 +274,8 @@ export const CFG = {
     lineSecs: 2.6, // each opening line
     rubbleToCart: 8, // rubble dug before "RUBBLE ISN'T MONEY"
     contractorTalkSecs: 3.2, // contractor inspects the first load before buying it
-    seedCash: 95, // the contractor buys only until you hold this much (just over the yard's cost); the rest stays for the yard's first blocks
+    sampleQty: 20, // the contractor buys a small SAMPLE of the first load at market price…
+    // …then pays a CONTRACT ADVANCE that tops the player up to the Recycling Yard's cost (bootstrap, not rubble value)
   },
 
   // ---- track strain (see TRACK_TIERS) ----

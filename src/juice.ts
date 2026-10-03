@@ -272,9 +272,13 @@ export function presentSurface(events: SurfaceEvent[], dt: number) {
     else if (e.type === 'contractorSold') {
       if (Math.random() < Math.min(0.9, (e.qty ?? 0) * 0.6)) arc(L.hopperX + rnd(-10, 10), L.gy - 10, L.stackX + L.u * 0.6 + rnd(-8, 8), L.roadY - L.u * 0.7, rnd(0.35, 0.45), rubbleCol(S.raw), rnd(2, 3) * s);
     } else if (e.type === 'firstSaleDone') {
-      popup(L.stackX, L.gy - L.u * 2.2, '+' + money(e.cash ?? 0), '#ffd84a', 30 * Math.sqrt(fxk()), { life: 2.6, pop: 0.6, sub: `SEED MONEY · ${fmt(e.qty ?? 0)} RUBBLE`, rise: 0.4 });
+      // what raw rubble is actually worth: a small sample at market price…
+      popup(L.stackX - L.u * 0.8, L.gy - L.u * 1.6, '+' + money(e.cash ?? 0), '#e8dcc0', 20 * Math.sqrt(fxk()), { life: 2.4, pop: 0.3, sub: `SAMPLE · ${fmt(e.qty ?? 0)} RUBBLE`, rise: 0.4 });
+    } else if (e.type === 'advance') {
+      // …and the real bootstrap: an advance against future blocks
+      popup(L.stackX + L.u * 0.6, L.gy - L.u * 2.4, '+' + money(e.cash ?? 0), '#ffd84a', 30 * Math.sqrt(fxk()), { life: 3, pop: 0.6, sub: 'CONTRACT ADVANCE', rise: 0.4 });
       playSting();
-      setTimeout(() => { if (!S.yard) say('Here. Build a Recycling Yard and press it into blocks.', true); }, 1800);
+      setTimeout(() => { if (!S.yard) say('Advance for a Recycling Yard. Pay me back in blocks.', true); }, 1800);
     } else if (e.type === 'pressed') {
       SV.pressT = 0;
       playThud(0.5 * near);

@@ -40,12 +40,15 @@ Start with one person, one pickaxe and a tiny hole; grow into a huge mine, a sur
 - Dev-only hooks (`import.meta.env.DEV`): `window.__dig` (state incl. camera/workers, save, go(site), setSpeed(k) time-scale, tireAll, forceYard, setPhase, setCritChance, cartDepth…) and a debug panel (+$1,000, +50 rubble, +60 blocks on site). Stripped from production builds.
 - Testing: puppeteer-core + system Chrome scripts in the session scratchpad (full-loop bot `v2flow.mjs <speed> <secs> <tag>`, targeted `v2target.mjs`, `v2perf.mjs`), headless pacing/conservation via `npx tsx` importing src modules. Seed localStorage from a same-origin non-game URL (e.g. `/src/style.css`) — reloading the game page saves on unload and overwrites injected saves.
 
-## CURRENT ECONOMY (as built in V2-1)
-- Extraction: a break gives 2 rubble × tool yield (Pickaxe ×1 · Iron ×1.5 · Heavy ×2.5 · Jackhammer ×3.5), ×2 on crit; diggers 0.6 dps each ($80, ×1.28 per hire); Excavator ($900, needs the Work Chamber, one) bites a whole chunk for ×6 rubble.
-- Transport: one cart, 50 capacity base; travel = 2.5 s + (depth + 7 m) / speed. Track Strength tiers (safe load / speed / cost): Wood 70 ×1.0 · Reinforced Wood 140 ×1.15 $150 · Iron 260 ×1.3 $700 · Steel 450 ×1.5 $2,500; an overloaded trip up (cart load > safe load) is −30% speed. First overload = Cart Capacity Lv 1 (73) on Wood.
-- Yard ($80): raw 120 cap → 2/s processing → blocks; truck (60 per trip, leaves at ≥ 15) drives to the plot in 4 s.
-- Construction (stages START AUTOMATICALLY 1.2 s after their blocks are on the plot, anywhere/offline; only SELL is manual): Tiny Cabin $900 (30/30/40/30/20 blocks), Two-Story Home $4,200 (60/70/80/80/70/60/40); builders use 3 blocks/s; each stage pays 8% of the value; the sale pays the value (× Block Quality bonus +25%/level). The tutorial contractor pays ≈$95 seed money once.
-- Work Chamber $450 (needs 2 diggers).
+## CURRENT ECONOMY (economy rebuild — details Spec §3.1, code map AGENT_CONTEXT.md)
+- **Opening:** the contractor buys a 20-unit sample at market price (~$3/unit × block value) and pays a labelled CONTRACT ADVANCE up to the Recycling Yard's **$250**.
+- **Block value travels with the material:** `V(d) = 1 + d/120` per unit dug (×3.5 at 300 m); the press stamps Block Quality (+8%/level, max 10, $400 ×1.8) onto blocks as they are made (never retroactive).
+- **Construction pays for what it is built from:** stage = base × 50% × (stage blocks / project blocks) × that stage's avg block value; sale = base × the house's avg block value. Cabin base $1,200 (150 blocks), Two-Story $3,500 (460). Repeats of the Two-Story sell −10% each (floor 60%, temporary).
+- **Construction Crew** ($400 ×1.7, 10 levels): +1 builder (1.25 blocks/s each; base 2 = 2.5/s), visible on site; truck runs +50%/level. Revealed when ≥ 120 blocks wait on the plot during a stage (yellow BUILD `!`).
+- **Extraction:** Pickaxe → Iron $60 (×1.25 yield) → Heavy $450 @25 m (×1.6) → Jackhammer $2,500 @75 m (3 × 1.2 power, ×2). Digger $120 ×1.22 (1.2 power/s). Work Chamber $900. Excavator $4,000: a whole chunk every 1.6 s × 20 rubble (~750/min at any depth) — one formula (`crewBreaksPerSec`) for strikes, the panel and offline.
+- **Transport:** cart 50 base; Cart Capacity $120 ×1.55, Cart Speed $90 ×1.55, Loading $50 ×1.5. Track Strength $250 / $1,200 / $5,000 (safe 70/140/260/450); overloaded trips −30%.
+- **Yard:** processing 1.5/s base (+35%/level, $100 ×1.55); Raw Storage 120 (+50%/level, $150 ×1.6).
+- Cash still comes only from the contractor opening and construction.
 
 ## BUILD ORDER
 1. TS/Vite port — DONE · 2. Dig feel — DONE · 2.5. Click-loop polish — DONE
@@ -57,7 +60,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 ## STATUS LOG
 - Step 1 port `e4d758d` · Step 2 dig feel `fc51a70` · Step 2.5 polish `72800ed` · design update `6ea5c2b` · 3A+3B `b4a2c08` · 3C `ce168ca` · 3C.5 `4bfadeb` (hash commits `3c30846`, `1278c76`, `3cf1c7a`, `81d4023`) · reset confirm `2011020`
 - V2 design consolidation `719166f`
-- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `86a9dca`
+- V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `86a9dca` · toast/swipe fix `4136d95` · economy rebuild `ECO_HASH`
 
 ### History in brief (details in git history and older Spec revisions)
 - Steps 1–2.5: TS/Vite port; destructible dig face (per-material stages, cracks, crits with hit-stop/star/ring); impact hierarchy; synthesized SFX; face reads as one mass of earth; popup hierarchy.
@@ -65,8 +68,10 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 - 3C: tool ladder (Pickaxe → Iron → Heavy → Jackhammer burst) and Digger hiring with rope-drop arrival; seller model (superseded).
 - 3C.5: Recycling Yard (hopper → crusher → auger → press → blocks), trucks (golden-angle colours), material composition `mix`, deterministic painted geology (5 m cached segments), new characters + helmet lamps + depth darkness, IK excavator, per-level rail visuals, painted landscape with day/night, accordion panel, save v4. Perf regression under heavy CPU throttle noted.
 
-## KNOWN ISSUES (after V2-1)
-- Transport is the silent bottleneck from ~3:00: with 4–6 diggers the dig-site pile reaches 300–550 by 5:00 unless the player buys cart upgrades. The cart-can't-keep-up pressure is still unflagged (track overload now is flagged, Spec §7.8).
+## KNOWN ISSUES (after V2-1 + economy rebuild)
+- Economy rebuild is a first pass: verified by typecheck/build, material conservation and save migration; one 15-min active-player sim; NOT yet tuned against the automation/infrastructure/idle player sims or a human playtest. Excavator ($4,000) was never bought by a cheapest-first bot in 15 min; 300 m is still reached by ~11–12 min of active play.
+- Construction workers hammer one fixed spot regardless of what is being built (queued visual fix: work zones, ladders/scaffold, hammer hits the structure).
+- Transport is still the most common bottleneck and is not flagged when the cart simply can't keep up (only track overload is flagged).
 - Track reinforcement has no workers walking over (the job is shown by the sweeping rebuild, hammering and dust). Wood's STRAINED band (53–70) is rarely seen because the base cart is 50 and the first upgrade jumps to 73.
 - 0:45 → 1:22 of a fresh game: the first truck brings ~18 of the 30 Foundation blocks; ~35 s of digging with no new decision.
 - First visible rest happens late (~4:00) because the platform needs ≥ 22 m and workers work 60–120 s first.
