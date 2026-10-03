@@ -85,7 +85,10 @@ A permanent, game-like navigation bar: **[MINE] [🔒 YARD] [🔒 BUILD]** — t
 - One "follow" hint pill under the bar (FOLLOW THE CART / FOLLOW THE TRUCK / BLOCKS ARRIVED / MORE BLOCKS NEEDED: DIG) still guides the introduction; it steps aside while a toast is showing.
 
 ### Site toasts (built)
-Short notices that drop from a tab (~2.4–3.6 s), stack under it, never block, never move the camera. Used for site unlocks, locked-site notes and construction events (§10.4).
+Short notices that drop from a tab (~2.4–3.6 s), stack under it, never block, never move the camera. The same notice is never stacked twice: repeating it (e.g. tapping a locked tab again) just keeps the one already showing up longer.
+
+### Swipe navigation (built)
+Swipe left/right on the game view (touch or mouse drag; ≥ 12% of the width, mostly horizontal, < 0.7 s) moves along the road: MINE ⇄ YARD ⇄ BUILD. Swiping toward a locked site behaves like tapping its tab (note + peek). Used for site unlocks, locked-site notes and construction events (§10.4).
 
 ### Attention indicators (one rule set — `siteAttention()` in `nav.ts` is the only place a badge can come from)
 - **RED `!`** = an ACTIVE PROBLEM that is reducing operation right now: MINE — the track is overloaded (transport slowed, §7.8); YARD — raw storage is full and the cart can't unload (the mine stalls). Future: cave-in.

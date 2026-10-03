@@ -73,7 +73,26 @@ export function navigate(site: Site) {
   updateNav();
 }
 
+const ORDER: Site[] = ['mine', 'yard', 'build'];
+/** Swipe left/right on the game view: next/previous site (a locked one just explains itself). */
+function initSwipe() {
+  const stage = document.getElementById('stage')!;
+  let sx = 0, sy = 0, st = 0, id = -1;
+  stage.addEventListener('pointerdown', (e) => { id = e.pointerId; sx = e.clientX; sy = e.clientY; st = performance.now(); });
+  stage.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== id) return;
+    id = -1;
+    const dx = e.clientX - sx, dy = e.clientY - sy, dt = performance.now() - st;
+    const min = Math.max(50, stage.clientWidth * 0.12);
+    if (dt > 700 || Math.abs(dx) < min || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const i = ORDER.indexOf(S.site) + (dx < 0 ? 1 : -1); // swipe left = go right along the road
+    if (i >= 0 && i < ORDER.length) navigate(ORDER[i]);
+  });
+  stage.addEventListener('pointercancel', () => { id = -1; });
+}
+
 export function initNav() {
+  initSwipe();
   for (const b of buttons) b.onclick = () => navigate(b.dataset.site as Site);
   addEventListener('keydown', (e) => {
     if (document.activeElement && document.activeElement !== document.body && (document.activeElement as HTMLElement).tagName === 'INPUT') return;
