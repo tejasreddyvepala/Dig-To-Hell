@@ -12,6 +12,8 @@ import { drawExcavator, drawExcavatorLight, drawLampBeam } from './characters';
 import { RIG_H, drawRig, lookFor, type Look, type Pose } from './rig';
 import { ladderFrame } from './ladder';
 import { PAL, beam, contactShadow, outline, post, texture } from './art';
+import { rockEdge } from './rockwall';
+import { drawCollar, drawEdgeRocks, drawInnerCut, drawRearWall, drawRockMass, drawTimberSets, interiorPath, type ShaftGeom } from './rockwall';
 import { face, type Chunk, type Crack, type Mark } from './digface';
 import { pathPos, restAreaBuilt, restingCount, seatsTotal, workers, type Worker } from './workers';
 import { pileX, railX, shaftOff, worksiteDef } from './layout';
@@ -273,6 +275,12 @@ function drawChamber() {
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -h + 14);
   for (let x = 0; x <= w; x += 20) ctx.lineTo(x, -h + (x > off - 6 && x < off + CFG.face.logicalW + 6 ? -2 : hash(x * 0.37) * 10));
   ctx.lineTo(w, -h + 12); ctx.lineTo(w, 0); ctx.closePath(); ctx.fill();
+  // carved into rock: rock masses along the bay ceilings and the chamber's side walls (visual only)
+  const mC = S.depth - (h * faceScale()) / CFG.ppm;
+  rockEdge(-4, -h + 6, off - 4, -h + 2, 0, -1, 11, mC);
+  rockEdge(off + CFG.face.logicalW + 4, -h + 2, w + 4, -h + 6, 0, -1, 23, mC);
+  rockEdge(-2, -h + 4, -2, -8, -1, 0, 37, S.depth, 0.9);
+  rockEdge(w + 2, -h + 4, w + 2, -8, 1, 0, 51, S.depth, 0.9);
   // rough ceiling edge (the shaft keeps going up through the middle)
   ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(0, -h + 14);
@@ -308,6 +316,21 @@ function drawRestArea(groundY: number) {
   // access ladder: surface -> platform (or the floor while the shaft is shallow)
   ctx.strokeStyle = TIMBER_L; ctx.lineWidth = 1.6;
   const lx = RS.ladderX, top = Math.max(groundY, -2400), bot = built ? py : 0;
+  // ladder mounts: a bracket into the rock every 6 m (world-anchored), so the ladder reads as installed
+  const mpl = CFG.ppm / faceScale();
+  for (let m = 5; groundY + m * mpl < bot - 12; m += 12) {
+    const y = groundY + m * mpl;
+    if (y < top + 6 || y < -2400) continue;
+    ctx.fillStyle = 'rgba(6,4,3,.6)'; ctx.fillRect(-6, y - 2.5, 6, 5);
+    ctx.fillStyle = PAL.wood.dark; ctx.fillRect(-4, y - 1.2, lx - 1, 2.4);
+    ctx.fillStyle = PAL.wood.shadow; ctx.fillRect(-4, y - 0.6, lx - 1, 1.2);
+  }
+  if (built) { // the rest platform sits in a pocket carved into the wall
+    ctx.fillStyle = 'rgba(8,5,3,.62)';
+    ctx.beginPath(); ctx.moveTo(6, py + 5); ctx.lineTo(-20, py + 3); ctx.lineTo(-30, py - 16); ctx.lineTo(-24, py - 44); ctx.lineTo(-4, py - 54); ctx.lineTo(14, py - 50); ctx.lineTo(8, py - 30); ctx.closePath(); ctx.fill();
+    rockEdge(-34, py - 54, 18, py - 56, 0, -1, 71, S.depth - (-py * faceScale()) / CFG.ppm, 0.8); // lintel
+    rockEdge(-30, py + 9, 4, py + 9, 0, 1, 83, S.depth - (-py * faceScale()) / CFG.ppm, 0.7); // ledge under the beam ends
+  }
   if (bot > top) { // wood ladder: dark outline pass, then the lit wood
     for (const [col, lw] of [[PAL.wood.dark, 2.8], [PAL.wood.light, 1.6]] as const) {
       ctx.strokeStyle = col; ctx.lineWidth = lw;
@@ -333,10 +356,11 @@ function drawRestArea(groundY: number) {
     ctx.beginPath(); ctx.moveTo(x0, y0 - 14); ctx.lineTo(x1, y1 - 14); ctx.stroke();
   };
   flight(RS.stairFootX, 0, RS.landingX, fy);
-  beam(0, fy - 1, RS.landingX + 12, 4, PAL.wood, 'mid', 9); // landing
+  ctx.fillStyle = 'rgba(6,4,3,.6)'; ctx.fillRect(-9, fy - 3, 9, 8); // landing joist pocket
+  beam(-7, fy - 1, RS.landingX + 19, 4, PAL.wood, 'mid', 9); // landing
   flight(RS.landingX + 8, fy, pw - 8, py);
   // platform: planks on brackets, railing on the open side
-  beam(0, py - 1, pw + 4, 5, PAL.wood, 'fg', 21);
+  beam(-16, py - 1, pw + 20, 5, PAL.wood, 'fg', 21); // joists run into the rock pocket
   ctx.fillStyle = 'rgba(0,0,0,.28)'; for (let x = 6; x < pw; x += 8) ctx.fillRect(x, py - 1, 1, 5);
   ctx.strokeStyle = TIMBER_D; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(2, py + 4); ctx.lineTo(16, py + 18); ctx.moveTo(pw - 4, py + 4); ctx.lineTo(pw - 18, py + 18); ctx.stroke();
@@ -392,6 +416,8 @@ function drawFaceAndCrew() {
   drawChamber();
   drawRestArea(groundY);
   drawFace(s);
+  // the face sits in the rock: break its straight lower edge with rock (visual only; chunks/click targets unchanged)
+  rockEdge(-6, CFG.face.height, face.w + 6, CFG.face.height, 0, 1, 97, S.depth + (CFG.face.height * s) / CFG.ppm, 0.85, -0.1);
   // rubble waiting at the dig site, coloured by what it is, with its count right on the pile
   const px = pileX();
   if (S.rubble.qty > 0.05) contactShadow(px, 0.6, (12 + 26 * Math.min(1.25, S.rubble.qty / CFG.rubble.pileVisualMax)), 2.4, 0.4);
@@ -743,23 +769,6 @@ function drawCart() {
 }
 
 
-/** Shaft walls as broken rock instead of straight strips: a jagged dark lip per metre, lit warm on its upper edge. */
-function drawShaftWalls(cx: number, sw: number, sTop: number, sBot: number) {
-  const PPM = CFG.ppm, step = PPM * 0.75;
-  const m0 = Math.floor(((sTop - yOf(0)) / step)) - 1, m1 = Math.ceil((sBot - yOf(0)) / step);
-  for (const side of [-1, 1]) {
-    const ex = cx + side * sw / 2;
-    ctx.beginPath(); ctx.moveTo(ex, sTop);
-    for (let i = m0; i <= m1; i++) {
-      const y = Math.min(sBot, Math.max(sTop, yOf(0) + i * step));
-      ctx.lineTo(ex - side * (6 + hash(i * 3.1 + side) * 9), y);
-    }
-    ctx.lineTo(ex, sBot); ctx.closePath();
-    ctx.fillStyle = 'rgba(6,4,3,.42)'; ctx.fill();
-    ctx.strokeStyle = 'rgba(160,116,75,.18)'; ctx.lineWidth = 1; ctx.stroke(); // faint rim where the lamp catches the rock
-  }
-}
-
 function drawWorld() {
   const { H, t } = view;
   const PPM = CFG.ppm;
@@ -776,25 +785,37 @@ function drawWorld() {
     ctx.fillStyle = PAL.bgMute; ctx.fillRect(X0, eTop, XW, view.vy1 - eTop);
     texture('earth', X0, eTop, XW, view.vy1 - eTop, 0.1, cx, gy);
   }
-  if (gy > view.vy0 - 20 && gy < view.vy1) drawGround(gy, X0, XW);
-  // shaft interior: the same rock, in shadow, down to the face
+  // shaft: excavated rock around the (unchanged) logical shaft — rockwall.ts
   const sTop = Math.max(view.vy0, gy), sBot = faceOrigin().y;
+  const fs = faceScale(), ceil = worksiteDef().ceiling;
+  const g: ShaftGeom = { cx, sw, k: fs, sTop, sBot, floorM: view.camDepth, wallBot: sBot - ceil * fs };
+  if (sBot > sTop) drawRockMass(g);
+  if (gy > view.vy0 - 20 && gy < view.vy1) drawGround(gy, X0, XW);
   if (sBot > sTop) {
+    ctx.save(); interiorPath(g); ctx.clip();
+    const ix = cx - sw / 2 - 40 * fs, iw = sw + 80 * fs;
     ctx.fillStyle = 'rgba(12,8,6,.62)';
-    ctx.fillRect(cx - sw / 2, sTop, sw, sBot - sTop);
-    texture('rock', cx - sw / 2, sTop, sw, sBot - sTop, 0.06, cx, gy); // kept faint: a dark backdrop must not sparkle
-    drawShaftWalls(cx, sw, sTop, sBot);
+    ctx.fillRect(ix, sTop, iw, sBot - sTop);
+    texture('rock', ix, sTop, iw, sBot - sTop, 0.06, cx, gy); // kept faint: a dark backdrop must not sparkle
+    drawRearWall(g);
     // depth: the shaft darkens upward, and the work light pools on the face so the action is the focus
     const L = CFG.light;
     const gd = ctx.createLinearGradient(0, sBot - H * L.fadeSpan, 0, sBot);
     gd.addColorStop(0, `rgba(0,0,0,${L.shaftDark})`); gd.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gd; ctx.fillRect(cx - sw / 2, sTop, sw, sBot - sTop);
+    ctx.fillStyle = gd; ctx.fillRect(ix, sTop, iw, sBot - sTop);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const gl = ctx.createRadialGradient(cx, sBot - 6, 0, cx, sBot - 6, sw * L.radius);
     gl.addColorStop(0, `rgba(255,196,120,${L.glow})`); gl.addColorStop(1, 'rgba(255,196,120,0)');
     const gTop = Math.max(sTop, sBot - sw * L.radius); // never leak above ground into the sky
-    ctx.fillStyle = gl; ctx.fillRect(cx - sw / 2, gTop, sw, sBot - gTop);
+    ctx.fillStyle = gl; ctx.fillRect(ix, gTop, iw, sBot - gTop);
     ctx.restore();
+    drawInnerCut(g);
+    ctx.restore();
+    drawEdgeRocks(g);
+    // timber: keep the left wall clear above the rest platform/stairs; spreaders stay above the work area
+    const platM = view.camDepth + (restAreaBuilt() ? RS.platformY - 60 : -70) * fs / PPM - ceil * fs / PPM;
+    drawTimberSets(g, platM, platM);
+    drawCollar(g, gy);
     ctx.font = `600 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.55)';
     const stepM = S.depth > 80 ? 25 : 10;
     const mEnd = Math.min(view.camDepth, top + view.vy1 / PPM);
