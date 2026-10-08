@@ -1,0 +1,45 @@
+=== L4 speed 16 for 70 game-min
+  1.2 min  Yard built
+  3.3 min  first sale
+  6.1 min  worksite 1 (Chamber)
+  6.1 min  sold #2
+  8.5 min  Jackhammer
+  8.5 min  sold #3
+  9.0 min  100 m
+ 11.9 min  Excavator
+ 11.9 min  sold #4
+ 13.4 min  200 m
+ 15.1 min  worksite 2 (Great Hall)
+ 15.1 min  sold #5
+ 18.9 min  300 m
+ 18.9 min  Diamond Drill
+ 18.9 min  sold #6
+ 24.2 min  Saw Rig
+ 24.2 min  sold #7
+ 24.7 min  400 m
+ 29.9 min  500 m
+ 30.6 min  worksite 3 (Deep Cavern)
+ 30.6 min  sold #8
+ 35.9 min  600 m
+ 38.6 min  Drill Rig
+ 38.6 min  sold #9
+ 41.6 min  700 m
+ 45.7 min  Hellforge
+ 47.7 min  800 m
+ 54.2 min  900 m
+ 61.5 min  1000 m
+@0m depth 0 cash $0 earned $0 dig 0 mach 000 tool 0 ws 0 upg {"cartCap":0,"cartSpeed":0,"loadSpeed":0,"rail":0,"processSpeed":0,"contractValue":0,"rawStorage":0,"crew":0} | pile 0 raw 0 blocks 0 plot 0 | proj 0 st 0 sold 0
+@5m depth 36 cash $12 earned $1240 dig 1 mach 000 tool 1 ws 0 upg {"cartCap":1,"cartSpeed":1,"loadSpeed":3,"rail":1,"processSpeed":1,"contractValue":0,"rawStorage":0,"crew":0} | pile 0 raw 0 blocks 7 plot 0 | proj 1 st 2 sold 1
+@10m depth 131 cash $281 earned $9244 dig 6 mach 000 tool 3 ws 1 upg {"cartCap":3,"cartSpeed":4,"loadSpeed":5,"rail":1,"processSpeed":4,"contractValue":0,"rawStorage":2,"crew":0} | pile 59 raw 32 blocks 13 plot 62 | proj 3 st 3 sold 3
+@15m depth 234 cash $1675 earned $40219 dig 10 mach 100 tool 3 ws 2 upg {"cartCap":5,"cartSpeed":6,"loadSpeed":7,"rail":2,"processSpeed":5,"contractValue":2,"rawStorage":4,"crew":2} | pile 461 raw 41 blocks 31 plot 165 | proj 5 st 0 sold 5
+@20m depth 322 cash $657 earned $98261 dig 15 mach 100 tool 4 ws 2 upg {"cartCap":7,"cartSpeed":8,"loadSpeed":10,"rail":3,"processSpeed":7,"contractValue":3,"rawStorage":6,"crew":3} | pile 624 raw 18 blocks 51 plot 25 | proj 6 st 1 sold 6
+@25m depth 411 cash $38332 earned $244490 dig 19 mach 110 tool 4 ws 2 upg {"cartCap":9,"cartSpeed":10,"loadSpeed":12,"rail":3,"processSpeed":10,"contractValue":5,"rawStorage":8,"crew":5} | pile 759 raw 169 blocks 31 plot 0 | proj 7 st 1 sold 7
+@30m depth 504 cash $7294 earned $340490 dig 23 mach 110 tool 4 ws 2 upg {"cartCap":11,"cartSpeed":12,"loadSpeed":14,"rail":3,"processSpeed":11,"contractValue":6,"rawStorage":10,"crew":7} | pile 894 raw 237 blocks 48 plot 28 | proj 7 st 6 sold 7
+@35m depth 590 cash $51937 earned $806202 dig 27 mach 110 tool 4 ws 3 upg {"cartCap":12,"cartSpeed":13,"loadSpeed":16,"rail":4,"processSpeed":13,"contractValue":7,"rawStorage":11,"crew":8} | pile 960 raw 361 blocks 22 plot 15 | proj 8 st 4 sold 8
+@40m depth 672 cash $48137 earned $1795879 dig 31 mach 111 tool 4 ws 3 upg {"cartCap":14,"cartSpeed":15,"loadSpeed":17,"rail":4,"processSpeed":15,"contractValue":9,"rawStorage":13,"crew":9} | pile 1082 raw 264 blocks 84 plot 42 | proj 8 st 1 sold 9
+@45m depth 755 cash $78936 earned $2237498 dig 33 mach 111 tool 4 ws 3 upg {"cartCap":15,"cartSpeed":16,"loadSpeed":18,"rail":4,"processSpeed":15,"contractValue":9,"rawStorage":14,"crew":10} | pile 1143 raw 372 blocks 45 plot 84 | proj 8 st 7 sold 9
+@50m depth 839 cash $12933 earned $3828805 dig 35 mach 111 tool 5 ws 3 upg {"cartCap":16,"cartSpeed":17,"loadSpeed":19,"rail":5,"processSpeed":16,"contractValue":10,"rawStorage":15,"crew":10} | pile 1230 raw 541 blocks 92 plot 30 | proj 8 st 5 sold 10
+@55m depth 914 cash $176248 earned $5482014 dig 38 mach 111 tool 5 ws 3 upg {"cartCap":17,"cartSpeed":18,"loadSpeed":21,"rail":5,"processSpeed":18,"contractValue":10,"rawStorage":16,"crew":10} | pile 1291 raw 842 blocks 17 plot 0 | proj 8 st 3 sold 11
+@60m depth 982 cash $57945 earned $7112507 dig 40 mach 111 tool 5 ws 3 upg {"cartCap":18,"cartSpeed":19,"loadSpeed":22,"rail":5,"processSpeed":19,"contractValue":10,"rawStorage":17,"crew":10} | pile 1365 raw 1134 blocks 96 plot 77 | proj 8 st 2 sold 12
+@65m depth 1000 cash $184588 earned $9060227 dig 41 mach 111 tool 5 ws 3 upg {"cartCap":19,"cartSpeed":20,"loadSpeed":23,"rail":5,"processSpeed":20,"contractValue":10,"rawStorage":17,"crew":10} | pile 1425 raw 1007 blocks 28 plot 25 | proj 8 st 2 sold 13
+ERRORS: none

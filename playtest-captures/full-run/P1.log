@@ -1,0 +1,46 @@
+=== P1 speed 16 for 70 game-min
+  1.3 min  Yard built
+  3.6 min  first sale
+  6.6 min  worksite 1 (Chamber)
+  6.6 min  sold #2
+  9.0 min  Jackhammer
+  9.0 min  sold #3
+  9.5 min  100 m
+ 12.4 min  Excavator
+ 12.4 min  sold #4
+ 14.0 min  200 m
+ 15.7 min  worksite 2 (Great Hall)
+ 15.7 min  sold #5
+ 19.1 min  300 m
+ 19.7 min  Diamond Drill
+ 19.7 min  sold #6
+ 24.7 min  400 m
+ 25.2 min  Saw Rig
+ 25.2 min  sold #7
+ 29.5 min  500 m
+ 31.3 min  worksite 3 (Deep Cavern)
+ 31.3 min  sold #8
+ 35.2 min  600 m
+ 39.5 min  Drill Rig
+ 39.5 min  sold #9
+ 40.9 min  700 m
+ 44.4 min  Hellforge
+ 46.1 min  800 m
+ 51.9 min  900 m
+ 58.2 min  1000 m
+@0m depth 0 cash $0 earned $0 dig 0 mach 000 tool 0 ws 0 upg {"cartCap":0,"cartSpeed":0,"loadSpeed":0,"rail":0,"processSpeed":0,"contractValue":0,"rawStorage":0,"crew":0} | pile 0 raw 0 blocks 0 plot 0 | proj 0 st 0 sold 0
+@5m depth 29 cash $18 earned $1246 dig 1 mach 000 tool 1 ws 0 upg {"cartCap":1,"cartSpeed":1,"loadSpeed":3,"rail":1,"processSpeed":1,"contractValue":0,"rawStorage":0,"crew":0} | pile 0 raw 0 blocks 0 plot 0 | proj 1 st 2 sold 1
+@10m depth 114 cash $483 earned $8737 dig 6 mach 000 tool 3 ws 1 upg {"cartCap":3,"cartSpeed":3,"loadSpeed":5,"rail":1,"processSpeed":3,"contractValue":0,"rawStorage":2,"crew":0} | pile 27 raw 38 blocks 23 plot 46 | proj 3 st 2 sold 3
+@15m depth 225 cash $86 earned $22824 dig 10 mach 100 tool 3 ws 1 upg {"cartCap":5,"cartSpeed":5,"loadSpeed":7,"rail":2,"processSpeed":5,"contractValue":2,"rawStorage":4,"crew":2} | pile 489 raw 23 blocks 4 plot 158 | proj 4 st 5 sold 4
+@20m depth 317 cash $4505 earned $94644 dig 14 mach 100 tool 4 ws 2 upg {"cartCap":6,"cartSpeed":7,"loadSpeed":9,"rail":3,"processSpeed":7,"contractValue":3,"rawStorage":6,"crew":3} | pile 555 raw 0 blocks 3 plot 31 | proj 6 st 0 sold 6
+@25m depth 411 cash $62627 earned $238121 dig 18 mach 110 tool 4 ws 2 upg {"cartCap":8,"cartSpeed":9,"loadSpeed":11,"rail":3,"processSpeed":9,"contractValue":4,"rawStorage":7,"crew":5} | pile 690 raw 158 blocks 14 plot 0 | proj 7 st 0 sold 7
+@30m depth 511 cash $219 earned $325412 dig 22 mach 110 tool 4 ws 2 upg {"cartCap":10,"cartSpeed":11,"loadSpeed":13,"rail":4,"processSpeed":10,"contractValue":6,"rawStorage":9,"crew":6} | pile 825 raw 59 blocks 34 plot 68 | proj 7 st 5 sold 7
+@35m depth 598 cash $12315 earned $766580 dig 27 mach 110 tool 4 ws 3 upg {"cartCap":12,"cartSpeed":13,"loadSpeed":16,"rail":4,"processSpeed":13,"contractValue":7,"rawStorage":11,"crew":8} | pile 937 raw 225 blocks 11 plot 0 | proj 8 st 3 sold 8
+@40m depth 685 cash $470307 earned $1958857 dig 29 mach 111 tool 4 ws 3 upg {"cartCap":14,"cartSpeed":14,"loadSpeed":17,"rail":4,"processSpeed":14,"contractValue":8,"rawStorage":12,"crew":9} | pile 1095 raw 397 blocks 79 plot 49 | proj 9 st 1 sold 9
+@45m depth 783 cash $38888 earned $2619061 dig 33 mach 111 tool 5 ws 3 upg {"cartCap":15,"cartSpeed":16,"loadSpeed":18,"rail":4,"processSpeed":16,"contractValue":9,"rawStorage":14,"crew":10} | pile 1157 raw 299 blocks 78 plot 51 | proj 9 st 3 sold 9
+@50m depth 870 cash $370811 earned $6352571 dig 39 mach 111 tool 5 ws 3 upg {"cartCap":18,"cartSpeed":19,"loadSpeed":21,"rail":5,"processSpeed":18,"contractValue":10,"rawStorage":16,"crew":10} | pile 1361 raw 520 blocks 101 plot 46 | proj 10 st 1 sold 10
+@55m depth 953 cash $195205 earned $7911414 dig 41 mach 111 tool 5 ws 3 upg {"cartCap":19,"cartSpeed":19,"loadSpeed":22,"rail":5,"processSpeed":19,"contractValue":10,"rawStorage":17,"crew":10} | pile 1417 raw 846 blocks 51 plot 0 | proj 10 st 4 sold 10
+@60m depth 1000 cash $389859 earned $16604042 dig 45 mach 111 tool 5 ws 3 upg {"cartCap":21,"cartSpeed":21,"loadSpeed":25,"rail":5,"processSpeed":21,"contractValue":10,"rawStorage":19,"crew":10} | pile 1569 raw 1253 blocks 123 plot 61 | proj 11 st 2 sold 11
+@65m depth 1000 cash $976842 earned $19008125 dig 46 mach 111 tool 5 ws 3 upg {"cartCap":21,"cartSpeed":22,"loadSpeed":25,"rail":5,"processSpeed":21,"contractValue":10,"rawStorage":19,"crew":10} | pile 1543 raw 1078 blocks 46 plot 0 | proj 11 st 4 sold 11
+frames 14638 median 12.0 p95 17.0 p99 28.4 max 5645.8; >50ms: 32
+ERRORS: none

@@ -1,0 +1,99 @@
+  0.00m SIGNALS hot=0[] tour=hidden story=false eco=false
+  0.00m TEXT: YOU BOUGHT THIS LAND FOR $1.
+  0.14m TEXT: RUBBLE ISN'T MONEY.
+  0.30m BANNER First Scratch Reward $160 · tap to claim
+  0.30m TEXT: GET IT TO THE SURFACE.
+  0.50m CLAIM 1 trophies
+  0.86m TEXT: FOLLOW THE CART ▲  (YARD)
+  0.86m TEXT: YARD UNLOCKED
+  0.92m BANNER Special Delivery Reward $170 · tap to claim
+  1.03m BUY Build Recycling Yard $250 (waited 62s)
+  1.04m SIGNALS hot=1[Recruit a Miner] tour=hidden story=false eco=false
+  1.04m TEXT: BUILD SITE UNLOCKED
+  1.10m TEXT: FIRST BLOCK
+  1.12m TEXT: Now this is useful.
+  1.12m CLAIM 2 trophies
+  1.13m BUY Iron Pickaxe $60 (waited 6s)
+  1.14m BANNER Iron Will +1 more trophy · rewards $440 · tap to claim
+  1.15m BUY Cart Speed $90 (waited 1s)
+  1.18m CLAIM 2 trophies
+  1.19m BUY Recruit a Miner $120 (waited 2s)
+  1.20m SIGNALS hot=1[Recruit Miner #2] tour=hidden story=false eco=true
+  1.20m BEST Recruit Miner $147 (waited 1s)
+  1.21m SIGNALS hot=1[Recruit Miner #3] tour=hidden story=false eco=false
+  1.21m CLAIM 2 trophies
+  1.22m BUY Recruit Miner #3 $179 (waited 1s)
+  1.23m SIGNALS hot=1[Processing Speed] tour=hidden story=false eco=true
+  1.23m CLAIM 1 trophies
+  1.23m BEST Processing Speed $100 (waited 1s)
+  1.25m SIGNALS hot=0[] tour=hidden story=false eco=false
+  1.25m BEST Loading Speed $50 (waited 1s)
+  1.26m SIGNALS hot=1[Processing Speed] tour=hidden story=false eco=true
+  1.26m BEST Processing Speed $155 (waited 1s)
+  1.27m SIGNALS hot=1[Recruit Miner #4] tour=hidden story=false eco=false
+  1.37m BANNER Not Alone Reward $300 · tap to claim
+  1.44m TEXT: BUILD SOMETHING.
+  1.44m CLAIM 1 trophies
+  1.45m BUY Cart Capacity $120 (waited 12s)
+  1.48m TEXT: 🏗 FOUNDATION STARTED
+  1.57m TEXT: ✓ FOUNDATION COMPLETE
+  1.58m BUY Loading Speed $75 (waited 8s)
+  1.59m TEXT: 🏗 WALLS STARTED
+  1.61m BANNER Ankle Deep +1 more trophy · rewards $350 · tap to claim
+  1.65m CLAIM 1 trophies
+  1.66m BUY Recruit Miner #4 $218 (waited 5s)
+  1.67m SIGNALS hot=0[] tour=hidden story=false eco=false
+  2.10m TEXT: ✓ WALLS COMPLETE
+  2.13m TEXT: 🏗 ROOF STARTED
+  2.26m TEXT: ✓ ROOF COMPLETE
+  2.26m TEXT: 🏠 HUT COMPLETE
+  2.26m SELL property #1
+  2.27m BEST Cart Capacity $186 (waited 37s)
+  2.28m BANNER Home Sweet Hut Reward $240 · tap to claim
+  2.28m BEST Crew gear: Iron Picks $300 (waited 1s)
+  2.30m BUY Cart Speed $140 (waited 1s)
+  2.31m SIGNALS hot=0[] tour=open story=false eco=false
+  2.31m CLAIM 1 trophies
+  2.32m BUY Recruit Miner #5 $266 (waited 1s)
+  2.35m CLAIM 2 trophies
+  2.37m CLAIM 1 trophies
+  2.38m BUY Heavy Pickaxe $450 (waited 4s)
+  2.40m CLAIM 1 trophies
+  2.40m BEST Reinforced Wood Track $250 (waited 1s)
+  2.41m BEST Crew Tools (unlocks Processing Speed) $250 (waited 1s)
+  2.45m BUY Raw Storage $150 (waited 3s)
+  2.48m SIGNALS hot=0[] tour=mini story=false eco=false
+  2.48m CLAIM 2 trophies
+  2.49m BUY Recruit Miner #6 $325 (waited 2s)
+  2.50m BANNER Heavy Hitter +4 more trophies · rewards $1.86K · tap to claim
+  2.50m CLAIM 1 trophies
+  2.51m BUY Crew Tools $400 (waited 1s)
+  2.53m TEXT: 🏗 FRAME STARTED
+  2.71m TEXT: ✓ FRAME COMPLETE
+  2.71m CLAIM 1 trophies
+  2.72m BUY Crew Stamina $400 (waited 12s)
+  2.73m BANNER Payday Reward $300 · tap to claim
+  3.02m BEST Block Quality (unlocks Processing Speed) $400 (waited 18s)
+  3.23m BUY Loading Speed $113 (waited 13s)
+  3.24m TEXT: 🏗 FINISHING STARTED
+  3.38m TEXT: ✓ FINISHING COMPLETE
+  3.38m TEXT: 🏠 TINY CABIN COMPLETE
+  3.38m SELL property #2
+  3.39m BEST Processing Speed $241 (waited 10s)
+  3.40m BEST Cart Capacity $289 (waited 1s)
+  3.41m BEST Expand to Work Chamber $900 (waited 1s)
+  3.42m BANNER Fire in the Hole Reward $350 · tap to claim
+  3.45m CLAIM 1 trophies
+  3.45m BUY Cart Speed $217 (waited 2s)
+  3.48m BUY Raw Storage $240 (waited 1s)
+  3.85m BANNER Century Shaft Reward $570 · tap to claim
+  3.89m CLAIM 1 trophies
+  3.90m BUY Recruit Miner #7 $396 (waited 25s)
+  3.91m BEST Recruit Miner $483 (waited 1s)
+  4.59m BUY Recruit Miner #9 $589 (waited 41s)
+
+buys 33; longest gaps between purchases: 62s, 41s, 37s, 25s, 18s, 13s
+end: depth 144.5 cash 650 earned 4459 dig 9 tool 2 ws 1 sold 2 upg {"cartCap":3,"cartSpeed":3,"loadSpeed":3,"rail":1,"processSpeed":3,"contractValue":1,"rawStorage":2,"crew":0,"crewTools":2,"crewStamina":1}
+ERRORS [
+  'Failed to load resource: the server responded with a status of 403 (Forbidden)'
+]

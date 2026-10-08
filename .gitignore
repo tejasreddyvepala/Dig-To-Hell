@@ -1,0 +1,7 @@
+node_modules
+dist
+.DS_Store
+dist-test
+
+# root copies of the preview-video originals (committed once under release/video/originals/)
+/Dig-To-Hell-*.mp4
