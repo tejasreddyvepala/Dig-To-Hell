@@ -6,9 +6,9 @@
 //              a finished property is ready to sell).
 //   nothing  = everything else — including any ordinary affordable upgrade.
 // If any red exists, yellows are suppressed. Badges never show on the site being viewed.
-import { CFG } from './config';
+import { CFG, UPGRADES } from './config';
 import { S, type Site } from './state';
-import { buildUnlocked, yardUnlocked } from './economy';
+import { buildUnlocked, nextTrack, pileCap, upgCost, yardUnlocked } from './economy';
 import { cartBlocked, trackOverloaded } from './cart';
 import { canStartStage } from './construction';
 import { showSitePanel, updatePanel } from './panel';
@@ -25,7 +25,7 @@ export type Attention = 'red' | 'yellow' | '';
 /** Every condition that can light a badge lives here (and only here). */
 export function siteAttention(site: Site): Attention {
   if (!siteUnlocked(site)) return '';
-  if (site === 'mine') return trackOverloaded() ? 'red' : '';
+  if (site === 'mine') return trackOverloaded() || pileStuck() ? 'red' : '';
   if (site === 'yard') {
     if (S.yard && cartBlocked()) return 'red'; // raw storage full: the cart can't unload, the mine stalls
     if (!S.flags.seenYard) return 'yellow'; // new site
@@ -36,6 +36,18 @@ export function siteAttention(site: Site): Attention {
   if (S.flags.crewSeen && !S.flags.crewAck) return 'yellow'; // CONSTRUCTION CREW just became available (blocks are waiting)
   if (S.build.done) return 'yellow'; // property ready to sell
   return '';
+}
+
+/** The dig-site pile has been FULL for a while (rubble is being backfilled = transport can't keep up) and the player
+ *  can afford a transport upgrade right now: an active, fixable problem. */
+let pileFullSince = 0;
+function pileStuck() {
+  if (!S.yard || S.rubble.qty < pileCap(S) - 1) { pileFullSince = 0; return false; }
+  const now = performance.now();
+  if (!pileFullSince) pileFullSince = now;
+  if (now - pileFullSince < 20000) return false;
+  const cheapest = Math.min(...UPGRADES.filter((u) => u.group === 'transport' && u.id !== 'rail' && S.upg[u.id] < u.maxLevel).map((u) => upgCost(S, u.id)), nextTrack(S)?.cost ?? Infinity);
+  return S.cash >= cheapest;
 }
 
 /** The whole chain is idle because nothing is being dug (no crew yet, nothing in the pipeline). Used only by the

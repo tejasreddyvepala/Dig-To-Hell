@@ -7,11 +7,12 @@ import { S } from './state';
 import { buildUnlocked, mixPick, projectValue } from './economy';
 import { rubbleRGB } from './geo';
 import type { BuildEvent } from './construction';
-import { drawScaffold, drawSiteCrew, updateSiteCrew } from './sitecrew';
-import { pileLabel } from './draw';
+import { drawBuilding as drawBuildingAt } from './buildings';
+import { craneTarget, drawScaffold, drawSiteCrew, updateSiteCrew } from './sitecrew';
 import { FX, addPart, popup } from './fx';
 import { playKnock, playSold, playSting, playCoin } from './audio';
 import { duckMusic } from './music';
+import { nightness } from './landscape';
 import { toast } from './toast';
 import { ctx, faceScale, surfaceLayout, view } from './view';
 import { hash, money, rgb, rnd } from './util';
@@ -56,7 +57,10 @@ export function presentBuild(events: BuildEvent[]) {
     else if (e.type === 'stageDone') toast('build', `✓ ${nm} COMPLETE`, '+' + money(e.cash ?? 0), 'cash', 2.8);
     else if (e.type === 'complete') toast('build', `🏠 ${nm} COMPLETE`, 'PROPERTY READY', 'big', 3.6);
     if (e.type === 'stageStart') playKnock(0.8);
-    else if (e.type === 'stageDone') {
+    else if (e.type === 'stagePay') { // a progress instalment: a small, quiet "+$" at the building (no toast)
+      popup(bx + 1.8 * u, L.gy - 2.6 * u, '+' + money(e.cash ?? 0), '#ffe38a', 17 * Math.sqrt(faceScale() / CFG.fxScaleRef), { life: 1.6, pop: 0.2, sub: 'PROGRESS PAYMENT', rise: 0.5 });
+      playCoin(0.5);
+    } else if (e.type === 'stageDone') {
       popup(bx + 1.8 * u, L.gy - 3.2 * u, '+' + money(e.cash ?? 0), '#ffd84a', 24 * Math.sqrt(faceScale() / CFG.fxScaleRef), { life: 2.2, pop: 0.5, sub: (e.name ?? '').toUpperCase() + ' ✓', rise: 0.5 });
       playCoin(0.9);
       dustBurst(bx + 1.8 * u, L.gy - 0.2 * u, 8, u);
@@ -108,7 +112,8 @@ export function drawSite() {
   ctx.strokeStyle = 'rgba(255,120,60,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 0.1 * u, gy - 0.45 * u); ctx.lineTo(x1 - 0.1 * u, gy - 0.45 * u); ctx.stroke();
 
   const bx = x0 + 2.6 * u;
-  if (!buildUnlocked(S)) { drawLockedPlot(x0, x1, gy, u); return; } // foreshadowing: an empty, surveyed lot
+  if (!buildUnlocked(S)) { drawLockedPlot(x0, x1, gy, u); return; }
+  drawTown(x0, x1, gy, u); // foreshadowing: an empty, surveyed lot
   const sold = SITE.sold;
   if (sold) {
     // the finished building stands with a SOLD sign, then is cleared
@@ -128,7 +133,8 @@ export function drawSite() {
     const any = prog.some((p) => p > 0);
     if (!any) drawBuilding(S.build.project, bx, gy, u, prog.map(() => 1), true); // blueprint of what will stand here
     else drawBuilding(S.build.project, bx, gy, u, prog, false);
-    if (S.build.done) drawSign(bx - 0.2 * u, gy, u, 'FOR SALE', '#f2c64a', '#2a2100');
+    if (S.build.done) drawSign(bx + (PROJECTS[S.build.project].w + 0.7) * u, gy, u, 'FOR SALE', '#f2c64a', '#2a2100');
+    if (S.build.project >= 2 && !S.build.done) drawFloodlights(x0, x1, gy, u, bx);
   }
   // project board at the plot's front
   const pr = PROJECTS[S.build.project];
@@ -140,9 +146,43 @@ export function drawSite() {
   ctx.font = `600 ${Math.round(u * 0.14)}px ${FONT_UI}`; ctx.fillStyle = '#e8f0e0';
   ctx.fillText(money(projectValue(S)), bxs, gy - 0.98 * u);
 
-  drawStack(x0 + 1.0 * u, gy, u);
+}
+
+/** The block stack sits on the plot BEHIND the road: drawn before the truck, so the truck drives in front of it. */
+export function drawSiteStack() {
+  if (!siteVisible() || !buildUnlocked(S)) return;
+  const L = surfaceLayout();
+  drawStack(L.plotX0 + 1.0 * L.u, L.gy, L.u);
+}
+
+/** The plot's working layer — scaffold, builders, crane and the block count — drawn AFTER the delivery truck, so a
+ *  parked/unloading truck never hides the people building the house or the "N blocks on site" count. */
+export function drawSiteFront() {
+  if (!siteVisible() || !buildUnlocked(S)) return;
+  const L = surfaceLayout(), u = L.u, gy = L.gy, x0 = L.plotX0, bx = x0 + 2.6 * u;
   drawScaffold(bx, gy, u);
   drawSiteCrew(bx, gy, u, rgb(blockCol(), 1));
+  if (!SITE.sold && !S.build.done && S.build.project >= CRANE_FROM) drawCrane(bx, gy, u); // the crane comes down when the building is finished
+  drawStackLabel(x0 + 1.0 * u, u);
+  if (S.build.done && !SITE.sold) drawSellArrow(bx, gy, u);
+}
+
+/** A finished property waiting for its sale: a gold arrow bobs over the roof ("READY TO SELL") so the eye goes there. */
+function drawSellArrow(bx: number, gy: number, u: number) {
+  const pr = PROJECTS[S.build.project], t = view.t;
+  const cx = bx + (pr.w * u) / 2, bob = Math.sin(t * 4) * 0.12 * u, tip = gy - (pr.h + 0.35) * u + bob;
+  const a = 0.55 * u, glow = 0.5 + 0.5 * Math.sin(t * 3.2);
+  ctx.save();
+  ctx.shadowColor = `rgba(255,205,60,${(0.55 + 0.4 * glow).toFixed(2)})`; ctx.shadowBlur = 18 + 14 * glow;
+  ctx.fillStyle = '#ffd84a'; ctx.strokeStyle = '#5a3a02'; ctx.lineWidth = Math.max(2, u * 0.05); ctx.lineJoin = 'round';
+  ctx.beginPath(); // a chunky down arrow
+  ctx.moveTo(cx, tip); ctx.lineTo(cx - a, tip - a); ctx.lineTo(cx - a * 0.42, tip - a); ctx.lineTo(cx - a * 0.42, tip - a * 1.9);
+  ctx.lineTo(cx + a * 0.42, tip - a * 1.9); ctx.lineTo(cx + a * 0.42, tip - a); ctx.lineTo(cx + a, tip - a); ctx.closePath();
+  ctx.fill(); ctx.shadowBlur = 0; ctx.stroke();
+  ctx.font = `${Math.round(u * 0.24)}px ${FONT_D}`; ctx.textAlign = 'center'; ctx.lineWidth = Math.max(3, u * 0.08);
+  ctx.strokeStyle = 'rgba(40,24,0,.9)'; ctx.strokeText('READY TO SELL', cx, tip - a * 2.15);
+  ctx.fillStyle = '#ffe680'; ctx.fillText('READY TO SELL', cx, tip - a * 2.15);
+  ctx.restore();
 }
 
 /** Before BUILD unlocks: survey stakes with flags, a construction fence and a blank sign board. No crew, no stack. */
@@ -178,12 +218,18 @@ function drawStack(cx: number, gy: number, u: number) {
     ctx.fillStyle = rgb(col, 0.92 + hash(i) * 0.12); ctx.fillRect(x + 1, y, bw - 2, bh - 1);
     ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(x + 1, y, bw - 2, bh * 0.22);
   }
-  const top = gy - u * 0.06 - Math.ceil(Math.max(1, n) / cols) * bh;
-  if (q >= 1 || S.build.project > 0 || S.stats.delivered > 0) {
-    pileLabel(cx, top - u * 0.16, Math.floor(q), Math.round(12 + u * 0.08), false);
-    ctx.font = `600 ${Math.round(9 + u * 0.05)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.8)';
-    ctx.fillText('blocks on site', cx, top + u * 0.04);
-  }
+  stackTop = gy - u * 0.06 - Math.ceil(Math.max(1, n) / cols) * bh;
+}
+let stackTop = 0;
+/** The plot's block count: one pill ("18 blocks on site"), drawn AFTER the builders so they never hide it. */
+function drawStackLabel(cx: number, u: number) {
+  const q = S.build.material.qty;
+  if (!(q >= 1 || S.build.project > 0 || S.stats.delivered > 0)) return;
+  const t = `${Math.floor(q)} blocks on site`, size = Math.round(10 + u * 0.06), y = stackTop - u * 0.14;
+  ctx.font = `700 ${size}px ${FONT_UI}`; ctx.textAlign = 'center';
+  const w = ctx.measureText(t).width + size;
+  ctx.fillStyle = 'rgba(14,9,6,.62)'; ctx.beginPath(); ctx.roundRect(cx - w / 2, y - size, w, size * 1.4, size * 0.7); ctx.fill();
+  ctx.fillStyle = '#f3e6cf'; ctx.fillText(t, cx, y);
 }
 
 function drawSign(x: number, gy: number, u: number, text: string, bg: string, fg: string) {
@@ -201,113 +247,123 @@ function drawDozer(x: number, gy: number, u: number) {
   ctx.fillStyle = '#5f666e'; ctx.fillRect(x + 0.7 * u, gy - 0.6 * u, 0.12 * u, 0.6 * u); // blade
 }
 
-// ---------- buildings ----------
-const WOOD = '#b58a52', WOOD_D = '#8a6236', LOG = '#a4703e', CONC = '#9a958c';
-
+// ---------- buildings (generic renderer in buildings.ts) ----------
 /** Draw a project at per-stage progress `p` with its left-bottom corner at (bx, gy). `blueprint` = outline only. */
 function drawBuilding(project: number, bx: number, gy: number, u: number, p: number[], blueprint: boolean) {
-  ctx.save();
-  ctx.translate(bx, gy);
-  if (blueprint) {
-    ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(140,200,255,.75)'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(0,0,0,0)';
-  }
-  if (PROJECTS[project].id === 'cabin') cabin(u, p, blueprint); else home(u, p, blueprint);
+  ctx.save(); ctx.translate(bx, gy);
+  drawBuildingAt(project, u, p, blueprint, view.t);
   ctx.restore();
   if (blueprint) {
-    ctx.setLineDash([]);
     ctx.font = `600 ${Math.round(9 + u * 0.06)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(160,210,255,.9)';
-    ctx.fillText('BLUEPRINT', bx + (PROJECTS[project].id === 'cabin' ? 1.7 : 2.3) * u, gy - 0.35 * u);
+    ctx.fillText('BLUEPRINT', bx + (PROJECTS[project].w / 2) * u, gy - 0.35 * u);
   }
 }
 
-/** Fill helper: in blueprint mode strokes the outline instead. */
-function box(x: number, y: number, w: number, h: number, col: string, bp: boolean) {
-  if (bp) { ctx.strokeRect(x, y, w, h); return; }
-  ctx.fillStyle = col; ctx.fillRect(x, y, w, h);
+// ---------- site drama: the town you have built, the tower crane, night floodlights ----------
+/** Every project type already sold stands in the distance (hazy, small): the town the mine has built. */
+const town = { key: '', cv: null as HTMLCanvasElement | null };
+function drawTown(x0: number, x1: number, gy: number, u: number) {
+  const n = Math.min(S.build.project, S.stats.sold); // project types already completed and sold
+  if (n <= 0) return;
+  const k = 0.3, su = u * k, night = nightness() > 0.35;
+  const key = `${n}|${Math.round(u)}|${night}`;
+  // lay the town out: older (smaller) buildings further from the plot, alternating sides
+  const items: { p: number; x: number }[] = [];
+  let lx = x0 - 1.4 * u, rx = x1 + 2.6 * u; // well clear of the plot and its project board: this is the town, not the next build
+  for (let i = n - 1; i >= 0; i--) {
+    const w = PROJECTS[i].w * su;
+    if ((n - 1 - i) % 2 === 0) { items.push({ p: i, x: rx }); rx += w + 0.9 * su; } else { lx -= w + 0.9 * su; items.push({ p: i, x: lx }); }
+  }
+  const minX = Math.min(...items.map((t) => t.x)), maxX = Math.max(...items.map((t) => t.x + PROJECTS[t.p].w * su)) + su;
+  const H = Math.max(...items.map((t) => PROJECTS[t.p].h)) * su + 2.4 * su;
+  if (town.key !== key || !town.cv) { // re-render the distant town only when it changes
+    const cv = town.cv ?? document.createElement('canvas');
+    const hill = 0.55 * u; cv.width = Math.ceil(maxX - minX + 2 * su); cv.height = Math.ceil(H + hill);
+    const c = cv.getContext('2d')!;
+    c.clearRect(0, 0, cv.width, cv.height);
+    // the low hill the town stands on (rounded ends so it melts into the forest line)
+    c.fillStyle = '#5d7f52';
+    for (const t of items) { const x0t = t.x - minX + su, wt = PROJECTS[t.p].w * su; c.beginPath(); c.ellipse(x0t + wt / 2, cv.height, wt / 2 + su * 2.2, cv.height - H + su * 0.3, 0, Math.PI, 0); c.fill(); }
+    for (const t of items) { c.save(); c.translate(t.x - minX + su, H); drawBuildingAt(t.p, su, PROJECTS[t.p].stages.map(() => 1), false, 0, c); c.restore(); }
+    // atmospheric haze: pull everything toward the far-hill colour (lit windows survive at night)
+    c.globalCompositeOperation = 'source-atop';
+    c.fillStyle = night ? 'rgba(30,40,70,.7)' : 'rgba(160,190,218,.68)'; c.fillRect(0, 0, cv.width, cv.height);
+    c.globalCompositeOperation = 'source-over';
+    town.cv = cv; town.key = key;
+  }
+  ctx.drawImage(town.cv, minX - su, gy - town.cv.height); // on a low hill behind the lot
 }
 
-function cabin(u: number, p: number[], bp: boolean) {
-  const w = 3.4 * u, slab = 0.2 * u, H = 1.5 * u, y0 = -slab, top = y0 - H;
-  // 0 FOUNDATION: slab poured left -> right
-  if (p[0] > 0) box(-0.1 * u, y0, (w + 0.2 * u) * p[0], slab, CONC, bp);
-  // 1 FRAME: studs one by one, then the top plate
-  if (p[1] > 0) {
-    const n = 7, shown = Math.ceil(p[1] * n);
-    for (let i = 0; i < shown; i++) box((i / (n - 1)) * (w - 0.1 * u), top, 0.1 * u, H, WOOD, bp);
-    if (p[1] > 0.85) box(0, top - 0.06 * u, w, 0.1 * u, WOOD_D, bp);
+const CRANE_FROM = 5; // Apartment Block onward: a project too big for ladders gets a tower crane
+/** Yellow lattice tower crane right of the building: its trolley ferries pallets of blocks from the stack to the
+ *  current work spot (presentation only; follows the same target the builders hammer). */
+function drawCrane(bx: number, gy: number, u: number) {
+  const pr = PROJECTS[S.build.project], mx = bx + (pr.w + 1.35) * u, top = gy - (pr.h + 1.9) * u, jibY = top + 0.35 * u;
+  const jx0 = bx - 2.2 * u, jx1 = mx + 2.3 * u, Y = '#f2b51c', YD = '#b57d0e', INK = '#2a1d12';
+  const lattice = (x: number, y0: number, y1: number, w: number) => { // vertical mast section
+    ctx.fillStyle = Y; ctx.fillRect(x - w / 2, y1, 3, y0 - y1); ctx.fillRect(x + w / 2 - 3, y1, 3, y0 - y1);
+    ctx.strokeStyle = YD; ctx.lineWidth = 1.6; ctx.beginPath();
+    for (let y = y0; y > y1 + w * 0.5; y -= w) { ctx.moveTo(x - w / 2, y); ctx.lineTo(x + w / 2, y - w); ctx.moveTo(x - w / 2, y - w); ctx.lineTo(x + w / 2, y - w); }
+    ctx.stroke();
+  };
+  const mw = 0.42 * u;
+  ctx.fillStyle = '#7d7d7d'; ctx.fillRect(mx - mw, gy - 0.18 * u, mw * 2, 0.18 * u); // concrete footing
+  lattice(mx, gy - 0.18 * u, jibY + 0.2 * u, mw);
+  // jib + counter-jib (horizontal lattice), tie rods to the A-frame peak
+  ctx.fillStyle = Y; ctx.fillRect(jx0, jibY, jx1 - jx0, 3); ctx.fillRect(jx0, jibY + 0.26 * u, jx1 - jx0 - 1.0 * u, 3);
+  ctx.strokeStyle = YD; ctx.lineWidth = 1.3; ctx.beginPath();
+  for (let x = jx0; x < jx1 - 1.0 * u - 0.26 * u; x += 0.26 * u) { ctx.moveTo(x, jibY + 0.26 * u + 2); ctx.lineTo(x + 0.26 * u, jibY + 2); }
+  ctx.stroke();
+  const peakY = top - 0.7 * u;
+  ctx.fillStyle = Y; ctx.beginPath(); ctx.moveTo(mx - mw / 2, jibY); ctx.lineTo(mx, peakY); ctx.lineTo(mx + mw / 2, jibY); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(40,30,20,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(mx, peakY); ctx.lineTo(jx0 + 0.6 * u, jibY); ctx.moveTo(mx, peakY); ctx.lineTo(jx1 - 0.2 * u, jibY); ctx.stroke();
+  // counterweight + operator cab
+  ctx.fillStyle = '#8d8a84'; ctx.fillRect(jx1 - 0.95 * u, jibY + 3, 0.8 * u, 0.5 * u); ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.strokeRect(jx1 - 0.95 * u, jibY + 3, 0.8 * u, 0.5 * u);
+  ctx.fillStyle = '#e8eef2'; ctx.fillRect(mx - mw * 0.9 - 0.42 * u, jibY + 3, 0.42 * u, 0.44 * u); ctx.fillStyle = '#9fd0ea'; ctx.fillRect(mx - mw * 0.9 - 0.36 * u, jibY + 0.08 * u, 0.3 * u, 0.2 * u);
+  ctx.strokeStyle = INK; ctx.strokeRect(mx - mw * 0.9 - 0.42 * u, jibY + 3, 0.42 * u, 0.44 * u);
+  // company banner on the counter-jib side of the mast
+  ctx.fillStyle = '#1f2a33'; ctx.fillRect(mx + mw * 0.6, jibY + 0.32 * u, 1.1 * u, 0.3 * u);
+  ctx.font = `${Math.round(u * 0.17)}px ${FONT_D}`; ctx.textAlign = 'center'; ctx.fillStyle = Y; ctx.fillText('DIG CO.', mx + mw * 0.6 + 0.55 * u, jibY + 0.53 * u);
+  // aircraft warning light
+  if (Math.floor(view.t * 1.4) % 2 === 0) { ctx.fillStyle = '#ff3b2f'; ctx.beginPath(); ctx.arc(mx, peakY - 2, 3, 0, 6.283); ctx.fill(); const g = ctx.createRadialGradient(mx, peakY, 0, mx, peakY, 14); g.addColorStop(0, 'rgba(255,60,40,.5)'); g.addColorStop(1, 'rgba(255,60,40,0)'); ctx.fillStyle = g; ctx.fillRect(mx - 14, peakY - 14, 28, 28); }
+  // the lift cycle: hook down at the stack → pallet up → trolley over → lowered to the work spot → back
+  const tgt = craneTarget(), stackX = bx - 1.6 * u, stackY = gy - 0.5 * u;
+  let hx = mx - 1.2 * u, hy = jibY + 1.2 * u, load = false;
+  if (tgt) {
+    const tx = bx + tgt.x * u, ty = gy - (tgt.h + 0.35) * u, cyc = 10, k = (view.t % cyc) / cyc, e = (a: number) => a * a * (3 - 2 * a);
+    const hold = jibY + 0.8 * u;
+    if (k < 0.15) { hx = stackX; hy = hold + (stackY - hold) * e(k / 0.15); }
+    else if (k < 0.3) { hx = stackX; hy = stackY + (hold - stackY) * e((k - 0.15) / 0.15); load = true; }
+    else if (k < 0.5) { hx = stackX + (tx - stackX) * e((k - 0.3) / 0.2); hy = hold; load = true; }
+    else if (k < 0.62) { hx = tx; hy = hold + (Math.min(ty, gy - 0.4 * u) - hold) * e((k - 0.5) / 0.12); load = true; }
+    else if (k < 0.75) { hx = tx; hy = Math.min(ty, gy - 0.4 * u) + (hold - Math.min(ty, gy - 0.4 * u)) * e((k - 0.62) / 0.13); }
+    else { hx = tx + (stackX - tx) * e((k - 0.75) / 0.25); hy = hold; }
   }
-  // 2 WALLS: log courses from the bottom up
-  if (p[2] > 0 && !bp) {
-    const h = H * p[2];
-    ctx.fillStyle = LOG; ctx.fillRect(0, y0 - h, w, h);
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
-    for (let y = y0 - 0.18 * u; y > y0 - h; y -= 0.18 * u) ctx.fillRect(0, y, w, 1.5);
-    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(0, y0 - h, w, 2);
+  const sway = Math.sin(view.t * 1.7) * 0.04 * u;
+  ctx.fillStyle = '#3b3f45'; ctx.fillRect(hx - 0.14 * u, jibY + 2, 0.28 * u, 0.12 * u); // trolley
+  ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(hx - 2, jibY + 0.12 * u); ctx.lineTo(hx - 2 + sway, hy); ctx.moveTo(hx + 2, jibY + 0.12 * u); ctx.lineTo(hx + 2 + sway, hy); ctx.stroke();
+  ctx.fillStyle = '#f2b51c'; ctx.fillRect(hx - 0.08 * u + sway, hy, 0.16 * u, 0.1 * u); ctx.strokeStyle = INK; ctx.strokeRect(hx - 0.08 * u + sway, hy, 0.16 * u, 0.1 * u);
+  ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx + sway, hy + 0.17 * u, 0.06 * u, -0.3, Math.PI + 0.3, false); ctx.stroke(); // hook
+  if (load) { // a strapped pallet of the plot's blocks
+    const px = hx + sway, py = hy + 0.24 * u, col = blockCol();
+    ctx.strokeStyle = 'rgba(40,30,20,.8)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, hy + 0.2 * u); ctx.lineTo(px - 0.3 * u, py + 0.06 * u); ctx.moveTo(px, hy + 0.2 * u); ctx.lineTo(px + 0.3 * u, py + 0.06 * u); ctx.stroke();
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 3; i++) { ctx.fillStyle = rgb(col, 0.92 + hash(i + r * 3) * 0.12); ctx.fillRect(px - 0.3 * u + i * 0.2 * u + 1, py + 0.06 * u + r * 0.13 * u, 0.2 * u - 2, 0.13 * u - 1); }
+    ctx.fillStyle = '#8a6a44'; ctx.fillRect(px - 0.32 * u, py + 0.32 * u, 0.64 * u, 0.05 * u);
   }
-  // 3 ROOF: gable filling from the eaves to the ridge
-  if (p[3] > 0) {
-    const ridge = top - 1.15 * u;
-    ctx.save();
-    if (!bp) { ctx.beginPath(); ctx.rect(-0.5 * u, top - (top - ridge) * p[3] - 2, w + u, (top - ridge) * p[3] + 0.2 * u); ctx.clip(); }
-    ctx.beginPath(); ctx.moveTo(-0.3 * u, top + 0.05 * u); ctx.lineTo(w / 2, ridge); ctx.lineTo(w + 0.3 * u, top + 0.05 * u); ctx.closePath();
-    if (bp) ctx.stroke(); else { ctx.fillStyle = '#7a3b2e'; ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,.15)'; for (let i = 1; i < 5; i++) ctx.fillRect(-0.3 * u, top - (i * (top - ridge)) / 5, w + 0.6 * u, 1.5); }
-    ctx.restore();
-  }
-  // 4 FINISHING: door, window, chimney, porch, lantern
-  const f = p[4];
-  if (f > 0.05) box(w * 0.18, y0 - 0.95 * u, 0.42 * u, 0.95 * u, '#6b3f24', bp);
-  if (f > 0.3) { box(w * 0.58, y0 - 1.1 * u, 0.62 * u, 0.48 * u, '#9fd0ea', bp); if (!bp) { ctx.fillStyle = '#f2ead8'; ctx.fillRect(w * 0.58 + 0.3 * u, y0 - 1.1 * u, 2, 0.48 * u); } }
-  if (f > 0.5) box(w * 0.7, top - 1.05 * u, 0.28 * u, 0.7 * u, '#7d4b3a', bp);
-  if (f > 0.7) box(w * 0.1, y0 - 0.02 * u, 0.7 * u, 0.12 * u, WOOD_D, bp);
-  if (f > 0.9 && !bp) { ctx.fillStyle = '#ffe9a8'; ctx.fillRect(w * 0.12, y0 - 1.15 * u, 0.08 * u, 0.12 * u); ctx.fillStyle = '#5a9a4a'; ctx.fillRect(w * 0.58, y0 - 0.6 * u, 0.62 * u, 0.1 * u); }
 }
 
-function home(u: number, p: number[], bp: boolean) {
-  const w = 4.6 * u, slab = 0.24 * u, F = 1.35 * u, y0 = -slab, y1 = y0 - F, y2 = y1 - 0.12 * u - F;
-  // 0 FOUNDATION
-  if (p[0] > 0) box(-0.12 * u, y0, (w + 0.24 * u) * p[0], slab, CONC, bp);
-  // 1 GROUND FLOOR: brick courses
-  if (p[1] > 0) {
-    const h = F * (bp ? 1 : p[1]);
-    box(0, y0 - h, w, h, '#a65a42', bp);
-    if (!bp) { ctx.fillStyle = 'rgba(0,0,0,.14)'; for (let y = y0 - 0.12 * u; y > y0 - h; y -= 0.12 * u) ctx.fillRect(0, y, w, 1); }
+/** Two light towers at the plot corners; after dusk they throw hard white cones onto the building (work goes on). */
+function drawFloodlights(x0: number, x1: number, gy: number, u: number, bx: number) {
+  const pr = PROJECTS[S.build.project], hgt = Math.max(2.6, pr.h * 0.75) * u, n = nightness();
+  for (const [px, dir] of [[x0 + 0.35 * u, 1], [x1 - 0.35 * u, -1]] as const) {
+    ctx.fillStyle = '#5d646d'; ctx.fillRect(px - 2, gy - hgt, 4, hgt);
+    ctx.fillStyle = '#3d434a'; ctx.fillRect(px - 0.3 * u, gy - hgt - 0.14 * u, 0.6 * u, 0.16 * u);
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = n > 0.15 ? '#fffbe0' : '#c9d2da'; ctx.fillRect(px - 0.26 * u + i * 0.19 * u, gy - hgt - 0.11 * u, 0.14 * u, 0.1 * u); }
+    if (n > 0.15) {
+      const a = Math.min(1, (n - 0.15) * 2.2), tx = bx + pr.w * 0.5 * u, g = ctx.createLinearGradient(px, gy - hgt, tx, gy - pr.h * 0.4 * u);
+      g.addColorStop(0, `rgba(255,250,215,${(0.42 * a).toFixed(2)})`); g.addColorStop(1, 'rgba(255,250,215,0)');
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.beginPath();
+      ctx.moveTo(px, gy - hgt); ctx.lineTo(tx + dir * pr.w * 0.1 * u, gy - (pr.h + 0.3) * u); ctx.lineTo(tx - dir * pr.w * 0.55 * u, gy); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
   }
-  // 2 UPPER FLOOR: floor slab, then studs
-  if (p[2] > 0) {
-    box(-0.1 * u, y1 - 0.12 * u, (w + 0.2 * u) * Math.min(1, p[2] * 2), 0.12 * u, CONC, bp);
-    if (p[2] > 0.5) { const n = 9, shown = Math.ceil(((p[2] - 0.5) / 0.5) * n); for (let i = 0; i < shown; i++) box((i / (n - 1)) * (w - 0.1 * u), y2, 0.1 * u, F, WOOD, bp); }
-  }
-  // 3 WALLS & SIDING: siding over the upper floor
-  if (p[3] > 0 && !bp) {
-    const h = F * p[3];
-    ctx.fillStyle = '#d9d2bf'; ctx.fillRect(0, y1 - 0.12 * u - h, w, h);
-    ctx.fillStyle = 'rgba(0,0,0,.1)'; for (let y = y1 - 0.12 * u - 0.1 * u; y > y1 - 0.12 * u - h; y -= 0.1 * u) ctx.fillRect(0, y, w, 1);
-  }
-  // 4 ROOF: hip roof, filled from the eaves up
-  if (p[4] > 0) {
-    const rt = y2 - 1.2 * u;
-    ctx.save();
-    if (!bp) { ctx.beginPath(); ctx.rect(-0.6 * u, y2 - (y2 - rt) * p[4] - 2, w + 1.2 * u, (y2 - rt) * p[4] + 0.2 * u); ctx.clip(); }
-    ctx.beginPath(); ctx.moveTo(-0.35 * u, y2 + 0.05 * u); ctx.lineTo(0.8 * u, rt); ctx.lineTo(w - 0.8 * u, rt); ctx.lineTo(w + 0.35 * u, y2 + 0.05 * u); ctx.closePath();
-    if (bp) ctx.stroke(); else { ctx.fillStyle = '#4a4f5a'; ctx.fill(); }
-    ctx.restore();
-  }
-  // 5 WINDOWS & DOORS
-  const k = p[5], items = [
-    () => box(w * 0.42, y0 - 1.0 * u, 0.5 * u, 1.0 * u, '#5a3a22', bp), // front door
-    () => box(w * 0.1, y0 - 1.0 * u, 0.62 * u, 0.5 * u, '#9fd0ea', bp),
-    () => box(w * 0.72, y0 - 1.0 * u, 0.62 * u, 0.5 * u, '#9fd0ea', bp),
-    () => box(w * 0.1, y1 - 1.05 * u, 0.62 * u, 0.55 * u, '#9fd0ea', bp),
-    () => box(w * 0.42, y1 - 1.05 * u, 0.62 * u, 0.55 * u, '#9fd0ea', bp),
-    () => box(w * 0.72, y1 - 1.05 * u, 0.62 * u, 0.55 * u, '#9fd0ea', bp),
-  ];
-  const shownW = bp ? items.length : Math.ceil(k * items.length);
-  for (let i = 0; i < shownW; i++) items[i]();
-  // 6 LANDSCAPING: lawn, path, bushes, tree, fence
-  const g = bp ? 0 : p[6];
-  if (g > 0.05) { ctx.fillStyle = '#5e8f45'; ctx.fillRect(-0.9 * u, -0.08 * u, w + 1.6 * u, 0.1 * u); }
-  if (g > 0.25) { ctx.fillStyle = '#b9ad95'; ctx.fillRect(w * 0.42, -0.06 * u, 0.5 * u, 0.08 * u); }
-  if (g > 0.45) { ctx.fillStyle = '#3f7a3a'; for (const bxx of [0.05, 0.75]) { ctx.beginPath(); ctx.ellipse(w * bxx + 0.3 * u, -0.2 * u, 0.32 * u, 0.22 * u, 0, 0, 6.283); ctx.fill(); } }
-  if (g > 0.7) { ctx.fillStyle = '#6b4a2e'; ctx.fillRect(w + 0.55 * u, -1.1 * u, 0.12 * u, 1.1 * u); ctx.fillStyle = '#4c8a3c'; ctx.beginPath(); ctx.arc(w + 0.61 * u, -1.35 * u, 0.5 * u, 0, 6.283); ctx.fill(); }
-  if (g > 0.9) { ctx.fillStyle = '#efe9da'; for (let x = -0.9 * u; x < -0.1 * u; x += 0.16 * u) ctx.fillRect(x, -0.42 * u, 0.06 * u, 0.42 * u); ctx.fillRect(-0.9 * u, -0.34 * u, 0.8 * u, 0.05 * u); }
 }

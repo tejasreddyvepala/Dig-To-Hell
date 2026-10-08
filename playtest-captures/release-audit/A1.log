@@ -1,0 +1,71 @@
+  0.00m TEXT: YOU BOUGHT THIS LAND FOR $1.
+  0.17m TEXT: RUBBLE ISN'T MONEY.
+  0.26m TEXT: GET IT TO THE SURFACE.
+  0.28m CLAIM 1 trophies
+  0.63m TEXT: FOLLOW THE CART ▲  (YARD)
+  0.63m TEXT: YARD UNLOCKED
+  0.75m CLAIM 1 trophies
+  0.80m BUY Build Recycling Yard $250 (waited 48s)
+  0.81m TEXT: BUILD SITE UNLOCKED
+  0.82m BEST Recruit Miner $120 (waited 1s)
+  0.88m CLAIM 2 trophies
+  0.88m BEST Recruit Miner $147 (waited 4s)
+  0.91m BUY Iron Pickaxe $60 (waited 1s)
+  0.93m BUY Cart Speed $90 (waited 1s)
+  0.94m CLAIM 2 trophies
+  0.95m BUY Recruit Miner #3 $179 (waited 2s)
+  0.97m BEST Processing Speed $100 (waited 1s)
+  0.98m CLAIM 1 trophies
+  0.99m BUY Cart Capacity $120 (waited 1s)
+  1.00m BEST Loading Speed $50 (waited 1s)
+  1.33m TEXT: ⚠ TRACK STRAIN
+  1.37m TEXT: These wooden rails weren't built for loads this heavy.
+  1.38m CLAIM 2 trophies
+  1.38m BEST Processing Speed $155 (waited 22s)
+  1.40m CLAIM 1 trophies
+  1.41m BUY Cart Capacity $186 (waited 2s)
+  1.42m TEXT: Reinforce the track before transport gets worse.
+  1.46m TEXT: FIRST BLOCK
+  1.61m TEXT: Now this is useful.
+  1.61m TEXT: 🏗 FOUNDATION STARTED
+  1.71m BUY Loading Speed $75 (waited 18s)
+  1.73m TEXT: ✓ FOUNDATION COMPLETE
+  1.73m TEXT: 🏗 WALLS STARTED
+  1.91m TEXT: ✓ WALLS COMPLETE
+  1.93m TEXT: 🏗 ROOF STARTED
+  2.26m SELL property #1
+  2.26m BEST Recruit Miner $218 (waited 33s)
+  2.50m BEST Iron Picks $300 (waited 15s)
+  2.67m BEST Cart Speed $140 (waited 10s)
+  2.72m CLAIM 3 trophies
+  2.72m BEST Recruit Miner $266 (waited 3s)
+  2.75m TEXT: ✓ FRAME COMPLETE
+  2.76m CLAIM 3 trophies
+  2.77m BEST Reinforced Wood Track $250 (waited 3s)
+  3.06m CLAIM 3 trophies
+  3.06m BEST Crew Tools (unlocks Processing Speed) $250 (waited 17s)
+  3.52m SELL property #2
+  3.53m BEST Recruit Miner $325 (waited 28s)
+  3.87m BEST Crew Stamina (unlocks Processing Speed) $400 (waited 20s)
+  3.96m TEXT: 🏗 FRAME STARTED
+  3.98m CLAIM 2 trophies
+  3.99m BEST Raw Storage (unlocks Processing Speed) $150 (waited 7s)
+  4.11m BEST Block Quality (unlocks Processing Speed) $400 (waited 7s)
+  4.17m BEST Processing Speed $241 (waited 4s)
+  4.19m BEST Loading Speed $113 (waited 1s)
+  4.20m CLAIM 1 trophies
+  4.21m BEST Cart Capacity $289 (waited 1s)
+  4.22m BEST Crew Tools (unlocks Processing Speed) $400 (waited 1s)
+  4.24m BEST Expand to Work Chamber $900 (waited 1s)
+  4.26m CLAIM 1 trophies
+  4.27m BUY Heavy Pickaxe $450 (waited 2s)
+  4.39m CLAIM 1 trophies
+  4.39m BEST Recruit Miner $396 (waited 7s)
+  4.41m BEST Cart Speed $217 (waited 1s)
+  4.79m BEST Recruit Miner $483 (waited 23s)
+  4.81m CLAIM 1 trophies
+  4.82m BEST Recruit Miner $589 (waited 2s)
+
+buys 32; longest gaps between purchases: 48s, 33s, 28s, 23s, 22s, 20s
+end: depth 127.0 cash 536 earned 4335 dig 9 tool 2 ws 1 sold 2 upg {"cartCap":3,"cartSpeed":3,"loadSpeed":3,"rail":1,"processSpeed":3,"contractValue":1,"rawStorage":1,"crew":0,"crewTools":2,"crewStamina":1}
+ERRORS none

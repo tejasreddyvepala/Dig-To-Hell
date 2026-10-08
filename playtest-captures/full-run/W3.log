@@ -1,0 +1,47 @@
+=== W3 speed 16 for 75 game-min
+  1.2 min  Yard built
+  3.5 min  first sale
+  6.5 min  worksite 1 (Chamber)
+  6.5 min  sold #2
+  8.8 min  Jackhammer
+  8.8 min  sold #3
+  9.5 min  100 m
+ 12.2 min  Excavator
+ 12.2 min  sold #4
+ 13.5 min  200 m
+ 15.8 min  sold #5
+ 18.7 min  300 m
+ 19.7 min  worksite 2 (Great Hall)
+ 19.7 min  sold #6
+ 20.2 min  Diamond Drill
+ 24.7 min  400 m
+ 25.2 min  Saw Rig
+ 25.2 min  sold #7
+ 29.7 min  500 m
+ 31.3 min  sold #8
+ 31.9 min  worksite 3 (Deep Cavern)
+ 35.4 min  600 m
+ 40.2 min  Drill Rig
+ 40.2 min  sold #9
+ 41.6 min  700 m
+ 42.0 min  Hellforge
+ 46.6 min  800 m
+ 52.4 min  900 m
+ 58.7 min  1000 m
+@0m depth 0 cash $0 earned $0 dig 0 mach 000 tool 0 ws 0 upg {"cartCap":0,"cartSpeed":0,"loadSpeed":0,"rail":0,"processSpeed":0,"contractValue":0,"rawStorage":0,"crew":0,"crewTools":0,"crewStamina":0} | pile 0 raw 0 blocks 0 plot 0 | proj 0 st 0 sold 0
+@5m depth 32 cash $15 earned $1243 dig 1 mach 000 tool 1 ws 0 upg {"cartCap":1,"cartSpeed":1,"loadSpeed":3,"rail":1,"processSpeed":1,"contractValue":0,"rawStorage":0,"crew":0,"crewTools":0,"crewStamina":0} | pile 0 raw 0 blocks 0 plot 0 | proj 1 st 2 sold 1
+@10m depth 117 cash $212 earned $8716 dig 6 mach 000 tool 3 ws 1 upg {"cartCap":3,"cartSpeed":3,"loadSpeed":5,"rail":1,"processSpeed":3,"contractValue":0,"rawStorage":2,"crew":0,"crewTools":1,"crewStamina":0} | pile 17 raw 8 blocks 4 plot 45 | proj 3 st 2 sold 3
+@15m depth 235 cash $377 earned $22674 dig 9 mach 100 tool 3 ws 1 upg {"cartCap":4,"cartSpeed":5,"loadSpeed":7,"rail":2,"processSpeed":5,"contractValue":1,"rawStorage":4,"crew":2,"crewTools":3,"crewStamina":1} | pile 420 raw 3 blocks 7 plot 175 | proj 4 st 5 sold 4
+@20m depth 321 cash $26091 earned $98040 dig 15 mach 100 tool 3 ws 2 upg {"cartCap":7,"cartSpeed":7,"loadSpeed":10,"rail":3,"processSpeed":7,"contractValue":3,"rawStorage":6,"crew":3,"crewTools":5,"crewStamina":3} | pile 624 raw 151 blocks 35 plot 33 | proj 6 st 0 sold 6
+@25m depth 411 cash $61206 earned $244219 dig 17 mach 110 tool 4 ws 2 upg {"cartCap":8,"cartSpeed":9,"loadSpeed":11,"rail":3,"processSpeed":9,"contractValue":4,"rawStorage":7,"crew":5,"crewTools":6,"crewStamina":4} | pile 685 raw 55 blocks 6 plot 0 | proj 7 st 0 sold 7
+@30m depth 508 cash $1209 earned $329386 dig 21 mach 110 tool 4 ws 2 upg {"cartCap":10,"cartSpeed":10,"loadSpeed":13,"rail":4,"processSpeed":10,"contractValue":5,"rawStorage":9,"crew":6,"crewTools":7,"crewStamina":6} | pile 809 raw 197 blocks 53 plot 40 | proj 7 st 5 sold 7
+@35m depth 593 cash $108456 earned $757974 dig 25 mach 110 tool 4 ws 3 upg {"cartCap":11,"cartSpeed":12,"loadSpeed":14,"rail":4,"processSpeed":12,"contractValue":7,"rawStorage":10,"crew":7,"crewTools":9,"crewStamina":7} | pile 894 raw 128 blocks 34 plot 21 | proj 8 st 3 sold 8
+@40m depth 670 cash $73382 earned $1019145 dig 28 mach 110 tool 4 ws 3 upg {"cartCap":13,"cartSpeed":13,"loadSpeed":16,"rail":4,"processSpeed":13,"contractValue":8,"rawStorage":12,"crew":8,"crewTools":10,"crewStamina":8} | pile 1016 raw 230 blocks 0 plot 39 | proj 8 st 8 sold 8
+@45m depth 775 cash $26394 earned $2099321 dig 30 mach 111 tool 5 ws 3 upg {"cartCap":14,"cartSpeed":15,"loadSpeed":17,"rail":4,"processSpeed":14,"contractValue":8,"rawStorage":12,"crew":9,"crewTools":11,"crewStamina":9} | pile 1095 raw 203 blocks 23 plot 0 | proj 9 st 2 sold 9
+@50m depth 863 cash $1995468 earned $6141724 dig 35 mach 111 tool 5 ws 3 upg {"cartCap":16,"cartSpeed":17,"loadSpeed":19,"rail":5,"processSpeed":16,"contractValue":10,"rawStorage":15,"crew":10,"crewTools":13,"crewStamina":10} | pile 1230 raw 373 blocks 5 plot 40 | proj 10 st 1 sold 10
+@55m depth 949 cash $130744 earned $7251685 dig 39 mach 111 tool 5 ws 3 upg {"cartCap":18,"cartSpeed":19,"loadSpeed":22,"rail":5,"processSpeed":19,"contractValue":10,"rawStorage":16,"crew":10,"crewTools":15,"crewStamina":10} | pile 1365 raw 681 blocks 54 plot 55 | proj 10 st 3 sold 10
+@60m depth 1000 cash $6117023 earned $15904011 dig 41 mach 111 tool 5 ws 3 upg {"cartCap":19,"cartSpeed":20,"loadSpeed":23,"rail":5,"processSpeed":20,"contractValue":10,"rawStorage":17,"crew":10,"crewTools":16,"crewStamina":10} | pile 1434 raw 645 blocks 111 plot 83 | proj 11 st 1 sold 11
+@65m depth 1000 cash $1184222 earned $19508793 dig 45 mach 111 tool 5 ws 3 upg {"cartCap":21,"cartSpeed":21,"loadSpeed":25,"rail":5,"processSpeed":21,"contractValue":10,"rawStorage":19,"crew":10,"crewTools":18,"crewStamina":10} | pile 1523 raw 1024 blocks 0 plot 45 | proj 11 st 4 sold 11
+@70m depth 1000 cash $16548394 earned $38809609 dig 47 mach 111 tool 5 ws 3 upg {"cartCap":21,"cartSpeed":22,"loadSpeed":25,"rail":5,"processSpeed":22,"contractValue":10,"rawStorage":19,"crew":10,"crewTools":18,"crewStamina":10} | pile 1569 raw 1193 blocks 106 plot 240 | proj 11 st 0 sold 12
+frames 13002 median 8.9 p95 33.5 p99 57.2 max 602.6; >50ms: 197
+ERRORS: none

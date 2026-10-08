@@ -1,6 +1,6 @@
 // Dig-face state: chunk geometry, damage, and the crack/dent marks that communicate damage.
 // Pure data + logic (no canvas). Coordinates are logical face px: x in [0, logicalW], y down from the surface.
-import { CFG, type Material, type MaterialId } from './config';
+import { CFG, type Material, type MatFam } from './config';
 import { rnd, rndi } from './util';
 
 const F = CFG.face;
@@ -162,7 +162,7 @@ function dent(c: Chunk, x: number, amount: number) {
 
 /** Visual features for reaching stage `k` (1-based) on chunk c at hit point (x,y). */
 function addStageFeatures(c: Chunk, k: number, x: number, y: number) {
-  const id: MaterialId = c.mat.id;
+  const id: MatFam = c.mat.fam;
   const W = chunkW();
   if (id === 'dirt') {
     if (k === 1) {
@@ -214,9 +214,9 @@ export function damageChunk(c: Chunk, dmg: number, x: number, y: number, intensi
     for (let k = before + 1; k <= after; k++) addStageFeatures(c, k, x, y);
     if (after === before) {
       // sub-stage hit: still visibly marks the rock where it landed
-      const kind: MarkKind = c.mat.id === 'stone' ? 'impact' : c.mat.id === 'clay' ? 'dent' : 'scuff';
+      const kind: MarkKind = c.mat.fam === 'stone' ? 'impact' : c.mat.fam === 'clay' ? 'dent' : 'scuff';
       c.marks.push({ x: x + rnd(-3, 3), y: y + rnd(-2, 2), r: rnd(2, 3.5), kind });
-      if (c.mat.id === 'clay') dent(c, x, F.dentPx * 0.35);
+      if (c.mat.fam === 'clay') dent(c, x, F.dentPx * 0.35);
     }
     c.stage = after;
   }

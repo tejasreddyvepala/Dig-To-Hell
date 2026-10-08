@@ -77,6 +77,13 @@ DIG → RAW MATERIAL (rubble) → LOAD CART → TRANSPORT TO SURFACE → RECYCLI
 | Processing | hopper full (RAW FULL); cart waiting at the top to unload |
 | Construction | a big stack waiting on the plot while the builders work → hire Construction Crew (more builders appear) |
 
+
+**Release-fix economy changes (2026-10-07, see RELEASE_READINESS.md):**
+- *Progress instalments:* construction stages of ≥ 200 blocks pay in instalments at 25/50/75% built plus the remainder on completion (`CFG.build.instalments`, `instalmentMinBlocks`). The total equals the old single stage payment. Reason: late stages take minutes, and cash sat flat with nothing to buy.
+- *Track opening grace:* until the first property sale, an over-safe cart is only STRAINED (creaks, dust), never OVERLOADED (no −30%, no red badge, no story). The track system is introduced after the player has seen the whole loop once.
+- *Pacing:* depth per break ×0.82 for Stone/Cave and ×0.68 from Silver onward (an optimal bot went 43 → 51.0 min to 1,000 m; target is about 60 min for a person). The opening is unchanged.
+- *Background tabs:* hidden time is simulated on return with the offline model (capped at 8 h); the same "while you were away" card appears if the tab was away for 60 s or more.
+
 ---
 
 ## 4. Locations
@@ -328,8 +335,8 @@ Rewards flow through the physical economy. No random event within 20 s of a find
 ## 13. Geology (implemented; keep)
 One deterministic sampler (`materialAt` logical / `materialAtXY` visual) drives walls, face, debris and rubble. Logical ranges: Dirt 0–75 m, Clay 75–155 m, Stone 155–250 m, Cave Rock 250–300 m, then procedural deep rock. Visual boundaries are irregular: large waves + small noise, lenses/pockets near boundaries, wandering strata, streaks, embedded rocks, faint fissures; painted per 5 m segment and cached. No universal mud-coloured rubble; no giant black damage cracks outside the dig face; no unexplained red.
 
-### Beyond 300 m
-Depth is unbounded; 300 m is a milestone. Procedural deep rock; `hpPerStage(d) = caveHp × (1 + (d − 300)/hardDiv)^hardExp` with `hardExp` ≈ 1.2–1.4; block value `V(d) = 1 + d/120` continues (and keeps flowing into construction value); transport time stays linear in depth.
+### Beyond 300 m (superseded by §25: the mine now ends at 1,000 m)
+See §25 for the 14 authored layers down to the Gates of Hell.
 
 ---
 
@@ -435,6 +442,7 @@ Eventually the player zooms/navigates between a peaceful landscape, an industria
 - localStorage, saved every 5 s and on unload/pagehide; try/catch; versioned schema; explicit migration that never duplicates material or cash and deletes the old key only after the new save is written.
 - Saved: cash, depth, tool, crew, finds, rubble, cart, raw, finished blocks, truck, upgrade levels, yard built, worksite tier, construction (project, stage, stage progress, site material, properties sold), tutorial progress, navigation unlocks, current site, stats. Music/SFX preferences are a separate settings key.
 - Not saved: animation phases, particles, cracks, worker fatigue phases (regenerated staggered on load).
+- **Save safety (2026-10-07):** key `digtohell_v6`, also saved when the tab is hidden. An unreadable or unknown-version save is never silently overwritten: it's copied to `digtohell_v6_backup_<time>` (newest 2 kept), then the rolling `digtohell_v6_prev` (last good save, refreshed ≤ 1/min) is tried, and the player is told what happened. Resets clear `_prev`. `sanitize()` clamps every crew type to its `max` (machines are one each).
 - **Offline (interim, unresolved):** elapsed time (capped) runs the real chain conservatively: crew digging → cart → yard → truck → construction stock. Construction stages do not auto-start offline (the player starts them; future Foreman automates). Crew digging stops just short of the next discovery so discoveries are never skipped.
 
 ---
@@ -479,6 +487,41 @@ Deepest depth (primary), fastest milestone times, highest production, event reco
 - **Save v5** (`state.ts`): adds `site`, `tut`, `worksite`, `build {project, stage, active, used, material, done}`, `stats.sold`; truck states remapped from v4 (old DEPARTING → PARKED; its bed had already been paid for).
 
 ---
+
+## 25. The Deep Mine: 1,000 m to the Gates of Hell (as built, 2026-10-06)
+**Goal:** about **60 minutes** of play from a fresh save to 1,000 m (pacing bot: 61.5 min), each 100 m ~5–7 min, the last 100 m the slowest ("the final stretch"). The player should always want to see what is next: a "▼ NEXT LAYER in N m" pill sits at the bottom of the mine view.
+
+**Layers** (each = new look, sound family, harder rock, more valuable blocks; banner on entry):
+| From | Layer | Block value | Look |
+|---|---|---|---|
+| 0 | Dirt | ×1 | brown earth |
+| 60 | Clay | ×1 | red clay |
+| 130 | Stone | ×1.05 | grey stone |
+| 200 | Cave Rock | ×1.1 | dark cool rock |
+| 270 | Silver Vein | ×1.3 | silver specks |
+| 340 | Crystal Caverns | ×1.45 | blue/violet crystals, blue darkness |
+| 410 | Gold Seam | ×1.7 | gold veins, warm darkness |
+| 480 | Ruby Bed | ×1.9 | red rock, rubies |
+| 550 | Emerald Vault | ×2.1 | green rock, emeralds |
+| 620 | Diamond Pipe | ×2.5 | kimberlite, white-blue diamonds |
+| 700 | Prismatic Opal | ×3 | rainbow gems, violet darkness |
+| 780 | Obsidian | ×2.2 | black glass, purple glints |
+| 860 | Magma Rock | ×2.6 | lava veins, glowing cracks, embers |
+| 930 | Hellstone | ×3.2 | red-hot rock, heat glow |
+Block value = `(1 + d/120) × layer value × Block Quality`. Gems twinkle in the dark walls (drawn over the darkness), sit in boulders and in the dig face, and fly out of breaks.
+
+**The ending:** from 940 m a rune-covered arch glows up through the floor; at **1,000 m** its doors blaze open (banner + message). Digging stops; construction continues. (The 300 m Red Door of §16 is superseded by this gate as the depth goal; a mid-mine mystery can return later.)
+
+**More room as the mine deepens** (the room is carried forward with the active floor; the camera pulls back as it widens): Narrow Shaft → Work Chamber ($900, 2 diggers) → Great Hall ($15k, 10 diggers, 8 crew shown) → Deep Cavern ($150k, 22 diggers, 11 crew shown).
+**Machines** (each bites a whole chunk per cycle, needs room): Excavator ($4k, Work Chamber) → Diamond Saw Rig ($45k, Great Hall; spinning diamond blade) → Deep Drill Rig ($450k, Deep Cavern; lattice mast + auger, as on the reference sheet).
+**Tools:** Pickaxe → Iron → Heavy → Jackhammer → Diamond Drill ($30k @270 m) → Hellforge Breaker ($350k @700 m).
+**Worker upgrades:** Crew Tools (+12% digger power per level, quicker swing, crew picks visibly upgrade steel → iron → heavy → diamond) and Crew Stamina (longer shifts, shorter breaks; 85% → 97% of the crew digging).
+**Track:** Wood → Reinforced → Iron → Steel → Mag-Rail ($60k, safe 900) → Hellfire Rail ($600k, safe 1,800).
+**Pile:** the dig-site pile holds 3 cart loads (min 240); excess rubble is backfilled into old workings. This keeps the pile's value fresh (deep precious rubble is never averaged away) and makes transport the visible limit: the pile count turns red when full, and the MINE tab shows a red ! when it has been full for 20 s and a transport upgrade is affordable.
+**Finds** (+10% digging each): rusty coin 12 m, buried car 45 m, dinosaur skull 165 m, crystal geode 360 m, gold nugget 440 m, lost miner's chest 565 m, stone idol 675 m, horned skull 905 m.
+**Construction ladder:** Hut → Tiny Cabin → One-Story House → Two-Story Home → Farmhouse → Apartment Block → Office Tower → Mansion → The White House → Skyscraper ($90k base) → Stadium ($160k) → Obsidian Palace ($300k, the last; repeats sell −10% each, floor 60%).
+**Yard grows across the hour:** a silo every 5 Raw Storage levels, motors every 4 Processing levels, forklift at 6, dust cyclone at 9; Block Quality: QC beacon 1, gantry crane 4, gold trim 8.
+**Achievements:** 50, in 8 categories with bronze/silver/gold tiers, stored separately (survive Start over).
 
 ## 30. Superseded Decisions (do not reintroduce)
 - Cash from clicking / breaks / crew / finds (original prototype).

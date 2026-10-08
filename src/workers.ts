@@ -4,7 +4,9 @@
 // Phases are staggered so the mine never stops; if every seat is taken a tired worker keeps going a little longer.
 import { CFG, CREW, WORKSITES, type CrewId } from './config';
 import { S } from './state';
-import { chunkHp, crewTypeDps, materialAt } from './economy';
+import { chunkHp, crewTypeDps, crewUptime, crewYield, materialAt } from './economy';
+/** Rubble each miner just broke loose, shown as a small "+N" over their head (render). */
+export const crewPops: { x: number; n: number; t: number; y?: number }[] = [];
 import { face, chunkAtX, clampHitX, initFace } from './digface';
 import { strike, type HitResult } from './sim';
 import { rnd } from './util';
@@ -97,7 +99,7 @@ function make(id: CrewId, homeX: number, arrive: boolean): Worker {
     id, seed: Math.floor(rnd(1, 1e6)), homeX, x: homeX, y: 0, dir: homeX < face.w / 2 ? 1 : -1,
     timer: rnd(0.25, 1) * c.swingSecs, period: c.swingSecs * rnd(0.9, 1.1), since: 1,
     state: 'work', t: 0,
-    fatigue: rnd(R.work[0], R.work[1]) * rnd(0.25, 1), // staggered: nobody gets tired at the same moment
+    fatigue: rnd(R.work[0], R.work[1]) * workK() * rnd(0.25, 1), // staggered: nobody gets tired at the same moment
     path: [], pathT: 0, pathDur: 0, seat: -1, restLeft: 0,
     idle: 'look', idleDur: 0, idleCool: rnd(R.idleEvery[0], R.idleEvery[1]),
   };
@@ -107,12 +109,13 @@ function make(id: CrewId, homeX: number, arrive: boolean): Worker {
 
 /** Sync the visible workforce with owned crew and the current worksite tier. Existing workers keep their state. */
 export function syncWorkers(animateNew = false) {
-  const site = ws(), hasExc = S.crew.exc > 0 && face.tier >= 1;
+  const site = ws(), hasExc = CREW.some((c) => c.machine && S.crew[c.id] > 0 && face.tier >= c.needsTier && site.mach[c.id] !== undefined);
   const digSlots = hasExc ? site.slotsWithExc : site.slots;
   const keep: Worker[] = [];
   for (const c of CREW) {
-    const slots = c.id === 'dig' ? digSlots : [site.excX];
-    const want = Math.min(S.crew[c.id], slots.length, c.id === 'dig' ? site.visible : 1, c.id === 'exc' && face.tier < c.needsTier ? 0 : 99);
+    const mx = site.mach[c.id];
+    const slots = c.id === 'dig' ? digSlots : mx === undefined ? [] : [mx];
+    const want = Math.min(S.crew[c.id], slots.length, c.id === 'dig' ? site.visible : 1, c.machine && face.tier < c.needsTier ? 0 : 99);
     for (let k = 0; k < want; k++) {
       const homeX = slots[k];
       const old = workers.find((w) => w.id === c.id && w.homeX === homeX) ?? workers.find((w) => w.id === c.id && !keep.includes(w));
@@ -130,6 +133,10 @@ export function syncWorkers(animateNew = false) {
 export const restingCount = () => workers.filter((w) => w.state === 'rest').length;
 export const seatsTotal = () => R.seats;
 
+/** Crew Stamina: longer shifts, shorter breaks. */
+const workK = () => 1 + CFG.workers.staminaWork * S.upg.crewStamina;
+const restK = () => Math.max(0.4, 1 - CFG.workers.staminaRest * S.upg.crewStamina);
+
 const SWING_WINDOW = (CFG.miner.windupMs + CFG.miner.downswingMs) / 1000 + 0.05;
 
 /** Advance crew behaviour; returns strikes that landed this frame. `paused` = expansion sequence (crew stand clear). */
@@ -144,11 +151,11 @@ export function updateCrew(dt: number, paused = false): HitResult[] {
         const p = pathPos(w.path, w.pathT);
         w.x = p.x; w.y = p.y; w.dir = p.dir;
         if (w.pathT >= w.pathDur) {
-          if (w.state === 'toRest') { w.state = 'rest'; w.t = 0; w.restLeft = rnd(R.rest[0], R.rest[1]); w.dir = 1; }
+          if (w.state === 'toRest') { w.state = 'rest'; w.t = 0; w.restLeft = rnd(R.rest[0], R.rest[1]) * restK(); w.dir = 1; }
           else {
             if (w.state === 'arrive') landings.push(w);
             w.state = 'work'; w.t = 0; w.x = w.homeX; w.y = 0; w.dir = w.homeX < face.w / 2 ? 1 : -1;
-            w.fatigue = rnd(R.work[0], R.work[1]);
+            w.fatigue = rnd(R.work[0], R.work[1]) * workK();
           }
         }
         continue;
@@ -181,16 +188,18 @@ export function updateCrew(dt: number, paused = false): HitResult[] {
       }
     }
     if (w.timer > 0) continue;
-    w.timer += w.period * rnd(0.85, 1.15);
+    w.timer += w.period * rnd(0.85, 1.15) / (w.id === 'dig' ? 1 + CFG.workers.tempoPerLevel * S.upg.crewTools : 1); // better tools: a quicker swing
     w.since = 0;
     const c = CREW.find((x) => x.id === w.id)!;
-    const reach = w.id === 'exc' ? CFG.excavatorReach : CFG.miner.reach * CFG.crewScale;
+    const reach = c.machine ? CFG.machineReach[w.id] : CFG.miner.reach * CFG.crewScale;
     const hx = w.x + w.dir * reach;
     const idx = chunkAtX(hx);
     // total crew output is shared by whoever is currently working (resting workers' share moves to the others)
-    let power = (crewTypeDps(S, w.id) * (w.id === 'dig' ? R.uptime : 1) * w.period) / Math.max(1, working(w.id));
-    if (w.id === 'exc') { const ch = face.chunks[idx]; power = Math.max(power, ch.maxHp - ch.hp + 0.01); } // a bucket bites a whole chunk
-    out.push(strike(idx, clampHitX(idx, hx), rnd(CFG.face.hitYMin, CFG.face.hitYMax), power, false, w.id, c.yield));
+    let power = (crewTypeDps(S, w.id) * (w.id === 'dig' ? crewUptime(S) : 1) * w.period / (w.id === 'dig' ? 1 + CFG.workers.tempoPerLevel * S.upg.crewTools : 1)) / Math.max(1, working(w.id));
+    if (c.machine) { const ch = face.chunks[idx]; power = Math.max(power, ch.maxHp - ch.hp + 0.01); } // a machine bites a whole chunk
+    const hr = strike(idx, clampHitX(idx, hx), rnd(CFG.face.hitYMin, CFG.face.hitYMax), power, false, w.id, crewYield(S, w.id));
+    if (hr.broke) crewPops.push({ x: w.id === 'dig' ? w.x : w.x + w.dir * CFG.machineReach[w.id] * 0.45, n: Math.round(hr.rubble), t: 0, y: w.id === 'dig' ? -58 : -88 }); // "+N" over the miner / the machine
+    out.push(hr);
   }
   return out;
 }

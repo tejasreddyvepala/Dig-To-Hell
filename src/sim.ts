@@ -3,7 +3,7 @@
 // Digging never creates cash: broken chunks add rubble to the dig-site pile (see cart.ts for transport).
 import { CFG, FINDS, MAX_DEPTH, TOOLS, type CrewId, type Find, type Material } from './config';
 import { S } from './state';
-import { addTo, chunkHp, clickPower, crewMps, crewRubbleRate, materialAt, unitValue } from './economy';
+import { addRubble, chunkHp, clickPower, crewMps, crewRubbleRate, materialAt, unitValue } from './economy';
 import { updateConstruction } from './construction';
 import { updateCart } from './cart';
 import { updateSurface } from './surface';
@@ -21,6 +21,9 @@ export interface HitResult {
   meters: number;
 }
 
+/** Everything dug this session (player + crew + machines), for the live dig-rate readout. Not saved. */
+export const DUG = { rubble: 0, lost: 0 }; // lost = rubble backfilled because the dig-site pile was full
+
 /** Resolve one strike. A broken chunk is renewed recessed by the depth gained, so it stays put while the camera eases down. */
 export function strike(idx: number, x: number, y: number, power: number, crit: boolean, crew: CrewId | null, yieldMult = 1): HitResult {
   const c = face.chunks[idx];
@@ -29,7 +32,8 @@ export function strike(idx: number, x: number, y: number, power: number, crit: b
   let meters = 0, rubble = 0;
   if (r.broke) {
     rubble = CFG.rubble.perBreak * yieldMult * (crit ? CFG.rubble.critBreakMult : 1); // bigger tools and machines yield more
-    addTo(S.rubble, rubble, unitValue(S.depth), c.mat.id); // the pile remembers what rock it came from
+    DUG.rubble += rubble;
+    DUG.lost += rubble - addRubble(S, rubble, unitValue(S.depth) * c.mat.valueMult / materialAt(S.depth).valueMult, c.mat.id); // the pile remembers what rock it came from (up to its capacity)
     meters = Math.min(c.mat.metersPerBreak, MAX_DEPTH - S.depth);
     S.depth += meters;
     const mat = materialAt(S.depth);
@@ -64,14 +68,17 @@ export function checkFinds(silent: boolean) {
 // ---- offline (interim): simulate the real production chain conservatively ----
 export interface OfflineReport { secs: number; dm: number; dug: number; delivered: number; earned: number }
 
-export function offlineAdvance(secs: number): OfflineReport | null {
+/** `full`: always simulate the crew too (a tab coming back from the background), not only the chain catching up. */
+export function offlineAdvance(secs: number, full = false): OfflineReport | null {
   secs = Math.min(CFG.offlineCapSecs, secs);
-  if (secs <= CFG.offlineMinSecs) {
+  if (secs < 1) return null;
+  if (secs <= CFG.offlineMinSecs && !full) {
     if (S.tut >= 2) updateCart(secs); // short gaps (reloads): just let the chain catch up
     updateSurface(secs);
     updateConstruction(secs);
     return null;
   }
+  checkFinds(false); // finds already above the floor (e.g. new finds added after this save) count now, so offline digging isn't blocked
   const d0 = S.depth, s0 = S.stats.delivered, c0 = S.stats.earned;
   // crew digging stops just short of the next find so discoveries are never skipped silently
   const stopAt = Math.min(MAX_DEPTH, S.found < FINDS.length ? FINDS[S.found].d - 0.01 : Infinity);
@@ -82,8 +89,12 @@ export function offlineAdvance(secs: number): OfflineReport | null {
       const m = Math.min(crewMps(S) * dt, stopAt - S.depth);
       const frac = crewMps(S) > 0 ? m / (crewMps(S) * dt) : 0;
       const r = crewRubbleRate(S) * dt * frac;
-      addTo(S.rubble, r, unitValue(S.depth), materialAt(S.depth).id);
+      addRubble(S, r, unitValue(S.depth), materialAt(S.depth).id);
       S.depth += m;
+      dug += r;
+    } else if (S.depth >= MAX_DEPTH) { // the mine is finished: the crew quarry Hellstone at the bottom
+      const r = crewRubbleRate(S) * dt;
+      addRubble(S, r, unitValue(S.depth), materialAt(S.depth).id);
       dug += r;
     }
     if (S.tut >= 2) updateCart(dt);

@@ -6,6 +6,7 @@ import { chunkAtX, clampHitX, face } from './digface';
 import { playerStrike, type HitResult } from './sim';
 import { playJack, playSwing } from './audio';
 import { clamp, rnd } from './util';
+import { workers } from './workers';
 
 const M = CFG.miner;
 const W = () => face.w; // the work floor widens with the worksite tier
@@ -38,6 +39,20 @@ export function minerClick(x: number, y: number) {
   else if (hx < miner.x - reach * 0.5) dir = -1;
   let stand = hx - dir * reach;
   if (stand < 12 || stand > W() - 12) { dir = dir === 1 ? -1 : 1; stand = hx - dir * reach; }
+  // never stand inside the Excavator: take the other side of the hit point (the pick still lands on the same spot)
+  for (const exc of workers.filter((w) => w.id !== 'dig')) {
+    const ex = exc.x, half = 52 * CFG.excavatorScale; // the machine's body + tracks (people never stand in it)
+    const inside = (x: number) => x > ex - half && x < ex + half;
+    if (inside(stand)) {
+      const alt = hx + dir * reach;
+      if (!inside(alt) && alt > 12 && alt < W() - 12) { dir = dir === 1 ? -1 : 1; stand = alt; }
+      else { // the hit is right over the machine: stand just outside its nearest edge, facing the hit
+        const l = ex - half - 2, r = ex + half + 2;
+        stand = (Math.abs(hx - l) < Math.abs(hx - r) && l > 12) || r > W() - 12 ? l : r;
+        dir = hx >= stand ? 1 : -1;
+      }
+    }
+  }
   miner.dir = dir;
   miner.standX = clamp(stand, 12, W() - 12);
   miner.lastInput = miner.clock;
@@ -90,7 +105,8 @@ export function swingAngle(t: number) {
   const REST = -0.5, RAISED = -2.5, IMPACT = 1.05;
   if (t < w) { const k = t / w; return REST + (RAISED - REST) * (1 - (1 - k) * (1 - k)); } // ease-out raise
   if (t < w + d) { const k = (t - w) / d; return RAISED + (IMPACT - RAISED) * k * k * k; } // accelerating strike
-  if (t < w + d + r) { const k = (t - w - d) / r; return IMPACT + (REST - IMPACT) * k * k; }
+  if (t < w + d + 0.06) return IMPACT; // the pick bites and the body stays down for a beat (weight)
+  if (t < w + d + 0.06 + r) { const k = (t - w - d - 0.06) / r; return IMPACT + (REST - IMPACT) * (1 - (1 - k) ** 2); } // rise back
   return REST;
 }
 

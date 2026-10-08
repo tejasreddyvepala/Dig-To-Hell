@@ -23,6 +23,7 @@ export function buyExpansion(): boolean {
   const n = nextWorksite(S);
   if (!n || expanding() || S.cash < n.cost || S.crew.dig < n.unlockCrew) return false;
   S.cash -= n.cost;
+  if (S.worksite === 0) S.chamberM = S.depth; // the room is blasted HERE, at this world depth, and stays here
   S.worksite++;
   saveState();
   EXP.phase = 'whistle'; EXP.t = 0;
@@ -43,7 +44,7 @@ export function updateExpansion(dt: number, out: ExpEvent[] = []): ExpEvent[] {
     const k = 1 - Math.exp(-3 * dt);
     workers.forEach((w, i) => {
       if (w.state !== 'work' && w.state !== 'idle') return;
-      const tx = w.id === 'exc' ? w.x : wallX(i);
+      const tx = w.id !== 'dig' ? w.x : wallX(i);
       w.dir = tx < w.x ? -1 : 1; w.x += (tx - w.x) * k;
     });
     miner.standX = wallX(workers.length) + 4;

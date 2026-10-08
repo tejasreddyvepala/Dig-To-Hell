@@ -1,8 +1,9 @@
 // Presentation: maps sim results (strikes, cart events) to FX + audio.
 // Impact hierarchy: normal hit (local) < chunk break (small camera impulse) < crit (hit-stop, star, ring, strongest).
 // Digging feedback is impact, cracks, debris, depth and material — never cash.
+import { palOf } from './bedrock';
 import { AUDIO, CFG, TOOLS, type Material } from './config';
-import { rubbleRGB } from './geo';
+import { matById, rubbleRGB } from './geo';
 import { mixPick } from './economy';
 import type { Load } from './state';
 import type { HitResult } from './sim';
@@ -25,8 +26,15 @@ import { fmt, money, rgb, rnd, rndi, rndr, rndri } from './util';
 /** Effects grow with the work area (authored at CFG.fxScaleRef face scale). */
 const fxk = () => faceScale() / CFG.fxScaleRef;
 
+/** Broken pieces are this rock: the same warm-brown family as the walls/face (a little lighter: fresh fracture). */
 function fragColor(mat: Material) {
-  return rgb(mat.chip, rnd(0.8, 1.2));
+  if (mat.ore && Math.random() < 0.15) return rgb(mat.ore[Math.floor(Math.random() * mat.ore.length)], rnd(1, 1.15)); // gems fly out too
+  const P = palOf(mat), t = rnd(0.25, 0.75);
+  return rgb(P.mid.map((v, i) => v + (P.lit[i] - v) * t) as [number, number, number], rnd(0.9, 1.1));
+}
+function dustColor(mat: Material) {
+  const P = palOf(mat);
+  return `rgba(${P.lit.map((v) => Math.min(255, v * 1.15 + 30) | 0).join(',')},`;
 }
 
 function chips(mat: Material, x: number, y: number, n: number, speed: number) {
@@ -44,7 +52,7 @@ function dust(mat: Material, x: number, y: number, n: number, spread: number) {
   for (let i = 0; i < n; i++) {
     addPart({
       kind: 'dust', x: x + rnd(-spread, spread), y: y + rnd(-4, 4), vx: rnd(-40, 40), vy: rnd(-50, -10),
-      size: rnd(3, 7) * fxk(), col: mat.dust + '1)', life: rnd(0.4, 0.8), floor: Infinity, bounce: 0,
+      size: rnd(3, 7) * fxk(), col: dustColor(mat) + '1)', life: rnd(0.4, 0.8), floor: Infinity, bounce: 0,
     });
   }
 }
@@ -113,7 +121,8 @@ export function present(r: HitResult) {
 
   // LEVEL 1 — every hit: local chips + a puff when the crack advances (the crack itself lives in face state)
   const chipN = Math.max(player ? 1 : 0, Math.round(rndri(mat.hitChips) * k * (r.crit ? CFG.critFx.debrisMult : 1)));
-  chips(mat, p.x, p.y, chipN, (mat.id === 'stone' ? 260 : 170) * (player ? 1 : 0.8));
+  chips(mat, p.x, p.y, chipN, (mat.fam === 'stone' ? 260 : 170) * (player ? 1 : 0.8));
+  if (player && !r.crit) FX.stars.push({ x: p.x, y: p.y, t: CFG.critFx.starSecs * 0.45, size: CFG.critFx.starSize * faceScale() * 0.35 }); // a small impact flash star
   if (r.after > r.before) dust(mat, p.x, p.y, player ? 2 : 1, 4);
 
   // LEVEL 3 — crit
@@ -123,21 +132,21 @@ export function present(r: HitResult) {
     FX.rings.push({ x: p.x, y: p.y, t: 0, s: fxk() });
     if (!r.broke) shatterBurst(mat, p.x, p.y);
     impulse(CFG.impulse.crit, rnd(-0.3, 0.3), 1);
-    playCrit(mat.id);
+    playCrit(mat.fam);
   } else {
-    playHit(mat.id, player && tool.kind === 'jack' ? 0.55 : vol);
+    playHit(mat.fam, player && tool.kind === 'jack' ? 0.55 : vol);
     if (player && tool.kind === 'pick') playThud(tool.thud);
   }
 
   // LEVEL 2 — break: debris + material visibly flies into the rubble pile
   if (r.broke) {
     shatter(r.chunk, k * (r.crit ? CFG.critFx.debrisMult : 1));
-    playBreak(mat.id, vol);
+    playBreak(mat.fam, vol);
     playDebris(vol);
     if (player && !r.crit) impulse(CFG.impulse.break * (0.85 + 0.15 * tool.fx), rnd(-0.2, 0.2), 1);
     // more material per break (tool / machine yield) = visibly more pieces flying into the pile
     const n = Math.round(CFG.rubble.arcsPerBreak * Math.sqrt(r.rubble / CFG.rubble.perBreak) * (player ? 1 : 0.67));
-    for (let i = 0; i < n; i++) { const t = pileTop(); arc(p.x, p.y - 4, t.x, t.y, rnd(0.35, 0.55), rgb(rubbleRGB(mat.id), rnd(0.85, 1.15)), rnd(2.2, 3.6) * faceScale()); }
+    for (let i = 0; i < n; i++) { const t = pileTop(); arc(p.x, p.y - 4, t.x, t.y, rnd(0.35, 0.55), fragColor(mat), rnd(2.2, 3.6) * faceScale()); }
   } else if (player && !r.crit) {
     impulse(CFG.impulse.hit, rnd(-0.2, 0.2), 1);
   }
@@ -184,7 +193,7 @@ export function presentCart(events: CartEvent[], dt: number) {
     if (loadArcT <= 0) {
       loadArcT = CFG.cart.loadArcSecs * Math.max(0.35, 2 / Math.max(2, S.upg.loadSpeed + 2));
       const from = pileTop();
-      arc(from.x, from.y, c.x + rnd(-8, 8) * s, c.y - 18 * s, rnd(0.3, 0.42), rubbleCol(S.rubble), rnd(2, 3.2) * s);
+      arc(from.x, from.y, c.x + rnd(-8, 8) * s, c.y - 18 * s, rnd(0.3, 0.42), fragColor(matById(mixPick(S.rubble, Math.random()))), rnd(2, 3.2) * s);
       if (Math.random() < 0.35) playLoadTick(vol);
     }
   }
@@ -204,9 +213,13 @@ export function presentCart(events: CartEvent[], dt: number) {
 
 /** Crit without a break still throws a heavy spray from the impact point. */
 function shatterBurst(mat: Material, x: number, y: number) {
-  chips(mat, x, y, rndri(mat.debris.frags), mat.id === 'stone' ? 340 : 240);
+  chips(mat, x, y, rndri(mat.debris.frags), mat.fam === 'stone' ? 340 : 240);
   dust(mat, x, y, 4, 8);
-  if (mat.id === 'stone' || mat.id === 'cave') sparks(x, y, rndi(2, 4));
+  if (mat.fam === 'stone' || mat.fam === 'cave') sparks(x, y, rndi(2, 4));
+  if (mat.ore) for (let i = 0; i < 3; i++) { // a few gem sparkles burst from precious layers
+    const c = mat.ore[i % mat.ore.length], a = rnd(-Math.PI * 0.95, -Math.PI * 0.05), v = rnd(120, 300);
+    addPart({ kind: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: 1.6, col: `rgb(${c.join(',')})`, life: rnd(0.35, 0.7), floor: Infinity, bounce: 0 });
+  }
 }
 
 // ---- crew arrival: landing dust + lamp click ----
@@ -356,7 +369,7 @@ export function presentExpansion(events: ExpEvent[]) {
       // dust fills the new chamber; rocks fly off the old walls
       for (let i = 0; i < 70; i++) {
         const p = toScreen(rnd(0, face.w), rnd(-140, 0));
-        addPart({ kind: 'dust', x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-60, 20), size: rnd(8, 18) * fxk(), col: mat.dust + '1)', life: rnd(1.2, 2.4), floor: Infinity, bounce: 0 });
+        addPart({ kind: 'dust', x: p.x, y: p.y, vx: rnd(-90, 90), vy: rnd(-60, 20), size: rnd(8, 18) * fxk(), col: dustColor(mat) + '1)', life: rnd(1.2, 2.4), floor: Infinity, bounce: 0 });
       }
       for (const side of [0, face.w]) {
         for (let i = 0; i < 26; i++) {

@@ -1,6 +1,6 @@
 // Web Audio synthesis. No assets. The context is created on the first user gesture (autoplay policy);
 // until then every play call is a silent no-op.
-import { AUDIO, type MaterialId } from './config';
+import { AUDIO, type MatFam } from './config';
 import { rnd, rndr, rndri } from './util';
 
 let ac: AudioContext | null = null;
@@ -52,7 +52,7 @@ export function unlockAudio() {
       white = makeNoise(false);
       brown = makeNoise(true);
     }
-    if (ac.state === 'suspended') void ac.resume();
+    if (ac.state === 'suspended' && !holds.size) void ac.resume();
   } catch (e) {
     console.warn('Audio unavailable', e);
     ac = null;
@@ -60,6 +60,16 @@ export function unlockAudio() {
 }
 
 export const audioState = () => (ac ? ac.state : 'not-created');
+
+// HOLDS: reasons the game must be silent right now (tab hidden, portal ad break). While any hold is active the
+// context stays suspended, so SFX are dropped and the music scheduler idles (music.ts only schedules while running).
+const holds = new Set<string>();
+export function holdAudio(reason: string, on: boolean) {
+  if (on) holds.add(reason); else holds.delete(reason);
+  if (!ac) return;
+  if (holds.size && ac.state === 'running') void ac.suspend();
+  else if (!holds.size && ac.state === 'suspended') void ac.resume();
+}
 
 /** Called once the AudioContext exists (music.ts builds its graph here). */
 export function onAudioReady(f: (ac: AudioContext, bus: GainNode) => void) { listeners.push(f); if (ac) f(ac, musicBus); }
@@ -118,7 +128,7 @@ export function playSwing() {
 }
 
 /** Impact for one strike. `vol` scales the whole hit (crew strikes are quieter). */
-export function playHit(mat: MaterialId, vol = 1) {
+export function playHit(mat: MatFam, vol = 1) {
   if (!ready()) return;
   const t = ac!.currentTime, j = jitter();
   if (mat === 'dirt') {
@@ -145,7 +155,7 @@ function splitEcho(): AudioNode {
   return g;
 }
 
-export function playBreak(mat: MaterialId, vol = 1) {
+export function playBreak(mat: MatFam, vol = 1) {
   if (!ready()) return;
   const A = AUDIO.brk, t0 = ac!.currentTime, dur = rndr(A.secs), bp = A.bp[mat];
   const out = mat === 'cave' ? splitEcho() : master;
@@ -163,7 +173,7 @@ export function playBreak(mat: MaterialId, vol = 1) {
   tone('sine', A.thump * jitter(), A.thump * 0.6, t0, A.gain * vol * A.thumpGain, 0.004, A.thumpDecay, out); // weight
 }
 
-export function playCrit(mat: MaterialId) {
+export function playCrit(mat: MatFam) {
   if (!ready()) return;
   const A = AUDIO.crit, t = ac!.currentTime, j = jitter();
   const out = mat === 'cave' ? splitEcho() : master;

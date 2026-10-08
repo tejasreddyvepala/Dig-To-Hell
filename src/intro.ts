@@ -6,6 +6,7 @@
 //   4 RECYCLE first block -> "Now this is useful." -> truck leaves -> BUILD unlocks with "!" + "FOLLOW THE TRUCK"
 //   5 BUILD   the empty lot: "BUILD SOMETHING." -> first stage started
 //   6 DONE    (existing saves migrate straight to a late step)
+import { gameplayStart } from './platform';
 import { CFG } from './config';
 import { S } from './state';
 import { view } from './view';
@@ -35,6 +36,7 @@ export function initIntro(onStart: () => void) {
 export function startDigging() {
   if (S.tut !== 0) return;
   S.tut = 1;
+  gameplayStart();
   queue = []; cur = null;
   btn.hidden = true;
 }

@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@500;700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;background:#000;overflow:hidden}
+.c{position:relative;overflow:hidden;background:#0d131c}
+.bg{position:absolute;inset:0;background-size:cover;background-position:center}
+.shade{position:absolute;inset:0}
+.logo{position:absolute;left:0;right:0;text-align:center;font-family:Bungee,Impact,sans-serif;color:#ffcf3a;line-height:.92;letter-spacing:.01em;
+ text-shadow:0 .06em 0 #8a3a0c,0 .1em 0 #3a1206,0 0 .45em rgba(255,90,18,.55),0 0 1.2em rgba(0,0,0,.6)}
+.logo .h{color:#ff6a1e;display:block;text-shadow:0 .06em 0 #6b1406,0 .1em 0 #2a0803,0 0 .5em rgba(255,60,10,.8)}
+.tag{position:absolute;left:0;right:0;text-align:center;font:700 1em Rubik,sans-serif;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.9)}
+.strip{position:absolute;left:0;right:0;background-size:cover;background-position:center}
+</style></head><body>
+<div id="c" class="c"></div>
+<script>
+const q = new URLSearchParams(location.search), W = +q.get('w'), H = +q.get('h'), kind = q.get('k');
+const c = document.getElementById('c'); c.style.width = W + 'px'; c.style.height = H + 'px';
+const fs = Math.min(W, H * 1.6);
+if (kind === 'land') {
+  c.innerHTML = `<div class="bg" style="background-image:url(hell.png);background-position:50% 72%;background-size:118% auto"></div>
+  <div class="shade" style="background:linear-gradient(180deg,rgba(13,19,28,.85) 0%,rgba(13,19,28,.15) 38%,rgba(0,0,0,0) 60%,rgba(0,0,0,.35) 100%)"></div>
+  <div class="logo" style="top:${H*.06}px;font-size:${fs*.105}px">DIG TO <span class="h" style="display:inline">HELL</span></div>
+  <div class="tag" style="top:${H*.06+fs*.115}px;font-size:${fs*.024}px">Dig 1,000 m · build an empire · open the Gates</div>`;
+} else if (kind === 'port') {
+  c.innerHTML = `<div class="strip" style="top:0;height:${H*.34}px;background-image:url(yard.png);background-position:24% 84%;background-size:auto 210%"></div>
+  <div class="strip" style="top:${H*.34}px;height:${H*.33}px;background-image:url(mine_gold.png);background-position:60% 66%;background-size:auto 230%;border-top:4px solid #3a2a18"></div>
+  <div class="strip" style="top:${H*.67}px;height:${H*.33}px;background-image:url(hell.png);background-position:58% 82%;background-size:auto 210%;border-top:4px solid #3a1206"></div>
+  <div class="shade" style="background:linear-gradient(180deg,rgba(13,19,28,.8) 0%,rgba(13,19,28,0) 22%,rgba(0,0,0,0) 80%,rgba(0,0,0,.55) 100%)"></div>
+  <div class="logo" style="top:${H*.03}px;font-size:${W*.17}px">DIG TO<span class="h">HELL</span></div>
+  <div class="tag" style="bottom:${H*.03}px;font-size:${W*.04}px">How deep will you go?</div>`;
+} else if (kind === 'square') {
+  c.innerHTML = `<div class="bg" style="background-image:url(mine_opal.png);background-position:38% 70%;background-size:auto 140%"></div>
+  <div class="shade" style="background:linear-gradient(180deg,rgba(13,19,28,.85) 0%,rgba(13,19,28,0) 40%,rgba(80,10,0,.0) 70%,rgba(120,20,0,.55) 100%)"></div>
+  <div class="logo" style="top:${H*.05}px;font-size:${W*.15}px">DIG TO<span class="h">HELL</span></div>`;
+} else if (kind === 'icon') {
+  c.innerHTML = `<div class="bg" style="background:radial-gradient(ellipse at 50% 115%,#ff5a12 0%,#7a210c 38%,#2a1209 70%,#0d131c 100%)"></div>
+  <img src="favicon.svg" style="position:absolute;left:12%;top:6%;width:76%;filter:drop-shadow(0 ${W*.02}px ${W*.03}px rgba(0,0,0,.6))">
+  <div class="logo" style="bottom:${H*.07}px;top:auto;font-size:${W*.15}px">DIG TO <span class="h" style="display:inline">HELL</span></div>`;
+}
+</script></body></html>

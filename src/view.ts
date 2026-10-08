@@ -1,7 +1,7 @@
 // Canvas, camera and face <-> screen geometry. Shared by rendering, input and FX.
 // The camera frames one SITE at a time (MINE / YARD / BUILD, Spec §5). Switching sites is a short eased tween
 // (vertical Mine <-> Yard, horizontal Yard <-> Build); afterwards the camera follows its site's target.
-import { CFG } from './config';
+import { CFG, PROJECTS } from './config';
 import { S, type Site } from './state';
 import { cartDepth } from './cart';
 import { face } from './digface';
@@ -85,16 +85,21 @@ function target(site: Site): { s: number; z: number; p: number } {
     // fit the work floor (wider in the Work Chamber) with a margin; never zoom in past 1. When zoomed out, the
     // floor is centred on screen (the narrow shaft keeps its left-of-centre spot so the yard fits beside it).
     const need = face.w * faceScale() + 40;
-    const z = Math.max(0.55, Math.min(Z.dig, (view.W * 0.97) / need));
+    const z = Math.max(0.4, Math.min(Z.dig, (view.W * 0.97) / need)); // bigger worksites pull the camera back: the mine visibly grows
     const centred = shaftCX() - (p.x + (view.W / 2 - p.x) / z);
     return { s: Math.min(0, view.explore), z, p: z < 0.999 ? centred : 0 };
   }
   const L = surfaceLayout();
   // YARD: from just left of the headframe to the end of the truck bay; BUILD: from the bay to the end of the plot
-  const left = site === 'yard' ? L.right - L.u * 1.2 : L.plotX0 - L.u * 1.9; // BUILD: the plot + the parked truck fill the view
-  const right = site === 'yard' ? L.needRight + L.u * 0.5 : L.plotX1 + L.u * 1.9;
+  const left = site === 'yard' ? L.right - L.u * 0.55 : L.plotX0 - L.u * 1.9; // BUILD: the plot + the parked truck fill the view
+  const right = site === 'yard' ? L.bayX + L.u * 5.1 : L.plotX1 + L.u * 1.9; // YARD: the production line fills the view (the parked truck's tail in frame)
   const span = right - left;
-  const z = Math.max(Z.surfaceMin, Math.min(site === 'build' ? Z.buildMax : Z.surfaceMax, (view.W * 0.96) / span));
+  let z = Math.max(Z.surfaceMin, Math.min(site === 'build' ? Z.buildMax : site === 'yard' ? Z.yardMax : Z.surfaceMax, (view.W * 0.96) / span));
+  if (site === 'yard') z = Math.max(Z.surfaceMin, Math.min(z, (view.H * CFG.surfaceGroundFrac * 0.96) / (CFG.yard.fitHeightU * L.u))); // wide screens zoom in, but silos/headframe stay in frame
+  if (site === 'build') { // tall projects: also fit the building (+ crane/flag headroom) above the ground line
+    const h = ((PROJECTS[S.build.project] ?? PROJECTS[0]).h + 3) * L.u;
+    z = Math.max(Z.surfaceMin * 0.8, Math.min(z, (view.H * CFG.surfaceGroundFrac * 0.96) / h));
+  }
   return { s: surfaceScroll(), z, p: (left + span / 2) - (p.x + (view.W / 2 - p.x) / z) };
 }
 
@@ -155,14 +160,15 @@ export const WU = () => faceScale() * CFG.yard.workerUnit;
 export function surfaceLayout() {
   const gy = yOf(0), right = shaftCX() + shaftW() / 2, u = WU();
   const hopperX = right + 0.42 * u; // the cart tips straight into it
-  const pressX = right + 2.45 * u;
-  const stackX = right + 3.55 * u; // finished blocks
-  const bayX = right + 4.25 * u; // truck's rear stops here
+  const pressX = right + 3.25 * u; // (the yard line is spread out: hopper → crusher → press → pallets → bay)
+  const stackX = right + 4.55 * u; // finished blocks
+  const bayX = right + 5.35 * u; // truck's rear stops here
   const roadY = gy + 0.32 * u; // the road runs in front of the yard
   const hopperTop = yOf(-CFG.cart.surfaceLiftM + 0.6); // hopper mouth sits just under the cart's dump point
   const needRight = bayX + 4.85 * u; // room for the parked truck (4.5 worker heights long)
   const plotX0 = needRight + CFG.build.plotOffsetU * u; // construction plot (left edge)
-  const plotX1 = plotX0 + 7.2 * u;
+  const pr = PROJECTS[S.build.project] ?? PROJECTS[0];
+  const plotX1 = plotX0 + Math.max(7.2, pr.w + 5.2) * u; // bigger projects need a bigger lot (and a wider camera)
   const siteTruckX = plotX0 - 1.7 * u; // the truck's rear stops here: its bed lines up with the plot's block stack
   return { gy, right, u, hopperX, hopperTop, pressX, stackX, bayX, roadY, needRight, plotX0, plotX1, siteTruckX };
 }

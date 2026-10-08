@@ -1,5 +1,5 @@
 // Pure economy formulas. No DOM, no rendering.
-import { CFG, CREW, MAX_DEPTH, PROJECTS, RESOURCES, TOOLS, TRACK_TIERS, UPGRADES, WORKSITES, type Crew, type CrewId, type UpgradeId } from './config';
+import { CFG, CREW, CREW_GEAR, MAX_DEPTH, PROJECTS, RESOURCES, TOOLS, TRACK_TIERS, UPGRADES, WORKSITES, type Crew, type CrewId, type UpgradeId } from './config';
 import type { Load, State } from './state';
 import type { MaterialId } from './config';
 
@@ -12,7 +12,8 @@ import { materialAt } from './geo';
 /** BLOCK VALUE of one unit of material dug at depth d. It travels with the material (Load.val) all the way into the
  *  building, so deeper rock pays off through construction (never as a direct depth reward). */
 export const valueAt = (d: number) => Math.pow(1 + d / CFG.valueDiv, CFG.valueExp);
-export const unitValue = (d: number) => RESOURCES.rubble.baseValue * valueAt(d);
+/** Depth value × the layer's precious-material multiplier (gold, rubies, diamonds… make richer blocks). */
+export const unitValue = (d: number) => RESOURCES.rubble.baseValue * valueAt(d) * materialAt(d).valueMult;
 /** HP of one face chunk at depth d. */
 export const chunkHp = (d: number) => materialAt(d).stages * materialAt(d).hpPerStage;
 
@@ -21,33 +22,53 @@ export const clickPower = (s: State) => TOOLS[s.tool].pow * mult(s);
 
 // ---- crew ----
 export const crewDef = (id: CrewId): Crew => CREW.find((c) => c.id === id)!;
+export const isMachine = (id: CrewId) => !!crewDef(id).machine;
 export const crewCost = (s: State, id: CrewId) =>
   Math.ceil(crewDef(id).cost * Math.pow(CFG.crewCostGrowth, s.crew[id]));
 /** Raw dig power per second of one crew type (all units). */
-export const crewTypeDps = (s: State, id: CrewId) => crewDef(id).dps * s.crew[id] * mult(s);
+/** Crew Tools: digger power multiplier. */
+export const crewToolMult = (s: State) => 1 + CFG.workers.toolsPerLevel * s.upg.crewTools;
+export const gearOf = (s: State) => CREW_GEAR[Math.min(s.crewGear, CREW_GEAR.length - 1)];
+export const nextGear = (s: State) => CREW_GEAR[s.crewGear + 1];
+/** Rubble per break multiplier of a crew type (miners: their gear; machines: their own). */
+export const crewYield = (s: State, id: CrewId) => (id === 'dig' ? gearOf(s).yield : crewDef(id).yield);
+export const crewTypeDps = (s: State, id: CrewId) => crewDef(id).dps * s.crew[id] * mult(s) * (id === 'dig' ? crewToolMult(s) * gearOf(s).power : 1);
 export const crewDps = (s: State) => CREW.reduce((a, c) => a + crewTypeDps(s, c.id), 0);
 /** Share of time a crew type is actually digging (diggers rest; machines don't). */
-const uptime = (id: CrewId) => (id === 'dig' ? CFG.rest.uptime : 1);
+/** Share of time diggers actually dig (rest breaks), improved by Crew Stamina. Machines never rest. */
+export const crewUptime = (s: State) => Math.min(0.98, CFG.rest.uptime + CFG.workers.uptimePerLevel * s.upg.crewStamina);
+const uptime = (id: CrewId, s: State) => (id === 'dig' ? crewUptime(s) : 1);
 /** Chunk breaks per second of one crew type at depth d. Diggers wear the rock down (dps vs chunk HP); a machine bites
  *  a whole chunk every swing whatever the rock (that is why the Excavator matters deep down). Online strikes, the UI
  *  rate and offline progress all use THIS. */
 export const crewBreaksPerSec = (s: State, id: CrewId, d = s.depth) => {
-  if (d >= MAX_DEPTH || !s.crew[id]) return 0;
+  if (!s.crew[id]) return 0; // (at the Gates of Hell the crew keep quarrying Hellstone: rubble, no depth)
   const c = crewDef(id);
-  if (id === 'exc') return s.worksite >= c.needsTier ? s.crew[id] / c.swingSecs : 0;
-  return (crewTypeDps(s, id) * uptime(id)) / chunkHp(d);
+  if (c.machine) return s.worksite >= c.needsTier ? s.crew[id] / c.swingSecs : 0;
+  return (crewTypeDps(s, id) * uptime(id, s)) / chunkHp(d);
 };
 /** Meters per second crew dig at depth d. */
 export const crewMps = (s: State, d = s.depth) =>
-  CREW.reduce((a, c) => a + crewBreaksPerSec(s, c.id, d), 0) * materialAt(d).metersPerBreak;
+  d >= MAX_DEPTH ? 0 : CREW.reduce((a, c) => a + crewBreaksPerSec(s, c.id, d), 0) * materialAt(d).metersPerBreak;
 /** Rubble units per second crew produce at depth d. */
 export const crewRubbleRate = (s: State, d = s.depth) =>
-  CREW.reduce((a, c) => a + crewBreaksPerSec(s, c.id, d) * CFG.rubble.perBreak * c.yield, 0);
+  CREW.reduce((a, c) => a + crewBreaksPerSec(s, c.id, d) * CFG.rubble.perBreak * crewYield(s, c.id), 0);
+/** Miners the current worksite has room for (expanding the mine makes room for more). */
+export const crewRoom = (s: State) => WORKSITES[s.worksite].maxCrew;
 /** Can this crew type be hired now (depth, worksite tier, ownership cap)? */
 export const crewAvailable = (s: State, id: CrewId) => {
   const c = crewDef(id);
-  return s.depth >= c.unlockDepth && s.worksite >= c.needsTier && s.crew[id] < c.max;
+  return s.depth >= c.unlockDepth && s.worksite >= c.needsTier && s.crew[id] < c.max && (id !== 'dig' || s.crew.dig < crewRoom(s));
 };
+
+/** How much rubble the dig-site pile holds (grows with the cart: transport is the real limit). */
+export const pileCap = (s: State) => Math.max(CFG.rubble.pileMin, CFG.rubble.pileCarts * cartCapacity(s));
+/** Add freshly dug rubble to the pile, up to its capacity (the excess is backfilled). Returns units kept. */
+export function addRubble(s: State, qty: number, unitVal: number, mat: MaterialId) {
+  const q = Math.max(0, Math.min(qty, pileCap(s) - s.rubble.qty));
+  if (q > 0) addTo(s.rubble, q, unitVal, mat);
+  return q;
+}
 
 // ---- loads (quantity + value + material composition travel together) ----
 export function addTo(l: Load, qty: number, unitVal: number, mat: MaterialId) {
@@ -75,6 +96,40 @@ export function mixPick(l: Load, r: number): MaterialId {
   return last;
 }
 
+// ---- the OPERATION CHAIN: one uniform threshold over every money-making stage ----
+// Dig (crew) → haul (cart) → process (yard) → build (crew). No link may run more than CFG.chainSlack levels ahead of the
+// weakest unlocked link, so the whole operation grows together (and the cart can't be ignored).
+export const CHAIN: UpgradeId[] = ['crewTools', 'crewStamina', 'cartCap', 'cartSpeed', 'loadSpeed', 'processSpeed', 'rawStorage', 'contractValue', 'crew'];
+/** Is this chain upgrade unlocked (shown to the player) yet? */
+export function chainVisible(s: State, id: UpgradeId) {
+  switch (id) {
+    case 'crewTools': return s.yard && (s.crew.dig >= 1 || s.upg.crewTools > 0);
+    case 'crewStamina': return s.yard && (s.crew.dig >= 3 || s.upg.crewStamina > 0);
+    case 'cartCap': case 'cartSpeed': case 'loadSpeed': return s.yard && s.flags.dispatched;
+    case 'processSpeed': return s.yard;
+    case 'contractValue': return s.yard && (s.stats.sold >= 1 || s.upg.contractValue > 0);
+    case 'rawStorage': return s.yard && (s.flags.storageSeen || s.upg.rawStorage > 0);
+    case 'crew': return s.flags.crewSeen || s.upg.crew > 0;
+    default: return false;
+  }
+}
+/** Highest level `id` may reach now, and which link holds it back (the weakest unlocked, unfinished link). */
+export function chainGate(s: State, id: UpgradeId): { cap: number; blocker: UpgradeId | null } {
+  if (!CHAIN.includes(id)) return { cap: Infinity, blocker: null };
+  let min = Infinity, blocker: UpgradeId | null = null;
+  for (const j of CHAIN) {
+    if (!chainVisible(s, j) || s.upg[j] >= upgDef(j).maxLevel) continue;
+    if (s.upg[j] < min) { min = s.upg[j]; blocker = j; }
+  }
+  if (min === Infinity) return { cap: Infinity, blocker: null };
+  return { cap: min + CFG.chainSlack, blocker: blocker === id ? null : blocker };
+}
+/** Operation Level = the weakest unlocked link's level (shown on the Economy page). */
+export function operationLevel(s: State) {
+  const v = CHAIN.filter((j) => chainVisible(s, j));
+  return v.length ? Math.min(...v.map((j) => s.upg[j])) : 0;
+}
+
 // ---- transport ----
 export const upgDef = (id: UpgradeId) => UPGRADES.find((u) => u.id === id)!;
 export const upgCost = (s: State, id: UpgradeId) => {
@@ -90,9 +145,12 @@ export const nextTrack = (s: State) => TRACK_TIERS[s.upg.rail + 1];
 export const trackSafe = (s: State) => trackDef(s).safe;
 export type TrackStress = 'safe' | 'strained' | 'over';
 /** How hard a given cart load works the current track (loadRatio = load / safe load). */
+/** Opening grace: until the first property is sold the track can creak (STRAINED) but never counts as overloaded, so
+ *  the track system isn't introduced before the player has seen the whole loop once. */
+export const trackGrace = (s: State) => s.stats.sold < 1;
 export function trackStress(s: State, load: number): TrackStress {
   const r = load / trackSafe(s);
-  return r > 1 + 1e-9 ? 'over' : r >= CFG.track.strainedAt ? 'strained' : 'safe';
+  return r > 1 + 1e-9 ? (trackGrace(s) ? 'strained' : 'over') : r >= CFG.track.strainedAt ? 'strained' : 'safe';
 }
 export const railMult = (s: State) => trackDef(s).speed;
 export const cartSpeed = (s: State) => C.speed.base * (1 + C.speed.perLevel * s.upg.cartSpeed) * railMult(s);
@@ -136,7 +194,7 @@ export function projectValueFactor(s: State) {
   const b = s.build;
   if (b.projQty > 1e-9) return b.projVal / b.projQty;
   if (b.material.qty > 1e-9) return b.material.val / b.material.qty;
-  return valueAt(s.depth) * blockQualityMult(s);
+  return unitValue(s.depth) * blockQualityMult(s);
 }
 /** Sale price of the current property (estimate while building; exact once complete). */
 export const projectValue = (s: State, project = s.build.project) =>

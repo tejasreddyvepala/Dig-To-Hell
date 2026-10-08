@@ -22,6 +22,7 @@ export interface Star { x: number; y: number; t: number; size: number }
 export interface Banner { s: string; sub: string; t: number }
 
 export const FX = {
+  under: 0, // 0..1: how underground the view is (debris takes the mine's value treatment)
   parts: [] as Part[],
   popups: [] as Popup[],
   rings: [] as Ring[],
@@ -68,7 +69,7 @@ export function popup(x: number, y: number, s: string, col: string, size: number
   FX.popups.push({ x, y, s, col, size, t: 0, life: o.life ?? 0.9, pop: o.pop ?? 0, alpha: o.alpha ?? 1, rise: o.rise ?? 1, sub: o.sub });
 }
 
-export function updateFx(dt: number) {
+export function updateFx(dt: number, bannerDt = dt) {
   const c = FX.cam, I = CFG.impulse;
   // substepped: the stiff spring is only stable for small steps (long frames / hitches would explode it)
   for (let left = dt; left > 1e-6; left -= 1 / 120) {
@@ -104,7 +105,7 @@ export function updateFx(dt: number) {
   }
   for (let i = FX.rings.length - 1; i >= 0; i--) if ((FX.rings[i].t += dt) > CFG.critFx.ringSecs) FX.rings.splice(i, 1);
   for (let i = FX.stars.length - 1; i >= 0; i--) if ((FX.stars[i].t += dt) > CFG.critFx.starSecs) FX.stars.splice(i, 1);
-  if (FX.banner) { FX.banner.t += dt; if (FX.banner.t > CFG.bannerSecs) FX.banner = null; }
+  if (FX.banner) { FX.banner.t += bannerDt; if (FX.banner.t > CFG.bannerSecs) FX.banner = null; } // banners age in real time (readable at any game speed)
 }
 
 const FONT_DISPLAY = "'Bungee',Impact,sans-serif";
@@ -120,6 +121,7 @@ export function drawWorldFx(ctx: CanvasRenderingContext2D) {
       ctx.beginPath(); ctx.moveTo(p.shape[0], p.shape[1]);
       for (let k = 2; k < p.shape.length; k += 2) ctx.lineTo(p.shape[k], p.shape[k + 1]);
       ctx.closePath(); ctx.fill();
+      if (FX.under > 0.01) { ctx.fillStyle = `rgba(34,24,18,${0.45 * FX.under})`; ctx.fill(); } // underground value
       ctx.restore();
     } else if (p.kind === 'dust') {
       ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 6.283); ctx.fill();
@@ -128,6 +130,7 @@ export function drawWorldFx(ctx: CanvasRenderingContext2D) {
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025); ctx.stroke();
     } else {
       ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      if (FX.under > 0.01) { ctx.fillStyle = `rgba(34,24,18,${0.45 * FX.under})`; ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
     }
   }
   ctx.globalAlpha = 1;

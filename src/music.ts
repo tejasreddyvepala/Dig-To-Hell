@@ -23,13 +23,16 @@ applySettings(false);
 let ac: AudioContext | null = null;
 const layer: Partial<Record<Site, GainNode>> = {};
 let duckNode: GainNode;
+let hushNode: GainNode; // fades the score out for good (the ending)
+let hushed = false;
 let current: Site = 'mine';
 let nextT = 0, step = 0, timer = 0;
 const files: Partial<Record<Site, HTMLAudioElement>> = {};
 
 onAudioReady((ctx, bus) => {
   ac = ctx;
-  duckNode = ctx.createGain(); duckNode.connect(bus);
+  hushNode = ctx.createGain(); hushNode.gain.value = hushed ? 0 : 1; hushNode.connect(bus);
+  duckNode = ctx.createGain(); duckNode.connect(hushNode);
   for (const s of ['mine', 'yard', 'build'] as Site[]) {
     const g = ctx.createGain(); g.gain.value = s === current ? 1 : 0; g.connect(duckNode); layer[s] = g;
     const f = MUSIC_FILES[s];
@@ -52,6 +55,15 @@ export function setMusicState(site: Site) {
     const g = layer[s]!.gain;
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(s === site ? 1 : 0, t + x);
   }
+}
+
+/** The ending: the score fades away under the lava (and stays silent behind the end card). */
+export function hushMusic(on: boolean) {
+  if (on === hushed) return;
+  hushed = on;
+  if (!ac) return;
+  const t = ac.currentTime, g = hushNode.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(on ? 0 : 1, t + (on ? 2.5 : 0.5));
 }
 
 /** Duck the music under a big moment (sale, blast). */
@@ -122,7 +134,7 @@ const SCORE: Record<Site, { bpm: number; play: (out: AudioNode, t: number, i: nu
 };
 
 function schedule() {
-  if (!ac || ac.state !== 'running') { if (ac) nextT = ac.currentTime + 0.1; return; }
+  if (!ac || ac.state !== 'running' || (hushed && hushNode.gain.value < 0.001)) { if (ac) nextT = ac.currentTime + 0.1; return; } // silent: schedule nothing
   // all three scores keep their clocks; only audible layers get notes (cheap, and a crossfade blends both)
   const sc = SCORE[current], beat = 60 / sc.bpm, eighth = beat / 2;
   if (nextT < ac.currentTime - 0.5) nextT = ac.currentTime + 0.05;

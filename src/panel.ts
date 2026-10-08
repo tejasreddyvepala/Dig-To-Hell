@@ -4,9 +4,9 @@
 import { CFG, CREW, FINDS, PROJECTS, TOOLS, UPGRADES, WORKSITES, type CrewId, type Upgrade, type UpgradeId } from './config';
 import { S, saveState, type Site } from './state';
 import {
-  addTo, cartCapacity, cartSpeed, crewAvailable, crewCost, crewRubbleRate, loadRate, materialAt, nextWorksite, processRate,
-  nextTrack, blockQualityMult, builders, constructionRate, projectValue, projectValueFactor, rawCap, repeatFactor, stagePayment,
-  trackDef, trackSafe, truckCapacity, unitValue, upgCost, valueAt, worksiteAvailable,
+  cartCapacity, cartSpeed, pileCap, crewRoom, gearOf, nextGear, crewToolMult, crewUptime, chainGate, upgDef, crewAvailable, crewCost, crewRubbleRate, loadRate, nextWorksite, processRate,
+  nextTrack, blockQualityMult, builders, constructionRate, projectValue, rawCap, repeatFactor, stagePayment,
+  trackDef, trackSafe, truckCapacity, unitValue, upgCost, worksiteAvailable,
 } from './economy';
 import { syncWorkers, restingCount, workers } from './workers';
 import { buildYard } from './surface';
@@ -17,7 +17,10 @@ import { trackOverloaded } from './cart';
 import { FX, popup } from './fx';
 import { playPurchase } from './audio';
 import { yardPurchased } from './juice';
-import { presentBuild } from './site';
+import { SITE, presentBuild } from './site';
+import { sellNow } from './salecall';
+import { finaleRunning } from './finale';
+import { bestNext, flowRates } from './econpage';
 import { faceY, toScreen } from './view';
 import { fmt, money } from './util';
 
@@ -33,14 +36,23 @@ const TRUCK_LABEL: Record<string, string> = {
   TO_SITE: 'driving to the site', UNLOADING: 'unloading at the site', RETURNING: 'driving back',
 };
 
+/** Big transformation card: icon, name, one short line, price pill, affordability fill. */
 function card(attr: string, ic: string) {
-  return `<button class="btn" ${attr}><span class="ic" aria-hidden="true">${ic}</span>` +
-    `<span><div class="nm"></div><div class="ds"></div></span><span><div class="pr"></div><div class="ct"></div></span></button>`;
+  return `<button class="btn big" ${attr}><span class="ic" aria-hidden="true">${ic}</span>` +
+    `<span class="tx"><span class="nm"></span><span class="ds"></span></span><span class="pr"></span><span class="ct" hidden></span><i class="fill" aria-hidden="true"></i></button>`;
 }
+/** Upgrade button: icon, name + level, "now → next" effect, price pill, affordability fill. */
 function row(u: Upgrade) {
-  return `<button class="row" data-upg="${u.id}" hidden><span class="ic" aria-hidden="true">${u.ic}</span>` +
-    `<span class="rn">${u.name} <small></small></span><span class="rp"></span></button>`;
+  return `<button class="btn up" data-upg="${u.id}" hidden><span class="ic" aria-hidden="true">${u.ic}</span>` +
+    `<span class="tx"><span class="nm">${u.name}</span><span class="ds"><em class="lv"></em><span class="ef"></span></span></span><span class="pr"></span><i class="fill" aria-hidden="true"></i></button>`;
 }
+/** Progress of cash toward a price (the bottom fill of a button) + the ready glow. */
+function afford(el: HTMLElement, cost: number) {
+  const p = cost > 0 ? Math.min(1, S.cash / cost) : 1, v = p.toFixed(3);
+  if (el.style.getPropertyValue('--p') !== v) el.style.setProperty('--p', v);
+  el.classList.toggle('can', !(el as HTMLButtonElement).disabled);
+}
+function setHTML(id: string, v: string) { const e = $(id); if (e.dataset.k !== v) { e.innerHTML = v; e.dataset.k = v; } }
 const set = (el: Element, sel: string, v: string) => { const e = el.querySelector(sel)!; if (e.textContent !== v) e.textContent = v; };
 function setText(id: string, v: string) { const e = $(id); if (e.textContent !== v) e.textContent = v; }
 
@@ -90,7 +102,11 @@ export function buildPanel() {
   $('tool').innerHTML = card('id="up"', '⛏️');
   $('up').onclick = buyTool;
   $('crew').innerHTML = card('data-crew="dig"', '👷');
+  $('gearCard').innerHTML = card('id="gearBuy"', '⛏️');
+  $('gearBuy').onclick = () => { if (buyGear()) updatePanel(); };
   $('excCard').innerHTML = card('data-crew="exc"', '🚜');
+  $('sawCard').innerHTML = card('data-crew="saw"', '💠');
+  $('borerCard').innerHTML = card('data-crew="borer"', '🔩');
   document.querySelectorAll<HTMLButtonElement>('[data-crew]').forEach((b) => (b.onclick = () => hire(b.dataset.crew as CrewId)));
   $('expandCard').innerHTML = card('id="expand"', '💥');
   $('expand').onclick = () => { if (buyExpansion()) { playPurchase(); updatePanel(); } };
@@ -103,22 +119,20 @@ export function buildPanel() {
   };
   // TRACK: what it is, what it safely carries, what the cart weighs now; the reinforce card; then the minor rows
   $('transport').innerHTML = `<div class="track" id="trackBox">
-      <div class="tk-r"><span>Track</span><b id="tkName"></b></div>
-      <div class="tk-r"><span>Safe load</span><b id="tkSafe"></b></div>
-      <div class="tk-r"><span>Current cart</span><b id="tkCart"></b></div>
+      <div class="chips"><span class="chip">🛤️ <b id="tkName"></b></span><span class="chip">safe <b id="tkSafe"></b></span><span class="chip">🛒 <b id="tkCart"></b></span></div>
       <div class="tk-warn" id="tkWarn" hidden></div>
       ${card('id="tkBuy"', '🛤️')}
     </div>` + UPGRADES.filter((u) => u.group === 'transport' && u.id !== 'rail').map(row).join('');
   $('tkBuy').onclick = () => { if (buyTrack()) { playPurchase(); updatePanel(); } };
   $('processing').innerHTML = UPGRADES.filter((u) => u.group === 'processing').map(row).join('');
+  $('workers').innerHTML = UPGRADES.filter((u) => u.group === 'workers').map(row).join('');
   document.querySelectorAll<HTMLButtonElement>('[data-upg]').forEach((b) => (b.onclick = () => buyUpgrade(b.dataset.upg as UpgradeId)));
   $('buildAct').onclick = buildAction;
   $('crewCard').innerHTML = card('id="crewBuy"', '👷');
   $('crewBuy').onclick = () => buyUpgrade('crew');
-  if (import.meta.env.DEV) buildDebug();
 }
 
-function hire(id: CrewId) {
+export function hire(id: CrewId) {
   const c = CREW.find((x) => x.id === id)!;
   const cost = crewCost(S, id);
   if (S.cash < cost || !crewAvailable(S, id) || expanding()) return;
@@ -127,7 +141,7 @@ function hire(id: CrewId) {
   syncWorkers(true); // a new visible worker climbs down the ladder and stairs; extras dig unseen
   saveState();
   playPurchase();
-  popup(toScreen(70, 0).x, faceY() - 130, c.name + (id === 'exc' ? ' delivered' : ' hired'), '#7ee08a', 20, { life: 1.4 });
+  popup(toScreen(70, 0).x, faceY() - 130, id === 'dig' ? 'Miner recruited!' : c.name + ' delivered', '#7ee08a', 20, { life: 1.4 });
   updatePanel();
 }
 
@@ -143,10 +157,20 @@ function buyTool() {
   updatePanel();
 }
 
-function buyUpgrade(id: UpgradeId) {
+/** Crew Gear: the next tool tier for every miner (a big card, like the player's tool ladder). */
+export function buyGear(): boolean {
+  const n = nextGear(S);
+  if (!n || S.cash < n.cost || S.depth < n.unlockDepth) return false;
+  S.cash -= n.cost; S.crewGear++;
+  saveState(); playPurchase();
+  FX.banner = { s: n.name.toUpperCase(), sub: `every miner: ×${n.power} power · ×${n.yield} rubble per break`, t: 0 };
+  return true;
+}
+
+export function buyUpgrade(id: UpgradeId) {
   const u = UPGRADES.find((x) => x.id === id)!;
   const cost = upgCost(S, id);
-  if (S.cash < cost || S.upg[id] >= u.maxLevel) return;
+  if (S.cash < cost || S.upg[id] >= u.maxLevel || S.upg[id] >= chainGate(S, id).cap) return;
   S.cash -= cost;
   S.upg[id]++;
   saveState();
@@ -155,29 +179,13 @@ function buyUpgrade(id: UpgradeId) {
 }
 
 /** BUILD panel's single action: start the next stage, or sell the finished property. */
-function buildAction() {
+export function buildAction() {
   const ev: BuildEvent[] = [];
   if (S.build.done) { sellProperty(ev); }
   else return;
   presentBuild(ev);
   saveState();
   updatePanel();
-}
-
-/** Dev-only test controls (stripped from production). Not part of the economy. */
-function buildDebug() {
-  const d = $('debug');
-  d.innerHTML = '<h2>Debug (dev only)</h2>' +
-    '<button class="dbg" data-d="cash">+$1,000</button><button class="dbg" data-d="rubble">+50 rubble at dig site</button>' +
-    '<button class="dbg" data-d="blocks">+60 blocks on site</button><button class="dbg" data-d="clear">Clear raw material</button>';
-  d.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => {
-    b.onclick = () => {
-      if (b.dataset.d === 'cash') S.cash += 1000;
-      if (b.dataset.d === 'rubble') addTo(S.rubble, 50, unitValue(S.depth), materialAt(S.depth).id);
-      if (b.dataset.d === 'blocks') addTo(S.build.material, 60, unitValue(S.depth), materialAt(S.depth).id);
-      if (b.dataset.d === 'clear') { S.raw.qty = 0; S.raw.val = 0; S.raw.mix = {}; }
-    };
-  });
 }
 
 /** HUD cash counts up toward the real value (spending snaps down). */
@@ -195,9 +203,11 @@ function upgStat(id: UpgradeId): string {
     case 'rail': return trackDef(S).name;
     case 'loadSpeed': return `${loadRate(S).toFixed(1)}/s`;
     case 'processSpeed': return `${processRate(S).toFixed(1)}/s`;
-    case 'contractValue': return `blocks ×${blockQualityMult(S).toFixed(2)} value`;
+    case 'contractValue': return `×${blockQualityMult(S).toFixed(2)}`;
     case 'rawStorage': return `${rawCap(S)}`;
-    case 'crew': return `${builders(S)} builders · ${constructionRate(S).toFixed(1)} blocks/s`;
+    case 'crew': return `${constructionRate(S).toFixed(1)}/s`;
+    case 'crewTools': return `×${crewToolMult(S).toFixed(2)} power`;
+    case 'crewStamina': return `${Math.round(crewUptime(S) * 100)}% on shift`;
   }
 }
 
@@ -234,8 +244,58 @@ export function optionalAffordable(site: Site): boolean {
   return false;
 }
 
+/** Why no blocks are arriving: the real bottleneck in the chain, as one short instruction. */
+function supplyNote() {
+  const T = CFG.yard.truck;
+  if (S.truck.state === 'TO_SITE' || S.truck.state === 'UNLOADING') return 'blocks on the way';
+  if (S.goods.qty >= T.pickupMin) return 'the truck is loading at the yard';
+  if (S.raw.qty >= 1) return `the press is making blocks (${Math.floor(S.goods.qty)}/${T.pickupMin} for the next truck)`;
+  if (S.rubble.qty >= 1 || (S.cart.state !== 'BOTTOM_EMPTY' && S.cart.state !== 'LOADING')) return 'rubble is on its way up';
+  return `dig more at the MINE — the truck leaves with ${T.pickupMin} blocks (${Math.floor(S.goods.qty)} at the yard)`;
+}
+
+/** BOTTLENECK tag: one purchase at a time, the same one as NEXT BEST, and only when it fixes the slowest station.
+ *  (Tagging every row of the slow station made most of the panel pulse red; nothing then read as important.) */
+const LINK_OF: Record<string, string> = { dig: 'dig', exc: 'dig', saw: 'dig', borer: 'dig', expand: 'dig', gearBuy: 'dig', crewTools: 'dig', crewStamina: 'dig', up: 'dig', cartCap: 'cart', cartSpeed: 'cart', loadSpeed: 'cart', tkBuy: 'cart',
+  processSpeed: 'yard', rawStorage: 'yard', contractValue: 'yard', crew: 'build', crewBuy: 'build' };
+function tagBottleneck(best: ReturnType<typeof bestNext>) {
+  const slow = S.yard ? flowRates().slow : '';
+  const hot = slow === 'truck' ? 'build' : slow; // the truck grows with the Construction Crew
+  const key = best && hot && LINK_OF[best.key] === hot ? best.key : '';
+  document.querySelectorAll<HTMLElement>('#panel .btn').forEach((b) => {
+    const k = b.dataset.upg ?? b.dataset.crew ?? b.id;
+    b.classList.toggle('hot', !!key && k === key && !b.hidden && !(b.querySelector('.pr')?.textContent === 'MAX'));
+  });
+  // the Economy tile pulses red only while that fix is affordable right now
+  $('ecoBtn').classList.toggle('hot', !!key && !!best?.can);
+}
+
+/** 2.5 → '2.5', 3 → '3' (rounding to whole numbers hid real gains: '+3 → +3'). */
+const dec1 = (v: number) => String(Math.round(v * 10) / 10);
+/** Crew gear always says it's for the crew: 'Crew gear: Iron Picks' (never confused with your own pickaxe). */
+export const gearLabel = (name: string) => `Crew gear: ${name.replace(/^Crew /, '')}`;
+function updateBest(b: ReturnType<typeof bestNext>) {
+  const el = $('bestCard') as HTMLButtonElement;
+  if (S.build.done && !SITE.sold && !finaleRunning() && !S.flags.finished) { // a finished property beats any upgrade: the card says so
+    el.hidden = false; el.disabled = false; el.classList.add('can');
+    set(el, '.bi', '🏠'); set(el, '.bn', `Sell the ${PROJECTS[S.build.project].name}`); set(el, '.bs', 'your biggest payout · ready now'); set(el, '.bp', '+' + money(projectValue(S)));
+    el.style.setProperty('--p', '1');
+    el.onclick = sellNow;
+    return;
+  }
+  el.hidden = !b;
+  if (!b) return;
+  set(el, '.bi', b.ic); set(el, '.bn', b.label); set(el, '.bs', b.note ? `${b.note} · best value now` : 'best value for your income right now'); set(el, '.bp', money(b.price));
+  el.disabled = !b.can; el.classList.toggle('can', b.can);
+  el.style.setProperty('--p', Math.min(1, S.cash / Math.max(1, b.price)).toFixed(3));
+  el.onclick = () => { const x = bestNext(); if (x?.can) { x.buy(); updatePanel(); } };
+}
+
 export function updatePanel() {
-  setText('depth', (S.depth < 100 ? S.depth.toFixed(1) : fmt(S.depth)) + ' m');
+  const best = bestNext();
+  tagBottleneck(S.build.done && !SITE.sold ? null : best); // while a property waits to be sold, nothing competes with it
+  updateBest(best);
+  setText('depth', (S.depth < 100 ? S.depth.toFixed(1) : Math.floor(S.depth).toLocaleString('en-US')) + ' m');
   if (S.raw.qty >= rawCap(S) * Y.revealStorageFrac) S.flags.storageSeen = true;
   const hasMoney = S.yard; // until the Recycling Yard exists it is the only purchase (the tutorial's forced step)
 
@@ -253,18 +313,34 @@ export function updatePanel() {
     const locked = S.depth < nt.unlockDepth;
     up.disabled = locked || S.cash < nt.cost;
     set(up, '.ic', nt.ic);
-    set(up, '.nm', `Upgrade to ${nt.name}`);
-    set(up, '.ds', locked ? `Reach ${nt.unlockDepth} m to unlock` : `×${nt.yield} rubble per break · ${nt.kind === 'jack' ? 'bursts of hits' : (nt.pow / TOOLS[S.tool].pow).toFixed(1) + '× impact'}`);
+    set(up, '.nm', nt.name);
+    set(up, '.ds', locked ? `🔒 reach ${nt.unlockDepth} m` : `rubble ×${TOOLS[S.tool].yield} → ×${nt.yield}`);
     set(up, '.pr', money(nt.cost));
-    set(up, '.ct', `now: ×${TOOLS[S.tool].yield}`);
+    afford(up, nt.cost);
   }
   const dig = document.querySelector<HTMLButtonElement>('[data-crew="dig"]')!;
   dig.hidden = !hasMoney;
-  dig.disabled = S.cash < crewCost(S, 'dig') || expanding();
-  set(dig, '.nm', 'Hire Digger');
-  set(dig, '.ds', CREW[0].ds);
+  const room = crewRoom(S), full = S.crew.dig >= room;
+  dig.disabled = full || S.cash < crewCost(S, 'dig') || expanding();
+  dig.classList.toggle('held', full);
+  dig.classList.toggle('done', full && !nextWorksite(S)); // the biggest room is full: nothing more to hire, ever
+  set(dig, '.nm', S.crew.dig ? `Recruit Miner #${S.crew.dig + 1}` : 'Recruit a Miner');
+  set(dig, '.ds', full ? (nextWorksite(S) ? `🔒 mine is full (${S.crew.dig}/${room}): expand the worksite` : `🔒 full crew (${room})`) : `one more pick swinging · ${S.crew.dig}/${room} room`);
   set(dig, '.pr', money(crewCost(S, 'dig')));
-  set(dig, '.ct', S.crew.dig ? `Own ${S.crew.dig}` : '');
+  afford(dig, crewCost(S, 'dig'));
+
+  // player tool vs crew purchases sit under their own small headings (they were easy to mix up in one list)
+  $('subTool').hidden = !hasMoney || up.hidden;
+  $('subCrew').hidden = !hasMoney;
+  const gb = $('gearBuy') as HTMLButtonElement, ng = nextGear(S), g0 = gearOf(S);
+  gb.hidden = !hasMoney || S.crew.dig < 1 || !ng;
+  if (ng) {
+    const lockedG = S.depth < ng.unlockDepth;
+    gb.disabled = lockedG || S.cash < ng.cost;
+    set(gb, '.ic', ng.ic); set(gb, '.nm', gearLabel(ng.name));
+    set(gb, '.ds', lockedG ? `🔒 reach ${ng.unlockDepth} m` : `crew gear · +${dec1(CFG.rubble.perBreak * g0.yield)} → +${dec1(CFG.rubble.perBreak * ng.yield)} rubble per break`);
+    set(gb, '.pr', money(ng.cost)); afford(gb, ng.cost);
+  }
 
   // worksite: the Work Chamber is a transformation card; the Excavator needs it
   reveal('m-site', $('g-site'), hasMoney && (S.crew.dig >= 1 || S.worksite > 0));
@@ -276,40 +352,45 @@ export function updatePanel() {
     const ready = worksiteAvailable(S);
     ex.disabled = !ready || S.cash < nw.cost || expanding();
     set(ex, '.nm', 'Expand Worksite');
-    set(ex, '.ds', ready ? `Blast out a ${nw.name}: room for ${nw.visible} diggers and an Excavator` : `Needs ${nw.unlockCrew} diggers (you have ${S.crew.dig})`);
+    set(ex, '.ds', ready ? `blast a ${nw.name}` : `🔒 ${S.crew.dig}/${nw.unlockCrew} miners`);
     set(ex, '.pr', money(nw.cost));
-    set(ex, '.ct', `now: ${ws.name}`);
+    afford(ex, nw.cost);
   }
-  const exc = document.querySelector<HTMLButtonElement>('[data-crew="exc"]')!;
-  const excDef = CREW[1];
-  exc.hidden = !hasMoney || S.crew.dig < 1;
-  exc.disabled = !crewAvailable(S, 'exc') || S.cash < crewCost(S, 'exc') || expanding();
-  set(exc, '.nm', S.crew.exc ? 'Excavator (working)' : 'Excavator');
-  set(exc, '.ds', S.worksite < excDef.needsTier ? 'Needs a Work Chamber: machines need room' : S.crew.exc >= excDef.max ? `Bites a whole chunk: ×${excDef.yield} rubble per bucket` : excDef.ds + ` (×${excDef.yield} rubble)`);
-  set(exc, '.pr', S.crew.exc >= excDef.max ? '' : money(crewCost(S, 'exc')));
-  set(exc, '.ct', '');
+  // machines: each needs a worksite tier (room); the next one is shown locked once the previous is owned
+  for (const m of CREW.filter((c) => c.machine)) {
+    const b = document.querySelector<HTMLButtonElement>(`[data-crew="${m.id}"]`)!, owned = S.crew[m.id] >= m.max;
+    const prevOwned = m.id === 'exc' ? S.crew.dig >= 1 : m.id === 'saw' ? S.crew.exc > 0 : S.crew.saw > 0;
+    b.hidden = !hasMoney || !prevOwned;
+    b.classList.toggle('done', owned);
+    if (b.hidden) continue;
+    b.disabled = owned || !crewAvailable(S, m.id) || S.cash < crewCost(S, m.id) || expanding();
+    set(b, '.nm', owned ? `${m.name} (working)` : m.name);
+    set(b, '.ds', S.worksite < m.needsTier ? `🔒 needs the ${WORKSITES[m.needsTier].name}` : `whole chunk every ${m.swingSecs}s · ×${m.yield} rubble`);
+    set(b, '.pr', owned ? '✓' : money(crewCost(S, m.id)));
+    afford(b, owned ? 0 : crewCost(S, m.id));
+  }
 
   reveal('m-tr', $('g-tr'), S.flags.dispatched);
-  setText('trStat', `Cart ${Math.floor(S.cart.load.qty)}/${cartCapacity(S)} ${CART_LABEL[S.cart.state]} · pile ${Math.floor(S.rubble.qty)}`);
+  setText('trStat', `Cart ${Math.floor(S.cart.load.qty)}/${cartCapacity(S)} ${CART_LABEL[S.cart.state]} · ${S.rubble.qty >= pileCap(S) - 1 ? 'PILE FULL' : 'pile ' + Math.floor(S.rubble.qty)}`);
   document.querySelectorAll<HTMLButtonElement>('#transport [data-upg]').forEach((b) => updRow(b, hasMoney));
   // track strength: the world already showed the strain; this confirms it with numbers
   const tk = trackDef(S), nt2 = nextTrack(S), over = trackOverloaded(), cap2 = cartCapacity(S);
   const shown = S.cart.load.qty > 0.5 ? S.cart.load.qty : cap2;
   setText('tkName', tk.name);
-  setText('tkSafe', `${tk.safe} rubble`);
-  setText('tkCart', S.cart.load.qty > 0.5 ? `${Math.floor(S.cart.load.qty)} / ${cap2} carried` : `holds ${cap2}`);
+  setText('tkSafe', `${tk.safe}`);
+  setText('tkCart', S.cart.load.qty > 0.5 ? `${Math.floor(S.cart.load.qty)}/${cap2}` : `${cap2}`);
   $('trackBox').classList.toggle('over', over);
   const warn = $('tkWarn');
   warn.hidden = !over;
   if (over) setText('tkWarn', `⚠ OVERLOADED  ${Math.floor(Math.max(shown, cap2))} / ${tk.safe} · transport −${Math.round(CFG.track.overloadPenalty * 100)}%`);
   const tb = $('tkBuy') as HTMLButtonElement;
-  tb.hidden = !nt2;
+  tb.hidden = !nt2 || !S.yard; // the contractor's advance is for the Recycling Yard: nothing else to spend it on first
   if (nt2) {
     tb.disabled = S.cash < nt2.cost || trackBusy();
-    set(tb, '.nm', trackBusy() ? 'Reinforcing…' : over ? 'REINFORCE TRACK' : `Upgrade to ${nt2.name}`);
-    set(tb, '.ds', `${nt2.name} · safe load ${nt2.safe} · transport +${Math.round((nt2.speed / tk.speed - 1) * 100)}%`);
+    set(tb, '.nm', trackBusy() ? 'Reinforcing…' : over ? 'REINFORCE TRACK' : nt2.name);
+    set(tb, '.ds', `safe load ${tk.safe} → ${nt2.safe}`);
     set(tb, '.pr', money(nt2.cost));
-    set(tb, '.ct', '');
+    afford(tb, nt2.cost);
     tb.classList.toggle('urgent', over);
   }
 
@@ -333,13 +414,14 @@ export function updatePanel() {
   by.hidden = S.yard || !S.flags.sold;
   by.disabled = S.cash < Y.cost;
   set(by, '.nm', 'Build Recycling Yard');
-  set(by, '.ds', 'Crush rubble and press it into building blocks');
+  set(by, '.ds', 'rubble → building blocks');
   set(by, '.pr', money(Y.cost));
-  set(by, '.ct', '');
+  afford(by, Y.cost);
   document.querySelectorAll<HTMLButtonElement>('#processing [data-upg]').forEach((b) => updRow(b, procRowVisible(b.dataset.upg as UpgradeId)));
+  document.querySelectorAll<HTMLButtonElement>('#workers [data-upg]').forEach((b) => updRow(b, hasMoney && (S.crew.dig >= 1 || S.upg[b.dataset.upg as UpgradeId] > 0) && (b.dataset.upg !== 'crewStamina' || S.crew.dig >= 3)));
   reveal('y-log', $('g-log'), S.yard);
   setText('logStat', `Truck ${TRUCK_LABEL[S.truck.state]}`);
-  setText('logInfo', `The truck takes finished blocks (${Y.truck.pickupMin}+) to the construction site, up to ${truckCapacity(S)} per trip (bigger crews run bigger loads). Delivered so far: ${fmt(S.stats.delivered)}. Each block carries its value: depth ×${valueAt(S.depth).toFixed(2)} · quality ×${blockQualityMult(S).toFixed(2)}.`);
+  setHTML('logInfo', `<span class="chip">🚚 <b>${truckCapacity(S)}</b>/trip</span><span class="chip">📦 <b>${fmt(S.stats.delivered)}</b> delivered</span><span class="chip">💰 block value <b>×${(unitValue(S.depth) * blockQualityMult(S)).toFixed(2)}</b></span>`);
 
   // ===== BUILD =====
   const pr = currentProject(), b = S.build;
@@ -361,25 +443,26 @@ export function updatePanel() {
   const st = currentStage();
   act.hidden = !b.done;
   act.classList.toggle('sell', b.done);
+  act.classList.toggle('sellnow', b.done); // the one decision on this site: it pulses until taken
   const sellLabel = `SELL PROPERTY · ${money(projectValue(S))}`;
   if (b.done && act.textContent !== sellLabel) act.textContent = sellLabel;
-  setText('buildState', b.done ? '' : b.active ? `🏗 Building ${st.name}… ${Math.floor(b.used + 1e-6)}/${st.blocks}${waitingForBlocks() ? ' · waiting for the next delivery' : ''}`
-    : canStartStage() ? `🏗 ${st.name} starting…` : `Next: ${st.name} · starts as soon as blocks arrive`);
+  setText('buildState', b.done ? '' : b.active ? `🏗 ${st.name} ${Math.floor(b.used + 1e-6)}/${st.blocks}${waitingForBlocks() ? ' · ' + supplyNote() : ''}`
+    : canStartStage() ? `🏗 ${st.name} starting…` : `⏳ ${st.name} · ${supplyNote()}`);
   $('buildState').hidden = b.done;
-  setText('buildInfo', b.done ? 'Sell it, clear the plot, start something bigger.'
-    : `Blocks on site ${Math.floor(b.material.qty)} · on the truck ${Math.floor(S.truck.load.qty)} · at the yard ${Math.floor(S.goods.qty)}. ${st.name} pays ≈ ${money(stagePayment(S))}. The house is worth what it is built from: average block value ×${projectValueFactor(S).toFixed(2)} → sale ≈ ${money(projectValue(S))}.` +
-      (S.build.project === PROJECTS.length - 1 && S.stats.sold >= PROJECTS.length ? ` (Repeat build: ×${repeatFactor(S).toFixed(1)} until new projects arrive.)` : ''));
+  setHTML('buildInfo', b.done ? '' : `<span class="chip">🧱 site <b>${Math.floor(b.material.qty)}</b></span><span class="chip">🚚 <b>${Math.floor(S.truck.load.qty)}</b></span><span class="chip">🏭 <b>${Math.floor(S.goods.qty)}</b></span><span class="chip">stage pays <b>${money(stagePayment(S))}</b></span>` +
+      (S.build.project === PROJECTS.length - 1 && S.stats.sold >= PROJECTS.length ? `<span class="chip">repeat ×${repeatFactor(S).toFixed(1)}</span>` : ''));
   // CONSTRUCTION CREW: revealed when blocks pile up faster than the builders lay them (an opportunity, never red)
   const crewU = UPGRADES.find((u) => u.id === 'crew')!;
   const cb = $('crewBuy') as HTMLButtonElement;
   $('g-crew').hidden = !(S.flags.crewSeen || S.upg.crew > 0);
   if (S.site === 'build' && S.flags.crewSeen) S.flags.crewAck = true;
   const crewMax = S.upg.crew >= crewU.maxLevel, crewPrice = upgCost(S, 'crew');
-  cb.disabled = crewMax || S.cash < crewPrice;
+  const cGate = chainGate(S, 'crew'), cHeld = !crewMax && S.upg.crew >= cGate.cap;
+  cb.disabled = crewMax || cHeld || S.cash < crewPrice;
   set(cb, '.nm', crewMax ? 'Construction Crew (full)' : `Hire builder #${builders(S) + 1}`);
-  set(cb, '.ds', `${builders(S)} builders · ${constructionRate(S).toFixed(1)} blocks/s → ${(constructionRate(S) + CFG.build.perBuilder).toFixed(1)}/s · bigger truck runs`);
-  set(cb, '.pr', crewMax ? '' : money(crewPrice));
-  set(cb, '.ct', S.upg.crew ? `Lv ${S.upg.crew}` : '');
+  set(cb, '.ds', cHeld && cGate.blocker ? `🔒 first: ${upgDef(cGate.blocker).name} Lv ${S.upg.crew - CFG.chainSlack + 1}` : `${constructionRate(S).toFixed(1)} → ${(constructionRate(S) + CFG.build.perBuilder).toFixed(1)} blocks/s`);
+  set(cb, '.pr', crewMax ? 'MAX' : money(crewPrice));
+  afford(cb, crewMax ? 0 : crewPrice);
   setText('crewStat', `${constructionRate(S).toFixed(1)} blocks/s`);
   // crew status for the extraction header
   if (S.crew.dig) setText('extStat', `${S.crew.dig} crew${restingCount() ? ` · ${restingCount()} resting` : ''} · ${crewRubbleRate(S).toFixed(1)} rubble/s`);
@@ -389,12 +472,19 @@ function updRow(b: HTMLButtonElement, visible: boolean) {
   const id = b.dataset.upg as UpgradeId, u = UPGRADES.find((x) => x.id === id)!;
   b.hidden = !visible;
   if (!visible) return;
-  const maxed = S.upg[id] >= u.maxLevel, cost = upgCost(S, id);
-  b.disabled = maxed || S.cash < cost;
+  const maxed = S.upg[id] >= u.maxLevel, cost = upgCost(S, id), gate = chainGate(S, id), held = !maxed && S.upg[id] >= gate.cap;
+  b.disabled = maxed || held || S.cash < cost;
+  b.classList.toggle('held', held);
+  b.classList.toggle('done', maxed); // finished rows shrink to one slim line
   // a bigger cart is not pure upside: say when the next level's full load will exceed the track (still buyable)
   const capWarn = id === 'cartCap' && Math.round(CFG.cart.capacity.base * (1 + CFG.cart.capacity.perLevel * (S.upg.cartCap + 1))) > trackSafe(S);
-  set(b, 'small', `Lv ${S.upg[id]} · ${upgStat(id)}${capWarn ? ' · ⚠ full load may exceed track strength' : ''}`);
-  set(b, '.rp', maxed ? 'MAX' : money(cost));
+  const now = upgStat(id);
+  let next = '';
+  if (!maxed) { S.upg[id]++; next = upgStat(id); S.upg[id]--; } // preview the next level with the same pure formulas
+  set(b, '.lv', `Lv ${S.upg[id]}`);
+  set(b, '.ef', maxed ? now : held && gate.blocker ? `🔒 first: ${upgDef(gate.blocker).name} Lv ${S.upg[id] - CFG.chainSlack + 1}` : `${now} → ${next}${capWarn ? ' ⚠ track' : ''}`);
+  set(b, '.pr', maxed ? 'MAX' : money(cost));
+  afford(b, maxed ? 0 : cost);
 }
 
 // ---- modal (finds placeholder until discoveries are rebuilt) ----

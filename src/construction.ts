@@ -5,8 +5,9 @@
 import { CFG, PROJECTS } from './config';
 import { S, emptyLoad } from './state';
 import { constructionRate, moveLoad, projectValue, stagePaymentFor } from './economy';
+import { happyTime } from './platform';
 
-export type BuildEventType = 'stageStart' | 'stageDone' | 'complete' | 'sold' | 'consume';
+export type BuildEventType = 'stageStart' | 'stageDone' | 'stagePay' | 'complete' | 'sold' | 'consume';
 export interface BuildEvent { type: BuildEventType; name?: string; cash?: number; qty?: number; project?: number }
 
 const sink = emptyLoad();
@@ -34,6 +35,7 @@ export function startStage(out: BuildEvent[] = []): boolean {
   S.build.active = true;
   S.build.used = 0;
   S.build.stageVal = 0;
+  S.build.stagePaid = 0;
   out.push({ type: 'stageStart', name: currentStage().name });
   return true;
 }
@@ -57,9 +59,21 @@ export function updateConstruction(dt: number, out: BuildEvent[] = []): BuildEve
   b.used += q;
   b.stageVal += sink.val; b.projVal += sink.val; b.projQty += q; // the value of the material built in stays with the house
   if (q > 0) out.push({ type: 'consume', qty: q });
+  // PROGRESS INSTALMENTS: a big stage pays as it rises (the late-game stages take minutes; one payment at the end left
+  // the player with nothing to buy). Same total: the completion payment is the stage payment minus what was paid.
+  const N = CFG.build.instalments;
+  if (st.blocks >= CFG.build.instalmentMinBlocks && b.used < st.blocks - 1e-6 && b.used > 0) {
+    const full = stagePaymentFor(S, b.stage, b.stageVal / b.used), due = full * Math.floor((b.used / st.blocks) * N) / N;
+    if (due - (b.stagePaid ?? 0) >= 1) {
+      const inst = Math.round(due - (b.stagePaid ?? 0));
+      S.cash += inst; S.stats.earned += inst; b.stagePaid = (b.stagePaid ?? 0) + inst;
+      out.push({ type: 'stagePay', name: st.name, cash: inst });
+    }
+  }
   if (b.used >= st.blocks - 1e-6) {
-    // milestone: the client pays for the finished stage — its size × the value of the blocks it used
-    const pay = stagePaymentFor(S, b.stage, b.used > 0 ? b.stageVal / b.used : 1);
+    // milestone: the client pays for the finished stage — its size × the value of the blocks it used (minus instalments)
+    const pay = Math.max(0, stagePaymentFor(S, b.stage, b.used > 0 ? b.stageVal / b.used : 1) - (b.stagePaid ?? 0));
+    b.stagePaid = 0;
     S.cash += pay;
     S.stats.earned += pay;
     out.push({ type: 'stageDone', name: st.name, cash: pay });
@@ -82,6 +96,7 @@ export function sellProperty(out: BuildEvent[] = []): number {
   const value = projectValue(S);
   const sold = b.project;
   S.cash += value;
+  happyTime();
   S.stats.earned += value;
   S.stats.sold++;
   b.project = Math.min(b.project + 1, PROJECTS.length - 1); // V2-1 stops at Project #2 (it repeats once sold)

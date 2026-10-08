@@ -4,7 +4,7 @@
 //   BOTTOM_EMPTY → LOADING → READY → TRAVELLING_UP → SURFACE_ARRIVAL → UNLOADING → TRAVELLING_DOWN → (BOTTOM_EMPTY | LOADING)
 import { CFG } from './config';
 import { S, type CartState } from './state';
-import { cartCapacity, loadRate, moveLoad, rawCap, trackSafe, trackStress, travelTime, type TrackStress } from './economy';
+import { cartCapacity, loadRate, moveLoad, rawCap, trackGrace, trackSafe, trackStress, travelTime, type TrackStress } from './economy';
 
 export type CartEventType = 'loaded' | 'ready' | 'depart' | 'arrive' | 'unloadStart' | 'unloaded' | 'returnStart' | 'back';
 export interface CartEvent { type: CartEventType; qty?: number }
@@ -33,6 +33,7 @@ export function cartDepth(): number {
 }
 
 // ---- track load (Spec §7.8): the physical cart load decides how hard the track works ----
+let idleLoad = 0; // secs a part-filled cart has waited with nothing more to load
 let lastTripOver = false; // the last trip up was overloaded (not saved: recomputed at the next departure)
 /** Seconds for a loaded trip up from `from`; an overloaded track slows it (no damage, no material loss). */
 function upTripSecs(from: number) {
@@ -46,8 +47,8 @@ export function cartTrackStress(): TrackStress {
   return trackStress(S, S.cart.load.qty);
 }
 /** A real, active transport problem: the cart is carrying (or keeps carrying) more than the track's safe load. */
-export const trackOverloaded = () =>
-  S.cart.load.qty > trackSafe(S) + 1e-9 || (lastTripOver && cartCapacity(S) > trackSafe(S) + 1e-9);
+export const trackOverloaded = () => !trackGrace(S) && (
+  S.cart.load.qty > trackSafe(S) + 1e-9 || (lastTripOver && cartCapacity(S) > trackSafe(S) + 1e-9));
 /** After a track upgrade: a cart already climbing continues at the new track's speed (same progress). */
 export function retimeUpTrip() {
   lastTripOver = trackStress(S, S.cart.load.qty) === 'over' && S.cart.state === 'TRAVELLING_UP';
@@ -90,10 +91,13 @@ export function updateCart(dt: number, out: CartEvent[] = []): CartEvent[] {
         const room = cap - c.load.qty;
         if (room <= EPS) { enter('READY'); out.push({ type: 'ready' }); continue; }
         if (S.rubble.qty <= EPS) { // nothing to load: wait (empty cart = extraction bottleneck)
-          if (c.load.qty <= EPS) enter('BOTTOM_EMPTY');
-          c.t += left; left = 0;
+          if (c.load.qty <= EPS) { enter('BOTTOM_EMPTY'); break; }
+          // a part-full cart doesn't sit idle: once the operation runs (yard built) it leaves after a short wait
+          idleLoad += left; c.t += left; left = 0;
+          if (idleLoad >= C.partialWaitSecs && c.load.qty >= (S.yard ? Math.min(cap * C.partialMinFrac, C.partialMinQty) : CFG.intro.sampleQty)) { idleLoad = 0; enter('READY'); out.push({ type: 'ready' }); }
           break;
         }
+        idleLoad = 0;
         const can = Math.min(room, S.rubble.qty, rate * left);
         const moved = moveLoad(S.rubble, c.load, can);
         if (moved > 0) out.push({ type: 'loaded', qty: moved });

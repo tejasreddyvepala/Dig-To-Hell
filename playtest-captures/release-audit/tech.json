@@ -1,0 +1,127 @@
+[
+ {
+  "name": "fresh",
+  "loadMs": 452,
+  "errs": [
+   "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "fails": [
+   "404 http://localhost:4173/favicon.ico"
+  ],
+  "intro": "Someone said there's something valuable underneath it."
+ },
+ {
+  "name": "corrupt-json",
+  "loadMs": 80,
+  "errs": [],
+  "fails": [],
+  "afterAutosave": "overwritten with fresh save (depth 0)"
+ },
+ {
+  "name": "poisoned",
+  "loadMs": 276,
+  "errs": [],
+  "fails": [],
+  "saved": {
+   "cash": 0,
+   "depth": 0,
+   "tool": 5,
+   "dig": 0,
+   "exc": 5,
+   "cartCap": 30,
+   "rubble": 0,
+   "earned": 0
+  }
+ },
+ {
+  "name": "future-version",
+  "loadMs": 251,
+  "errs": [],
+  "fails": [],
+  "afterAutosave": "version 6 depth 0 cash 0"
+ },
+ {
+  "name": "offline-30d",
+  "loadMs": 240,
+  "errs": [],
+  "fails": [],
+  "modal": "While you were away for 8h 0m |  | Your crew dug 114 m |  | 911 rubble dug, 690 blocks delivered to the site |  | Get back to work"
+ },
+ {
+  "name": "clock-future",
+  "loadMs": 224,
+  "errs": [],
+  "fails": [],
+  "modal": "no offline modal"
+ },
+ {
+  "name": "res 1280x720",
+  "loadMs": 208,
+  "errs": [],
+  "fails": [],
+  "hScroll": false
+ },
+ {
+  "name": "res 1366x768",
+  "loadMs": 288,
+  "errs": [],
+  "fails": [],
+  "hScroll": false
+ },
+ {
+  "name": "res 1920x1080",
+  "loadMs": 182,
+  "errs": [],
+  "fails": [],
+  "hScroll": false
+ },
+ {
+  "name": "res 1024x600",
+  "loadMs": 305,
+  "errs": [],
+  "fails": [],
+  "hScroll": false
+ },
+ {
+  "name": "res 800x600",
+  "loadMs": 165,
+  "errs": [],
+  "fails": [],
+  "hScroll": false
+ },
+ {
+  "name": "hidpi 1440x900@2x",
+  "loadMs": 184,
+  "errs": [],
+  "fails": []
+ },
+ {
+  "name": "mobile 390x844",
+  "loadMs": 174,
+  "errs": [],
+  "fails": []
+ },
+ {
+  "name": "rapid",
+  "loadMs": 144,
+  "errs": [],
+  "fails": [],
+  "cashAfterSpam": 898,
+  "dig": 13,
+  "negativeCash": false
+ },
+ {
+  "name": "memory",
+  "loadMs": 392,
+  "errs": [],
+  "fails": [],
+  "heapMB": [
+   "10.4",
+   "23.4"
+  ],
+  "domNodes": [
+   1891,
+   1739
+  ]
+ }
+]

@@ -1,16 +1,22 @@
 {
   "name": "dig-to-hell",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:test": "tsc --noEmit && vite build --mode tester --outDir dist-test",
+    "preview:test": "vite preview --outDir dist-test --port 4174"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
     "vite": "^6.4.3"
+  },
+  "dependencies": {
+    "@fontsource/bungee": "^5.3.0",
+    "@fontsource/rubik": "^5.3.0"
   }
 }

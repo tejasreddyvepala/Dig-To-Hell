@@ -55,8 +55,14 @@ export const rubbleRGB = (id: MaterialId): RGB => BY_ID[id].chip;
 interface Seg { canvas: HTMLCanvasElement; used: number }
 const cache = new Map<number, Seg>();
 let frame = 0, builtThisFrame = 0;
+let pending: { k: number; job: Generator<void, HTMLCanvasElement, void> } | null = null;
+let visJob: { k: number; job: Generator<void, HTMLCanvasElement, void> } | null = null; // a visible segment being painted
+const VISIBLE_BUDGET_MS = 8;
+const PREFETCH_BUDGET_MS = 3;
 
-function paintSegment(k: number): HTMLCanvasElement {
+/** Painting as a resumable job: yields after every few rows so prefetching can spread one segment (~30 ms of pixel
+ *  work, ~130 ms on a slow CPU) over several frames instead of stalling one frame while the player digs. */
+function* paintJob(k: number): Generator<void, HTMLCanvasElement, void> {
   const w = Math.round(HALF_W_M * 2 * PX_PER_M), h = Math.round(SEG_M * PX_PER_M);
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
@@ -69,6 +75,7 @@ function paintSegment(k: number): HTMLCanvasElement {
     for (let i = 1; i < nb; i++) off[i * w + px] = MATERIALS[i].from + boundaryOffset(i, wx);
   }
   for (let py = 0; py < h; py++) {
+    if (py > 0) yield; // one row per step: a time-budgeted caller decides whether to continue this frame
     const m = k * SEG_M + (py + 0.5) / PX_PER_M;
     for (let px = 0; px < w; px++) {
       const wx = -HALF_W_M + (px + 0.5) / PX_PER_M;
@@ -87,6 +94,14 @@ function paintSegment(k: number): HTMLCanvasElement {
       const top = m < 0.8 ? 0.82 + m * 0.2 : 1; // darker topsoil just under the grass
       const i = (py * w + px) * 4;
       d[i] = Math.min(255, mat.wall[0] * k2 * top); d[i + 1] = Math.min(255, mat.wall[1] * k2 * top); d[i + 2] = Math.min(255, mat.wall[2] * k2 * top); d[i + 3] = 255;
+      if (mat.ore) { // gem / metal specks embedded in the rock
+        const g = h2(px * 1.31 + 7, py + k * 977);
+        if (g > 0.994) { const oc = mat.ore[Math.floor(h2(px, py * 3.1 + k) * mat.ore.length)], b = g > 0.995 ? 1.25 : 1; d[i] = Math.min(255, oc[0] * b); d[i + 1] = Math.min(255, oc[1] * b); d[i + 2] = Math.min(255, oc[2] * b); }
+      }
+      if (mat.glow) { // lava veins: thin bright wandering bands
+        const v = Math.abs(Math.sin((m * 0.9 + vnoise(wx * 0.3, m * 0.2) * 5) * 2.1 + wx * 0.15));
+        if (v < 0.06) { const t = 1 - v / 0.06; d[i] = Math.min(255, d[i] + 200 * t); d[i + 1] = Math.min(255, d[i + 1] + 90 * t); d[i + 2] = Math.min(255, d[i + 2] + 10 * t); }
+      }
     }
   }
   c.putImageData(img, 0, 0);
@@ -113,7 +128,16 @@ function paintSegment(k: number): HTMLCanvasElement {
 }
 
 /** Draw the painted geology covering virtual rows [yTop, yBot] given a depth->y mapping. */
+/** dev-only profile: time spent in drawGeology per frame (soak tests read it through window.__geoProf) */
+export const GEO_PROF = { max: 0, over8: 0, n: 0, sync: 0, syncMax: 0, pre: 0, preMax: 0, evict: 0 };
+if (import.meta.env?.DEV) (window as any).__geoProf = GEO_PROF; // ?. : headless (tsx) sims have no import.meta.env
 export function drawGeology(ctx: CanvasRenderingContext2D, centreX: number, yOf: (m: number) => number, mTop: number, mBot: number, vx0: number, vx1: number) {
+  const tp0 = import.meta.env.DEV ? performance.now() : 0;
+  try { drawGeologyInner(ctx, centreX, yOf, mTop, mBot, vx0, vx1); } finally {
+    if (import.meta.env.DEV) { const ms = performance.now() - tp0; GEO_PROF.n++; if (ms > GEO_PROF.max) GEO_PROF.max = ms; if (ms > 8) GEO_PROF.over8++; }
+  }
+}
+function drawGeologyInner(ctx: CanvasRenderingContext2D, centreX: number, yOf: (m: number) => number, mTop: number, mBot: number, vx0: number, vx1: number) {
   frame++; builtThisFrame = 0;
   const k0 = Math.max(0, Math.floor(mTop / SEG_M)), k1 = Math.floor(mBot / SEG_M);
   const x0 = centreX - HALF_W_M * CFG.ppm, wPx = HALF_W_M * 2 * CFG.ppm, hPx = SEG_M * CFG.ppm;
@@ -142,17 +166,36 @@ export function drawGeology(ctx: CanvasRenderingContext2D, centreX: number, yOf:
   const sa = a * CFG.geo.res, sw = (b - a) * CFG.geo.res;
   for (let k = k0; k <= k1; k++) {
     let seg = cache.get(k);
-    if (!seg && builtThisFrame < CFG.geo.maxBuildsPerFrame) { seg = { canvas: paintSegment(k), used: frame }; cache.set(k, seg); builtThisFrame++; }
+    if (!seg && !visJob) { visJob = { k, job: paintJob(k) }; builtThisFrame++; } // on screen but not painted yet: flat colour now, painted over the next frames
     const y = yOf(k * SEG_M);
     if (seg) { seg.used = frame; ctx.drawImage(seg.canvas, sa, 0, sw, seg.canvas.height, x0 + a, y, b - a, hPx + 0.5); }
     else { ctx.fillStyle = `rgb(${materialAt(k * SEG_M).wall.join(',')})`; ctx.fillRect(x0 + a, y, b - a, hPx + 0.5); }
   }
   if (vx0 < x0 + 90 || vx1 > x0 + wPx - 90) fadeEdges();
-  // prefetch the next segments below the view (one per frame) so digging deeper never stalls on painting
-  if (builtThisFrame === 0) {
-    for (let k = k1 + 1; k <= k1 + CFG.geo.prefetch; k++) if (!cache.has(k)) { cache.set(k, { canvas: paintSegment(k), used: frame }); break; }
+  // a visible segment that wasn't ready (first load, a jump, fast scrolling) paints in slices within a bigger budget
+  if (visJob) {
+    if (cache.has(visJob.k)) visJob = null;
+    else {
+      const tq = performance.now(), until = tq + VISIBLE_BUDGET_MS;
+      let r = visJob.job.next();
+      while (!r.done && performance.now() < until) r = visJob.job.next();
+      if (import.meta.env.DEV) { GEO_PROF.sync++; GEO_PROF.syncMax = Math.max(GEO_PROF.syncMax, performance.now() - tq); }
+      if (r.done) { cache.set(visJob.k, { canvas: r.value, used: frame }); visJob = null; }
+    }
+  }
+  // prefetch the next segments below the view, a few rows per frame within a small time budget, so digging deeper
+  // never stalls a frame on painting
+  if (pending && (cache.has(pending.k) || pending.k < k0 || pending.k > k1 + CFG.geo.prefetch)) pending = null;
+  if (!pending && !visJob && builtThisFrame === 0) for (let k = k1 + 1; k <= k1 + CFG.geo.prefetch; k++) if (!cache.has(k)) { pending = { k, job: paintJob(k) }; break; }
+  if (pending && !visJob) { // one budget per frame: visible work first
+    const tq = performance.now(), until = tq + PREFETCH_BUDGET_MS;
+    let r = pending.job.next();
+    while (!r.done && performance.now() < until) r = pending.job.next();
+    if (import.meta.env.DEV) { GEO_PROF.pre++; GEO_PROF.preMax = Math.max(GEO_PROF.preMax, performance.now() - tq); }
+    if (r.done) { cache.set(pending.k, { canvas: r.value, used: frame }); pending = null; }
   }
   if (cache.size > CFG.geo.cacheSegments) { // evict least recently used
+    if (import.meta.env.DEV) GEO_PROF.evict++;
     const old = [...cache.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, cache.size - CFG.geo.cacheSegments);
     for (const [key] of old) cache.delete(key);
   }

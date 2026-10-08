@@ -1,5 +1,5 @@
 // Persistent game state + save/load/migration. The only module that touches localStorage.
-import { CFG, CREW, FINDS, MATERIALS, MAX_DEPTH, PROJECTS, TOOLS, UPGRADES, WORKSITES, type CrewId, type MaterialId, type UpgradeId } from './config';
+import { CFG, CREW, CREW_GEAR, FINDS, MATERIALS, MAX_DEPTH, PROJECTS, TOOLS, UPGRADES, WORKSITES, type CrewId, type MaterialId, type UpgradeId } from './config';
 
 /** Material composition of a load (units per source material); sums to qty. */
 export type Mix = Partial<Record<MaterialId, number>>;
@@ -36,6 +36,7 @@ export interface BuildState {
   done: boolean; // every stage complete: ready to sell
   // value of the material actually built in (block value travels with the blocks; Spec §3.1)
   stageVal: number; // total block value consumed by the current stage
+  stagePaid?: number; // progress instalments already paid for the current stage (big stages pay as they rise)
   projVal: number; // total block value consumed by the whole project so far
   projQty: number; // blocks consumed by the whole project so far
 }
@@ -66,14 +67,17 @@ export interface State {
   upg: Record<UpgradeId, number>;
   yard: boolean; // Recycling Yard built
   worksite: number; // index into WORKSITES (0 Narrow Shaft, 1 Work Chamber)
+  chamberM: number; // WORLD depth (m) of the Work Chamber's floor — where it was blasted; -1 = none. It stays there for good.
   build: BuildState;
   site: Site; // where the camera is (restored on load)
   tut: number; // first-time introduction step (see intro.ts; TUT_DONE = finished)
   // trackStory: first-overload moment shown · ann*: site-unlock announced · seen*: the player has visited the unlocked site
   // crewSeen: Construction Crew revealed (construction became a bottleneck) · crewAck: the player has seen it at BUILD
-  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean; annYard: boolean; annBuild: boolean; seenYard: boolean; seenBuild: boolean; crewSeen: boolean; crewAck: boolean };
+  flags: { dispatched: boolean; arrived: boolean; sold: boolean; storageSeen: boolean; trackStory: boolean; annYard: boolean; annBuild: boolean; seenYard: boolean; seenBuild: boolean; crewSeen: boolean; crewAck: boolean; finished?: boolean };
+  projSchema: number; // 2 = project ladder with the Hut first (older saves: 0 = Cabin, 1 = Two-Story Home)
   trackSchema: number; // 1 = upg.rail is a Track Strength tier (older saves stored Rail Quality levels)
-  stats: { earned: number; delivered: number; processed: number; sold: number }; // lifetime cash, blocks delivered to the plot, units processed, properties sold
+  crewGear: number; // index into CREW_GEAR (the crew's tool tier)
+  stats: { earned: number; delivered: number; processed: number; sold: number; playSecs?: number }; // lifetime cash, blocks delivered to the plot, units processed, properties sold
 }
 
 export const emptyLoad = (): Load => ({ qty: 0, val: 0, mix: {} });
@@ -81,20 +85,23 @@ export const emptyLoad = (): Load => ({ qty: 0, val: 0, mix: {} });
 export function fresh(): State {
   return {
     version: CFG.saveVersion, cash: 0, depth: 0, tool: 0,
-    crew: { dig: 0, exc: 0 }, found: 0, last: Date.now(), clicks: 0,
+    crew: { dig: 0, exc: 0, saw: 0, borer: 0 }, found: 0, last: Date.now(), clicks: 0,
     rubble: emptyLoad(),
     cart: { state: 'BOTTOM_EMPTY', t: 0, dur: 0, from: 0, load: emptyLoad() },
     raw: emptyLoad(),
     goods: emptyLoad(),
     truck: { state: 'NONE', t: 0, dur: 0, load: emptyLoad(), n: 0, paid: 0, bed: 0 },
-    upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0, processSpeed: 0, contractValue: 0, rawStorage: 0, crew: 0 },
+    upg: { cartCap: 0, cartSpeed: 0, loadSpeed: 0, rail: 0, processSpeed: 0, contractValue: 0, rawStorage: 0, crew: 0, crewTools: 0, crewStamina: 0 },
     yard: false,
     worksite: 0,
-    build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false, stageVal: 0, projVal: 0, projQty: 0 },
+    chamberM: -1,
+    build: { project: 0, stage: 0, active: false, used: 0, material: emptyLoad(), done: false, stageVal: 0, projVal: 0, projQty: 0, stagePaid: 0 },
     site: 'mine',
     tut: 0,
     flags: { dispatched: false, arrived: false, sold: false, storageSeen: false, trackStory: false, annYard: false, annBuild: false, seenYard: false, seenBuild: false, crewSeen: false, crewAck: false },
     trackSchema: 1,
+    projSchema: 2,
+    crewGear: 0,
     stats: { earned: 0, delivered: 0, processed: 0, sold: 0 },
   };
 }
@@ -118,12 +125,12 @@ function load(o: any, guessDepth: number): Load {
 }
 
 /** Representative dig depth per material (pre-v6 loads stored values from the old depth curve). */
-const REF_DEPTH: Record<MaterialId, number> = { dirt: 37, clay: 115, stone: 200, cave: 275 };
+const REF_DEPTH: Partial<Record<MaterialId, number>> = { dirt: 37, clay: 115, stone: 200, cave: 275 };
 const v6Value = (d: number) => Math.pow(1 + d / CFG.valueDiv, CFG.valueExp);
 /** Pre-v6 saves: recompute every load's value from its material mix with the v6 curve (quantities untouched), and give
  *  a project in progress the value of the blocks it has already consumed. Never changes cash or quantities. */
 function revalue(s: State) {
-  const rv = (l: Load) => { l.val = 0; for (const id of IDS) if (l.mix[id]) l.val += l.mix[id]! * v6Value(REF_DEPTH[id]); };
+  const rv = (l: Load) => { l.val = 0; for (const id of IDS) if (l.mix[id]) l.val += l.mix[id]! * v6Value(REF_DEPTH[id] ?? 275); };
   for (const l of [s.rubble, s.cart.load, s.raw, s.goods, s.truck.load, s.build.material]) rv(l);
   const b = s.build, p = PROJECTS[b.project];
   const doneBlocks = p.stages.slice(0, Math.min(b.stage, p.stages.length)).reduce((a, st) => a + st.blocks, 0) + (b.active ? b.used : 0);
@@ -143,7 +150,7 @@ export function sanitize(o: any): State | null {
   s.cash = num(o.cash, 0, 1e15, 0);
   s.depth = num(o.depth, 0, MAX_DEPTH, 0);
   s.tool = Math.floor(num(o.tool, 0, TOOLS.length - 1, 0));
-  for (const c of CREW) s.crew[c.id] = Math.floor(num(o.crew?.[c.id], 0, 1e4, 0));
+  for (const c of CREW) s.crew[c.id] = Math.floor(num(o.crew?.[c.id], 0, c.max, 0)); // machines are one of each
   s.found = Math.floor(num(o.found, 0, FINDS.length, 0));
   s.last = num(o.last, 0, Date.now(), Date.now());
   s.clicks = Math.floor(num(o.clicks, 0, 1e9, 0));
@@ -191,7 +198,7 @@ export function sanitize(o: any): State | null {
   // Rail Quality (speed levels 0..20) became Track Strength (physical tiers 0..3): map once, never downgrade a bought tier
   if (o.trackSchema !== 1) s.upg.rail = railLevelsToTier(num(o.upg?.rail, 0, 20, 0));
   s.yard = !!o.yard;
-  s.stats.delivered = v === 5 ? num(o.stats?.delivered, 0, 1e15, 0) : 0; // v4 "delivered" meant sold-by-truck
+  s.stats.delivered = v >= 5 ? num(o.stats?.delivered, 0, 1e15, 0) : 0; // v4 "delivered" meant sold-by-truck
   s.stats.processed = num(o.stats?.processed, 0, 1e15, 0);
   const t = o.truck;
   if (v === 4) {
@@ -216,18 +223,27 @@ export function sanitize(o: any): State | null {
     if (s.yard) s.truck.state = 'PARKED';
   }
   s.worksite = Math.floor(num(o.worksite, 0, WORKSITES.length - 1, 0));
+  // Saves from before the chamber was world-anchored don't know where it was blasted: the least disruptive
+  // deterministic fallback is the depth the save is at now (the room appears where the floor is, then stays there).
+  s.chamberM = s.worksite >= 1 ? num(o.chamberM, 0, 1e6, s.depth) : -1;
   const b = o.build;
   s.build = {
     project: Math.floor(num(b?.project, 0, PROJECTS.length - 1, 0)), stage: Math.floor(num(b?.stage, 0, 99, 0)),
     active: !!b?.active, used: num(b?.used, 0, 1e9, 0), material: load(b?.material, s.depth * 0.6), done: !!b?.done,
-    stageVal: num(b?.stageVal, 0, 1e15, 0), projVal: num(b?.projVal, 0, 1e15, 0), projQty: num(b?.projQty, 0, 1e9, 0),
+    stageVal: num(b?.stageVal, 0, 1e15, 0), projVal: num(b?.projVal, 0, 1e15, 0), projQty: num(b?.projQty, 0, 1e9, 0), stagePaid: num(b?.stagePaid, 0, 1e15, 0),
   };
+  // project ladder v2 inserted the Hut (and more homes): old index 0 Cabin → 1, old 1 Two-Story Home → 3
+  if (o.projSchema !== 2) s.build.project = [1, 3][Math.min(1, s.build.project)] ?? 1;
+  s.projSchema = 2;
   const stages = PROJECTS[s.build.project].stages.length;
   if (s.build.stage >= stages) { s.build.stage = stages; s.build.done = true; s.build.active = false; }
   if (v < 6) revalue(s); // economy rebuild: material value now follows the v6 depth curve; the house in progress gets its built-in value
   s.site = SITES.includes(o.site) ? o.site : 'mine';
   s.tut = Math.floor(num(o.tut, 0, 99, 0));
   s.stats.sold = Math.floor(num(o.stats?.sold, 0, 1e9, 0));
+  s.crewGear = Math.floor(num(o.crewGear, 0, CREW_GEAR.length - 1, 0));
+  s.stats.playSecs = num(o.stats?.playSecs, 0, 1e9, 0);
+  s.flags.finished = !!o.flags?.finished;
   return settleSiteFlags(s, o);
 }
 
@@ -239,6 +255,26 @@ function settleSiteFlags(s: State, o: any): State {
   return s;
 }
 
+// SAVE SAFETY: a save that can't be read (corrupt JSON, a version from a newer build) is never silently lost.
+//   • it is copied to `<key>_backup_<time>` first (the newest 2 are kept), then
+//   • the rolling `<key>_prev` copy (written at most once a minute from the last good save) is tried, and only if
+//     that fails too does a fresh game start. `loadIssue` tells main.ts to explain what happened to the player.
+export let loadIssue: null | { kind: 'restored' | 'fresh'; backup: string } = null;
+const PREV = () => CFG.saveKey + '_prev';
+function backupRaw(raw: string): string {
+  const key = `${CFG.saveKey}_backup_${Date.now()}`;
+  try {
+    localStorage.setItem(key, raw);
+    const olds = Object.keys(localStorage).filter((k) => k.startsWith(CFG.saveKey + '_backup_')).sort();
+    for (const k of olds.slice(0, Math.max(0, olds.length - 2))) localStorage.removeItem(k);
+  } catch { /* storage full: nothing more we can do */ }
+  return key;
+}
+function parse(raw: string | null): State | null {
+  if (!raw) return null;
+  try { return sanitize(JSON.parse(raw)); } catch { return null; }
+}
+
 /** Load into S. Returns seconds elapsed since the last save (0 if none). */
 export function loadState(): number {
   try {
@@ -246,8 +282,14 @@ export function loadState(): number {
     let raw = localStorage.getItem(CFG.saveKey);
     for (const m of CFG.migrateFrom) if (!raw) raw = localStorage.getItem(m.key);
     if (!raw) return 0;
-    const s = sanitize(JSON.parse(raw));
-    if (!s) return 0;
+    let s = parse(raw);
+    if (!s) { // unreadable: keep a copy, then fall back to the last good rolling copy
+      const backup = backupRaw(raw);
+      s = parse(localStorage.getItem(PREV()));
+      loadIssue = { kind: s ? 'restored' : 'fresh', backup };
+      console.warn(`Save could not be read; kept a copy in ${backup}; ${s ? 'restored the previous copy' : 'starting fresh'}`);
+      if (!s) return 0;
+    }
     Object.assign(S, s);
     return Math.max(0, (Date.now() - s.last) / 1000);
   } catch (e) {
@@ -256,14 +298,20 @@ export function loadState(): number {
   }
 }
 
+let prevAt = 0;
 export function saveState() {
   S.last = Date.now();
+  const t0 = import.meta.env?.DEV ? performance.now() : 0;
   try {
+    const before = localStorage.getItem(CFG.saveKey);
     localStorage.setItem(CFG.saveKey, JSON.stringify(S));
+    // rolling copy of the previous good save (a torn or corrupted write never takes the only copy with it)
+    if (before && S.last - prevAt > 60_000 && parse(before)) { localStorage.setItem(PREV(), before); prevAt = S.last; }
     for (const m of CFG.migrateFrom) localStorage.removeItem(m.key); // only after the migrated save is safely written
   } catch {
     /* storage unavailable: play on without saving */
   }
+  if (import.meta.env?.DEV) { const ms = performance.now() - t0; const w = window as any; (w.__saveMs ??= []).push(Math.round(ms * 10) / 10); }
 }
 
 export function resetState() {

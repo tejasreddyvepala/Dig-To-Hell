@@ -1,0 +1,575 @@
+  0.00m STAT real 0s {"d":0,"cash":0,"heap":13,"lf":0,"worst":0,"parts":0,"fin":false,"play":1,"ws":0,"dig":0,"sold":0}
+  0.00m SIGNALS hot=0[] tour=hidden story=false eco=false
+  0.00m TEXT: YOU BOUGHT THIS LAND FOR $1.
+  0.10m TEXT: Someone said there's something valuable underneath it.
+  0.16m TEXT: RUBBLE ISN'T MONEY.
+  0.21m BANNER First Scratch Reward $160 · tap to claim
+  0.22m TEXT: GET IT TO THE SURFACE.
+  0.24m CLAIM 1 trophies
+  0.82m TEXT: FOLLOW THE CART ▲  (YARD)
+  0.82m TEXT: YARD UNLOCKED
+  0.94m CLAIM 1 trophies
+  1.03m BUY Build Recycling Yard $250 (waited 62s)
+  1.07m STAT real 11s {"d":8,"cash":141,"heap":16,"lf":1,"worst":167,"parts":2,"fin":false,"play":65,"ws":0,"dig":0,"sold":0}
+  1.07m SIGNALS hot=1[Recruit a Miner] tour=hidden story=false eco=true
+  1.07m TEXT: BUILD SITE UNLOCKED
+  1.09m BEST Recruit Miner $120 (waited 4s)
+  1.13m SIGNALS hot=1[Recruit Miner #2] tour=hidden story=false eco=false
+  1.13m TEXT: Now this is useful.
+  1.37m TEXT: 🏗 FOUNDATION STARTED
+  1.42m TEXT: ✓ FOUNDATION COMPLETE
+  1.44m BUY Iron Pickaxe $60 (waited 21s)
+  1.48m TEXT: 🏗 WALLS STARTED
+  1.56m CLAIM 6 trophies
+  1.58m BUY Recruit Miner #2 $147 (waited 8s)
+  1.62m SIGNALS hot=0[] tour=hidden story=false eco=false
+  1.62m BANNER Iron Will +6 more trophies · rewards $1.49K · tap to claim
+  1.64m BUY Loading Speed $50 (waited 4s)
+  1.91m CLAIM 5 trophies
+  1.93m BUY Recruit Miner #3 $179 (waited 17s)
+  1.97m SIGNALS hot=1[Processing Speed] tour=hidden story=false eco=false
+  1.99m CLAIM 4 trophies
+  2.01m BUY Recruit Miner #4 $218 (waited 5s)
+  2.05m STAT real 21s {"d":33,"cash":196,"heap":16,"lf":1,"worst":167,"parts":22,"fin":false,"play":124,"ws":0,"dig":4,"sold":0}
+  2.05m SIGNALS hot=1[Processing Speed] tour=hidden story=false eco=true
+  2.05m TEXT: ✓ WALLS COMPLETE
+  2.05m TEXT: 🏗 ROOF STARTED
+  2.05m BEST Processing Speed $100 (waited 3s)
+  2.10m SIGNALS hot=1[Loading Speed] tour=hidden story=false eco=true
+  2.12m CLAIM 3 trophies
+  2.12m BEST Loading Speed $75 (waited 4s)
+  2.16m SIGNALS hot=1[Cart Capacity] tour=hidden story=false eco=true
+  2.19m CLAIM 2 trophies
+  2.19m BEST Cart Capacity $120 (waited 4s)
+  2.23m SIGNALS hot=1[Processing Speed] tour=hidden story=false eco=true
+  2.23m TEXT: ✓ ROOF COMPLETE
+  2.23m TEXT: 🏠 HUT COMPLETE
+  2.25m SELL property #1
+  2.27m CLAIM 2 trophies
+  2.29m BEST Processing Speed $155 (waited 6s)
+  2.33m SIGNALS hot=1[Cart Speed] tour=hidden story=false eco=true
+  2.35m CLAIM 1 trophies
+  2.35m BEST Cart Speed $90 (waited 4s)
+  2.39m SIGNALS hot=1[Cart Capacity] tour=hidden story=false eco=true
+  2.39m BEST Cart Capacity $186 (waited 3s)
+  2.44m SIGNALS hot=0[] tour=hidden story=false eco=false
+  2.44m BEST Crew gear: Iron Picks $300 (waited 3s)
+  2.48m BEST Recruit Miner $266 (waited 3s)
+  2.52m SIGNALS hot=1[REINFORCE TRACK] tour=open story=false eco=true
+  2.52m TEXT: 🏗 FRAME STARTED
+  2.52m BEST Reinforced Wood Track $250 (waited 3s)
+  2.57m SIGNALS hot=0[] tour=open story=false eco=false
+  2.59m BUY Cart Speed $140 (waited 4s)
+  2.76m TEXT: ✓ FRAME COMPLETE
+  2.91m BUY Raw Storage $150 (waited 19s)
+  2.97m CLAIM 4 trophies
+  2.99m BUY Recruit Miner #6 $325 (waited 5s)
+  3.03m STAT real 30s {"d":71,"cash":265,"heap":26,"lf":1,"worst":167,"parts":19,"fin":false,"play":182,"ws":0,"dig":6,"sold":1}
+  3.03m BANNER Hold Together +4 more trophies · rewards $1.77K · tap to claim
+  3.03m BEST Crew Tools $250 (waited 3s)
+  3.21m CLAIM 3 trophies
+  3.23m BUY Heavy Pickaxe $450 (waited 12s)
+  3.27m TEXT: 🏗 FINISHING STARTED
+  3.41m CLAIM 3 trophies
+  3.41m BEST Crew Stamina $400 (waited 11s)
+  3.46m TEXT: ✓ FINISHING COMPLETE
+  3.46m TEXT: 🏠 TINY CABIN COMPLETE
+  3.47m SELL property #2
+  3.49m CLAIM 2 trophies
+  3.51m BEST Block Quality $400 (waited 6s)
+  3.55m SIGNALS hot=0[] tour=mini story=false eco=false
+  3.55m BEST Processing Speed $241 (waited 3s)
+  3.62m CLAIM 1 trophies
+  3.62m BEST Loading Speed $113 (waited 4s)
+  3.66m BEST Cart Capacity $289 (waited 3s)
+  3.70m BEST Crew Tools $400 (waited 3s)
+  3.75m BEST Expand to Work Chamber $900 (waited 3s)
+  3.87m CLAIM 1 trophies
+  3.87m BEST Recruit Miner $396 (waited 7s)
+  3.91m BEST Cart Speed $217 (waited 3s)
+  4.02m STAT real 40s {"d":95,"cash":191,"heap":20,"lf":1,"worst":167,"parts":24,"fin":false,"play":241,"ws":1,"dig":7,"sold":2}
+  4.19m BEST Recruit Miner $483 (waited 17s)
+  4.26m CLAIM 1 trophies
+  4.29m BUY Raw Storage $240 (waited 6s)
+  4.40m BANNER Heavy Hitter +2 more trophies · rewards $1.32K · tap to claim
+  4.73m BEST Recruit Miner $589 (waited 26s)
+  5.01m STAT real 50s {"d":138,"cash":206,"heap":32,"lf":1,"worst":167,"parts":16,"fin":false,"play":301,"ws":1,"dig":9,"sold":2}
+  5.13m TEXT: 🏗 WINDOWS & DOORS STARTED
+  5.40m BUY Raw Storage $385 (waited 40s)
+  5.45m TEXT: ✓ WINDOWS & DOORS COMPLETE
+  5.45m TEXT: 🏠 ONE-STORY HOUSE COMPLETE
+  5.47m SELL property #3
+  5.48m BEST Excavator $4.00K (waited 5s)
+  5.67m CLAIM 2 trophies
+  5.69m BUY Recruit Miner #10 $719 (waited 12s)
+  5.84m BANNER Heavy Metal +1 more trophy · rewards $1.33K · tap to claim
+  5.89m SIGNALS hot=0[] tour=mini story=false eco=true
+  5.89m BEST Construction Crew $400 (waited 13s)
+  5.94m SIGNALS hot=0[] tour=mini story=false eco=false
+  5.94m TEXT: 🏗 GROUND FLOOR STARTED
+  5.96m CLAIM 1 trophies
+  5.98m BUY Crew Tools $641 (waited 5s)
+  6.02m STAT real 60s {"d":166,"cash":142,"heap":42,"lf":1,"worst":167,"parts":12,"fin":false,"play":362,"ws":1,"dig":10,"sold":3}
+  6.23m TEXT: ✓ GROUND FLOOR COMPLETE
+  6.29m TEXT: 🏗 UPPER FLOOR STARTED
+  6.63m TEXT: ✓ UPPER FLOOR COMPLETE
+  6.63m TEXT: 🏗 WALLS & SIDING STARTED
+  6.63m BEST Construction Crew $680 (waited 39s)
+  6.90m BUY Block Quality $720 (waited 16s)
+  6.96m TEXT: ✓ WALLS & SIDING COMPLETE
+  7.04m CLAIM 1 trophies
+  7.06m BEST Crew Stamina $700 (waited 10s)
+  7.15m STAT real 71s {"d":193,"cash":698,"heap":49,"lf":2,"worst":200,"parts":34,"fin":false,"play":428,"ws":1,"dig":10,"sold":3}
+  7.15m SIGNALS hot=1[Loading Speed] tour=mini story=false eco=true
+  7.15m BANNER Comfortable Reward $920 · tap to claim
+  7.16m BEST Loading Speed $169 (waited 6s)
+  7.24m SIGNALS hot=1[Cart Speed] tour=mini story=false eco=true
+  7.24m BEST Cart Speed $336 (waited 5s)
+  7.32m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+  7.33m BEST Processing Speed $373 (waited 5s)
+  7.39m SIGNALS hot=1[Cart Capacity] tour=mini story=false eco=true
+  7.40m BEST Cart Capacity $447 (waited 4s)
+  7.47m SIGNALS hot=0[] tour=mini story=false eco=false
+  7.47m TEXT: 🏗 LANDSCAPING STARTED
+  7.75m TEXT: ✓ LANDSCAPING COMPLETE
+  7.75m TEXT: 🏠 TWO-STORY HOME COMPLETE
+  7.79m SELL property #4
+  7.82m CLAIM 3 trophies
+  7.85m BEST Construction Crew $1.16K (waited 27s)
+  7.93m SIGNALS hot=1[Iron Rail] tour=mini story=false eco=true
+  7.93m BEST Iron Rail $1.20K (waited 5s)
+  8.01m STAT real 80s {"d":215,"cash":6816,"heap":46,"lf":3,"worst":233,"parts":29,"fin":false,"play":479,"ws":1,"dig":10,"sold":4}
+  8.01m SIGNALS hot=0[] tour=mini story=false eco=false
+  8.06m CLAIM 2 trophies
+  8.08m BEST Construction Crew $1.97K (waited 9s)
+  8.22m BEST Crew Stamina $1.23K (waited 9s)
+  8.34m CLAIM 1 trophies
+  8.35m BEST Block Quality $1.30K (waited 7s)
+  8.43m SIGNALS hot=1[Loading Speed] tour=mini story=false eco=true
+  8.44m BEST Loading Speed $254 (waited 5s)
+  8.51m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+  8.51m BANNER Trucker +2 more trophies · rewards $3.70K · tap to claim
+  8.51m TEXT: 🏗 UPPER FRAME STARTED
+  8.52m BEST Processing Speed $578 (waited 5s)
+  8.60m SIGNALS hot=1[Cart Capacity] tour=mini story=false eco=true
+  8.63m BEST Cart Capacity $693 (waited 7s)
+  8.71m SIGNALS hot=1[Cart Speed] tour=mini story=false eco=true
+  8.72m BEST Cart Speed $520 (waited 5s)
+  8.80m SIGNALS hot=0[] tour=mini story=false eco=false
+  8.84m BEST Crew Tools $1.02K (waited 7s)
+  8.92m BEST Crew Stamina $2.14K (waited 4s)
+  8.98m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+  8.98m TEXT: ✓ UPPER FRAME COMPLETE
+  8.99m BEST Raw Storage $615 (waited 5s)
+  9.45m STAT real 95s {"d":245,"cash":4160,"heap":60,"lf":4,"worst":233,"parts":63,"fin":false,"play":564,"ws":1,"dig":10,"sold":4}
+  9.46m SIGNALS hot=0[] tour=mini story=false eco=false
+  9.47m BEST Construction Crew $3.34K (waited 28s)
+  9.61m SIGNALS hot=1[Block Quality] tour=mini story=false eco=false
+ 10.35m STAT real 103s {"d":264,"cash":2444,"heap":47,"lf":6,"worst":233,"parts":48,"fin":false,"play":617,"ws":1,"dig":10,"sold":4}
+ 10.35m SIGNALS hot=0[] tour=mini story=false eco=false
+ 10.35m TEXT: ✓ PORCH & WINDOWS COMPLETE
+ 10.36m BEST Crew gear: Heavy Picks $2.00K (waited 54s)
+ 10.42m TEXT: 🏗 BARNYARD STARTED
+ 10.44m BUY Recruit Miner #11 $877 (waited 5s)
+ 10.52m BUY Recruit Miner #12 $1.07K (waited 5s)
+ 10.58m BANNER Silver Lining Reward $1.60K · tap to claim
+ 10.78m TEXT: ✓ BARNYARD COMPLETE
+ 10.78m TEXT: 🏠 FARMHOUSE COMPLETE
+ 10.80m SELL property #5
+ 10.82m BEST Block Quality $2.33K (waited 18s)
+ 10.88m SIGNALS hot=1[Loading Speed] tour=mini story=false eco=true
+ 10.89m BEST Loading Speed $380 (waited 4s)
+ 10.96m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 10.99m CLAIM 3 trophies
+ 11.00m BEST Processing Speed $895 (waited 6s)
+ 11.07m STAT real 111s {"d":276,"cash":19054,"heap":59,"lf":6,"worst":233,"parts":30,"fin":false,"play":660,"ws":1,"dig":12,"sold":5}
+ 11.07m SIGNALS hot=1[Cart Capacity] tour=mini story=false eco=true
+ 11.09m CLAIM 2 trophies
+ 11.10m BEST Cart Capacity $1.07K (waited 6s)
+ 11.18m SIGNALS hot=1[Cart Speed] tour=mini story=false eco=true
+ 11.18m BEST Cart Speed $806 (waited 5s)
+ 11.24m SIGNALS hot=0[] tour=mini story=false eco=false
+ 11.24m BEST Crew Tools $1.64K (waited 4s)
+ 11.30m BEST Crew Stamina $3.75K (waited 3s)
+ 11.35m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 11.35m TEXT: 🏗 FLOOR 1 STARTED
+ 11.35m BEST Raw Storage $984 (waited 3s)
+ 11.42m SIGNALS hot=0[] tour=mini story=false eco=false
+ 11.44m CLAIM 2 trophies
+ 11.45m BEST Construction Crew $5.68K (waited 6s)
+ 11.53m SIGNALS hot=1[Block Quality] tour=mini story=false eco=true
+ 11.69m BEST Block Quality $4.20K (waited 14s)
+ 11.82m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 11.82m BEST Processing Speed $1.39K (waited 7s)
+ 11.89m SIGNALS hot=1[Loading Speed] tour=mini story=false eco=true
+ 11.90m BEST Loading Speed $570 (waited 4s)
+ 11.96m SIGNALS hot=1[Cart Speed] tour=mini story=false eco=true
+ 11.96m BANNER Crane Season +3 more trophies · rewards $21.1K · tap to claim
+ 11.96m BEST Cart Speed $1.25K (waited 4s)
+ 12.02m STAT real 120s {"d":288,"cash":9928,"heap":46,"lf":8,"worst":317,"parts":24,"fin":false,"play":715,"ws":1,"dig":12,"sold":5}
+ 12.02m SIGNALS hot=1[Cart Capacity] tour=mini story=false eco=true
+ 12.03m TEXT: ✓ FLOOR 1 COMPLETE
+ 12.06m CLAIM 2 trophies
+ 12.07m BEST Cart Capacity $1.67K (waited 6s)
+ 12.18m SIGNALS hot=0[] tour=mini story=false eco=false
+ 12.18m TEXT: 🏗 FLOOR 2 STARTED
+ 12.21m CLAIM 1 trophies
+ 12.22m BEST Crew Tools $2.62K (waited 9s)
+ 12.29m BEST Crew Stamina $6.57K (waited 4s)
+ 12.36m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 12.36m BEST Raw Storage $1.57K (waited 4s)
+ 12.43m SIGNALS hot=1[Block Quality] tour=mini story=false eco=true
+ 12.45m BEST Block Quality $7.56K (waited 5s)
+ 12.52m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 12.52m BEST Processing Speed $2.15K (waited 4s)
+ 12.58m SIGNALS hot=1[Loading Speed] tour=mini story=false eco=true
+ 12.58m BEST Loading Speed $855 (waited 4s)
+ 12.64m SIGNALS hot=1[Cart Speed] tour=mini story=false eco=true
+ 12.64m TEXT: ✓ FLOOR 2 COMPLETE
+ 12.64m TEXT: 🏗 FLOOR 3 STARTED
+ 12.65m BEST Cart Speed $1.94K (waited 4s)
+ 12.74m SIGNALS hot=0[] tour=mini story=false eco=false
+ 12.79m BUY Jackhammer $2.50K (waited 9s)
+ 13.02m STAT real 130s {"d":301,"cash":1228,"heap":63,"lf":10,"worst":317,"parts":51,"fin":false,"play":773,"ws":1,"dig":12,"sold":5}
+ 13.21m TEXT: ✓ FLOOR 3 COMPLETE
+ 13.23m CLAIM 1 trophies
+ 13.24m BEST Crew Tools $4.20K (waited 27s)
+ 13.30m BEST Recruit Miner $1.30K (waited 4s)
+ 13.35m BANNER Rattle and Roll Reward $790 · tap to claim
+ 13.63m BUY Recruit Miner #14 $1.59K (waited 19s)
+ 13.68m TEXT: 🏗 WINDOWS & BALCONIES STARTED
+ 13.68m BEST Cart Capacity $2.58K (waited 3s)
+ 14.06m STAT real 141s {"d":315,"cash":820,"heap":58,"lf":10,"worst":317,"parts":44,"fin":false,"play":836,"ws":1,"dig":14,"sold":5}
+ 14.18m TEXT: ✓ WINDOWS & BALCONIES COMPLETE
+ 14.20m BUY Steel Rail $5.00K (waited 31s)
+ 14.27m CLAIM 1 trophies
+ 14.28m BUY Crew Tools $6.71K (waited 5s)
+ 14.54m TEXT: 🏠 APARTMENT BLOCK COMPLETE
+ 14.56m SELL property #6
+ 14.58m BEST Crew Stamina $11.5K (waited 18s)
+ 14.62m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 14.63m BEST Raw Storage $2.52K (waited 3s)
+ 14.67m SIGNALS hot=1[Block Quality] tour=mini story=false eco=true
+ 14.69m CLAIM 1 trophies
+ 14.70m BEST Block Quality $13.6K (waited 4s)
+ 14.75m SIGNALS hot=0[] tour=mini story=false eco=false
+ 14.75m BANNER Man of Steel +1 more trophy · rewards $10.6K · tap to claim
+ 14.75m BEST Construction Crew $9.66K (waited 3s)
+ 14.81m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 14.82m BEST Processing Speed $3.33K (waited 4s)
+ 14.87m SIGNALS hot=0[] tour=mini story=false eco=false
+ 14.88m BEST Loading Speed $1.28K (waited 3s)
+ 14.94m BUY Crew gear: Jackhammers $12.0K (waited 4s)
+ 14.99m BEST Cart Capacity $4.00K (waited 3s)
+ 15.08m STAT real 151s {"d":332,"cash":9692,"heap":73,"lf":10,"worst":317,"parts":15,"fin":false,"play":897,"ws":1,"dig":14,"sold":6}
+ 15.08m TEXT: 🏗 STEEL FRAME STARTED
+ 15.11m CLAIM 1 trophies
+ 15.13m BUY Crew Tools $10.7K (waited 8s)
+ 15.62m BUY Cart Speed $3.00K (waited 29s)
+ 15.67m TEXT: ✓ STEEL FRAME COMPLETE
+ 15.90m BUY Raw Storage $4.03K (waited 17s)
+ 16.03m STAT real 160s {"d":348,"cash":784,"heap":69,"lf":10,"worst":317,"parts":85,"fin":false,"play":954,"ws":1,"dig":14,"sold":6}
+ 16.17m BANNER Pick Whisperer Reward $1.20K · tap to claim
+ 16.28m BUY Raw Storage $6.44K (waited 23s)
+ 17.13m STAT real 171s {"d":362,"cash":8813,"heap":79,"lf":11,"worst":317,"parts":41,"fin":false,"play":1019,"ws":1,"dig":14,"sold":6}
+ 17.25m BUY Expand Worksite $15.0K (waited 58s)
+ 17.31m TEXT: 🏗 FLOOR 4 STARTED
+ 17.43m CLAIM 1 trophies
+ 17.44m BEST Recruit Miner $1.94K (waited 11s)
+ 17.50m BANNER Great Hall Reward $3.20K · tap to claim
+ 17.50m BEST Recruit Miner $2.37K (waited 4s)
+ 18.06m BUY Recruit Miner #17 $2.89K (waited 34s)
+ 18.27m STAT real 183s {"d":376,"cash":5340,"heap":23,"lf":16,"worst":383,"parts":52,"fin":false,"play":1074,"ws":2,"dig":17,"sold":6}
+ 18.27m BEST Recruit Miner $3.53K (waited 13s)
+ 18.47m TEXT: ✓ ROOF & SIGN COMPLETE
+ 18.47m TEXT: 🏗 GLASS FACADE STARTED
+ 18.47m BEST Recruit Miner $4.30K (waited 12s)
+ 19.10m STAT real 191s {"d":393,"cash":4014,"heap":32,"lf":18,"worst":1333,"parts":95,"fin":false,"play":1125,"ws":2,"dig":19,"sold":6}
+ 19.12m BUY Recruit Miner #20 $5.25K (waited 39s)
+ 19.17m TEXT: ✓ GLASS FACADE COMPLETE
+ 19.17m TEXT: 🏠 OFFICE TOWER COMPLETE
+ 19.19m SELL property #7
+ 19.20m BEST Crew Stamina $20.1K (waited 5s)
+ 19.26m SIGNALS hot=1[Block Quality] tour=mini story=false eco=true
+ 19.26m BEST Block Quality $24.5K (waited 3s)
+ 19.31m SIGNALS hot=0[] tour=mini story=false eco=false
+ 19.31m BEST Construction Crew $16.4K (waited 3s)
+ 19.37m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 19.38m BEST Processing Speed $5.16K (waited 4s)
+ 19.48m SIGNALS hot=1[Loading Speed] tour=mini story=false eco=true
+ 19.48m BEST Loading Speed $1.92K (waited 6s)
+ 19.54m SIGNALS hot=0[] tour=mini story=false eco=false
+ 19.54m BEST Diamond Saw Rig $45.0K (waited 4s)
+ 19.60m BANNER Cutting Edge Reward $4.90K · tap to claim
+ 19.63m CLAIM 1 trophies
+ 19.63m BEST Cart Capacity $6.20K (waited 5s)
+ 19.69m BEST Cart Speed $4.65K (waited 4s)
+ 19.75m BEST Recruit Miner $6.40K (waited 4s)
+ 19.90m BEST Recruit Miner $7.81K (waited 9s)
+ 20.18m STAT real 202s {"d":416,"cash":9042,"heap":40,"lf":20,"worst":1333,"parts":86,"fin":false,"play":1188,"ws":2,"dig":22,"sold":7}
+ 20.41m CLAIM 1 trophies
+ 20.42m BEST Recruit Miner $9.53K (waited 31s)
+ 20.85m BUY Recruit Miner #24 $11.6K (waited 26s)
+ 20.94m BUY Raw Storage $10.3K (waited 6s)
+ 21.00m BANNER Gold Rush Reward $3.70K · tap to claim
+ 21.08m STAT real 211s {"d":436,"cash":735,"heap":44,"lf":20,"worst":1333,"parts":18,"fin":false,"play":1242,"ws":2,"dig":24,"sold":7}
+ 21.81m BUY Recruit Miner #25 $14.2K (waited 52s)
+ 22.90m BUY Recruit Miner #26 $17.3K (waited 66s)
+ 23.10m STAT real 231s {"d":478,"cash":10375,"heap":44,"lf":23,"worst":1333,"parts":69,"fin":false,"play":1357,"ws":2,"dig":26,"sold":7}
+ 23.35m STAT real 233s {"d":483,"cash":10375,"heap":58,"lf":23,"worst":1333,"parts":47,"fin":false,"play":1372,"ws":2,"dig":26,"sold":7}
+ 23.61m TEXT: ✓ COLUMNS & PORTICO COMPLETE
+ 23.62m BEST Construction Crew $27.9K (waited 43s)
+ 24.02m STAT real 240s {"d":496,"cash":5267,"heap":47,"lf":24,"worst":1333,"parts":92,"fin":false,"play":1412,"ws":2,"dig":26,"sold":7}
+ 24.44m BUY Crew Tools $17.2K (waited 49s)
+ 24.50m TEXT: 🏗 GARDENS STARTED
+ 25.08m STAT real 251s {"d":517,"cash":10825,"heap":76,"lf":24,"worst":1333,"parts":38,"fin":false,"play":1475,"ws":2,"dig":26,"sold":7}
+ 25.28m TEXT: ✓ GARDENS COMPLETE
+ 25.28m TEXT: 🏠 MANSION COMPLETE
+ 25.30m SELL property #8
+ 25.32m BEST Construction Crew $47.4K (waited 53s)
+ 25.38m SIGNALS hot=1[Mag-Rail] tour=mini story=false eco=true
+ 25.38m BANNER Building Machine Reward $120K · tap to claim
+ 25.38m BEST Mag-Rail $60.0K (waited 4s)
+ 25.44m SIGNALS hot=0[] tour=mini story=false eco=false
+ 25.44m BEST Crew Stamina $35.2K (waited 4s)
+ 25.50m SIGNALS hot=1[Block Quality] tour=mini story=false eco=true
+ 25.53m CLAIM 1 trophies
+ 25.53m BEST Block Quality $44.1K (waited 5s)
+ 25.68m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 25.69m BEST Processing Speed $8.01K (waited 9s)
+ 25.75m SIGNALS hot=0[] tour=mini story=false eco=false
+ 25.76m BEST Loading Speed $2.88K (waited 4s)
+ 25.83m BEST Crew Stamina $61.6K (waited 4s)
+ 25.90m SIGNALS hot=1[Block Quality] tour=mini story=false eco=true
+ 25.90m BEST Block Quality $79.3K (waited 4s)
+ 25.97m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 25.98m BEST Processing Speed $12.4K (waited 4s)
+ 26.04m STAT real 260s {"d":537,"cash":87216,"heap":89,"lf":25,"worst":1333,"parts":36,"fin":false,"play":1530,"ws":2,"dig":26,"sold":8}
+ 26.04m SIGNALS hot=0[] tour=mini story=false eco=false
+ 26.04m BEST Loading Speed $4.33K (waited 4s)
+ 26.10m BEST Crew Tools $27.5K (waited 4s)
+ 26.16m BEST Cart Capacity $9.61K (waited 4s)
+ 26.24m BEST Cart Speed $7.20K (waited 5s)
+ 26.30m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 26.31m BEST Raw Storage $16.5K (waited 4s)
+ 26.36m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 26.37m BEST Processing Speed $19.2K (waited 4s)
+ 26.46m SIGNALS hot=0[] tour=mini story=false eco=false
+ 26.48m BUY Diamond Drill $30.0K (waited 7s)
+ 26.56m CLAIM 1 trophies
+ 26.57m BEST Loading Speed $6.49K (waited 5s)
+ 26.77m BANNER Diamond Hands Reward $3.70K · tap to claim
+ 27.10m STAT real 271s {"d":556,"cash":6262,"heap":52,"lf":28,"worst":1333,"parts":69,"fin":false,"play":1587,"ws":2,"dig":26,"sold":8}
+ 27.57m BEST Crew Tools $44.0K (waited 60s)
+ 27.62m BEST Cart Capacity $14.9K (waited 3s)
+ 28.07m STAT real 281s {"d":575,"cash":2588,"heap":64,"lf":28,"worst":1333,"parts":33,"fin":false,"play":1645,"ws":2,"dig":26,"sold":8}
+ 29.53m STAT real 295s {"d":587,"cash":62575,"heap":55,"lf":29,"worst":8416,"parts":67,"fin":false,"play":1683,"ws":2,"dig":26,"sold":8}
+ 29.53m TEXT: 🏗 EAST & WEST WINGS STARTED
+ 29.54m BEST Cart Speed $11.2K (waited 113s)
+ 29.60m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 29.61m BEST Raw Storage $26.4K (waited 4s)
+ 29.66m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=false
+ 29.69m BUY Cart Capacity $23.1K (waited 5s)
+ 30.18m STAT real 302s {"d":594,"cash":1943,"heap":48,"lf":30,"worst":8416,"parts":97,"fin":false,"play":1707,"ws":2,"dig":26,"sold":8}
+ 30.98m BUY Crew Tools $70.4K (waited 77s)
+ 31.03m STAT real 310s {"d":612,"cash":1431,"heap":40,"lf":30,"worst":8416,"parts":101,"fin":false,"play":1758,"ws":2,"dig":26,"sold":8}
+ 31.03m TEXT: ✓ EAST & WEST WINGS COMPLETE
+ 31.03m TEXT: 🏗 ROOF & BALUSTRADE STARTED
+ 31.53m BANNER Diamonds Are Forever Reward $26.0K · tap to claim
+ 31.77m CLAIM 2 trophies
+ 31.78m BEST Processing Speed $29.8K (waited 48s)
+ 31.84m SIGNALS hot=0[] tour=mini story=false eco=false
+ 31.84m TEXT: ✓ ROOF & BALUSTRADE COMPLETE
+ 31.84m TEXT: 🏗 PORTICO & COLUMNS STARTED
+ 31.86m CLAIM 1 trophies
+ 31.86m BEST Cart Speed $17.3K (waited 5s)
+ 31.92m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 31.92m BEST Raw Storage $42.2K (waited 3s)
+ 31.98m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=false
+ 32.00m BUY Cart Speed $26.8K (waited 5s)
+ 32.05m STAT real 321s {"d":628,"cash":8862,"heap":80,"lf":30,"worst":8416,"parts":115,"fin":false,"play":1819,"ws":2,"dig":26,"sold":8}
+ 32.83m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 32.83m TEXT: ✓ PORTICO & COLUMNS COMPLETE
+ 32.83m BEST Processing Speed $46.2K (waited 50s)
+ 32.88m SIGNALS hot=0[] tour=mini story=false eco=false
+ 32.88m BANNER Mining Magnate Reward $46.0K · tap to claim
+ 32.88m TEXT: 🏗 WINDOWS STARTED
+ 32.89m BEST Loading Speed $9.73K (waited 3s)
+ 32.94m BEST Loading Speed $14.6K (waited 3s)
+ 33.07m STAT real 331s {"d":643,"cash":4994,"heap":48,"lf":30,"worst":8416,"parts":73,"fin":false,"play":1880,"ws":2,"dig":26,"sold":8}
+ 33.46m CLAIM 2 trophies
+ 33.54m TEXT: ✓ WINDOWS COMPLETE
+ 33.57m BUY Cart Capacity $35.8K (waited 38s)
+ 33.62m TEXT: 🏗 LAWN & FLAG STARTED
+ 33.71m CLAIM 1 trophies
+ 33.74m BUY Cart Capacity $55.4K (waited 10s)
+ 34.04m STAT real 340s {"d":657,"cash":5316,"heap":75,"lf":30,"worst":8416,"parts":87,"fin":false,"play":1938,"ws":2,"dig":26,"sold":8}
+ 34.17m TEXT: ✓ LAWN & FLAG COMPLETE
+ 34.17m TEXT: 🏠 THE WHITE HOUSE COMPLETE
+ 34.19m SELL property #9
+ 34.21m BEST Crew Tools $112K (waited 28s)
+ 34.26m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 34.26m BANNER Logistics Empire +3 more trophies · rewards $152K · tap to claim
+ 34.26m TEXT: 🏗 DEEP FOUNDATION STARTED
+ 34.29m CLAIM 2 trophies
+ 34.38m BEST Raw Storage $67.6K (waited 10s)
+ 34.44m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 34.44m BEST Processing Speed $71.6K (waited 4s)
+ 34.50m SIGNALS hot=0[] tour=mini story=false eco=false
+ 34.52m CLAIM 1 trophies
+ 34.53m BEST Crew Tools $180K (waited 5s)
+ 34.58m BEST Cart Speed $41.6K (waited 3s)
+ 34.63m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 34.64m BEST Raw Storage $108K (waited 3s)
+ 34.69m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 34.69m BEST Processing Speed $110K (waited 3s)
+ 34.75m SIGNALS hot=0[] tour=mini story=false eco=false
+ 34.75m BEST Expand to Deep Cavern $150K (waited 3s)
+ 34.90m BEST Crew gear: Diamond Drills $90.0K (waited 9s)
+ 34.96m BEST Loading Speed $21.9K (waited 4s)
+ 35.02m STAT real 350s {"d":668,"cash":91793,"heap":22,"lf":33,"worst":8416,"parts":101,"fin":false,"play":1987,"ws":3,"dig":26,"sold":9}
+ 35.03m BEST Loading Speed $32.8K (waited 4s)
+ 35.13m BEST Recruit Miner $21.1K (waited 6s)
+ 35.18m TEXT: ✓ DEEP FOUNDATION COMPLETE
+ 35.19m BEST Recruit Miner $25.8K (waited 4s)
+ 35.24m BEST Recruit Miner $31.4K (waited 3s)
+ 35.30m BEST Cart Capacity $85.9K (waited 4s)
+ 36.03m STAT real 360s {"d":686,"cash":18980,"heap":61,"lf":33,"worst":8416,"parts":83,"fin":false,"play":2047,"ws":3,"dig":29,"sold":9}
+ 36.32m BUY Recruit Miner #30 $38.3K (waited 61s)
+ 36.40m TEXT: 🏗 TOWER FLOORS STARTED
+ 36.41m BEST Recruit Miner $46.8K (waited 5s)
+ 36.47m BEST Cart Speed $64.5K (waited 4s)
+ 36.82m BANNER Over the Rainbow Reward $60.0K · tap to claim
+ 36.85m CLAIM 1 trophies
+ 36.85m BEST Recruit Miner $57.1K (waited 23s)
+ 37.04m STAT real 370s {"d":704,"cash":56445,"heap":44,"lf":33,"worst":8416,"parts":111,"fin":false,"play":2107,"ws":3,"dig":32,"sold":9}
+ 38.05m STAT real 380s {"d":720,"cash":56445,"heap":66,"lf":33,"worst":8416,"parts":111,"fin":false,"play":2168,"ws":3,"dig":32,"sold":9}
+ 38.92m TEXT: ✓ TOWER FLOORS COMPLETE
+ 38.92m TEXT: 🏗 CROWN & SPIRE STARTED
+ 38.93m BEST Deep Drill Rig $450K (waited 124s)
+ 38.98m BANNER Drill, Baby, Drill Reward $60.0K · tap to claim
+ 39.01m CLAIM 1 trophies
+ 39.01m BEST Cart Speed $99.9K (waited 5s)
+ 39.07m STAT real 391s {"d":737,"cash":21198,"heap":70,"lf":34,"worst":8416,"parts":102,"fin":false,"play":2228,"ws":3,"dig":32,"sold":9}
+ 39.69m TEXT: ✓ CROWN & SPIRE COMPLETE
+ 39.69m TEXT: 🏗 GLASS CURTAIN WALL STARTED
+ 39.71m BUY Recruit Miner #33 $69.6K (waited 42s)
+ 39.77m BEST Recruit Miner $84.9K (waited 3s)
+ 40.01m STAT real 400s {"d":756,"cash":23248,"heap":52,"lf":34,"worst":8416,"parts":115,"fin":false,"play":2285,"ws":3,"dig":34,"sold":9}
+ 41.08m STAT real 411s {"d":777,"cash":23248,"heap":60,"lf":34,"worst":8416,"parts":61,"fin":false,"play":2349,"ws":3,"dig":34,"sold":9}
+ 41.16m TEXT: ✓ GLASS CURTAIN WALL COMPLETE
+ 41.16m TEXT: 🏗 PLAZA STARTED
+ 41.16m BEST Crew Tools $288K (waited 84s)
+ 41.22m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=false
+ 41.81m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 41.81m TEXT: ✓ PLAZA COMPLETE
+ 41.81m TEXT: 🏠 SKYSCRAPER COMPLETE
+ 41.83m SELL property #10
+ 41.85m BEST Raw Storage $172K (waited 41s)
+ 41.90m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 41.91m BEST Processing Speed $172K (waited 3s)
+ 41.96m SIGNALS hot=0[] tour=mini story=false eco=false
+ 41.96m BEST Crew Tools $461K (waited 3s)
+ 42.01m STAT real 420s {"d":794,"cash":2088132,"heap":51,"lf":34,"worst":8416,"parts":112,"fin":false,"play":2405,"ws":3,"dig":34,"sold":10}
+ 42.02m BEST Cart Capacity $133K (waited 4s)
+ 42.07m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 42.08m BEST Raw Storage $276K (waited 3s)
+ 42.14m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 42.14m BEST Processing Speed $266K (waited 4s)
+ 42.19m SIGNALS hot=0[] tour=mini story=false eco=false
+ 42.20m BEST Loading Speed $49.3K (waited 3s)
+ 42.25m BEST Crew Tools $737K (waited 3s)
+ 42.31m BEST Cart Capacity $206K (waited 3s)
+ 42.37m BEST Cart Speed $154K (waited 3s)
+ 42.42m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=false
+ 42.44m BUY Recruit Miner #35 $103K (waited 5s)
+ 42.49m SIGNALS hot=0[] tour=mini story=false eco=false
+ 42.50m BEST Loading Speed $73.9K (waited 3s)
+ 42.55m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=false
+ 42.90m TEXT: 🏗 LOWER TIER STARTED
+ 42.92m BUY Hellforge Breaker $350K (waited 26s)
+ 42.98m BANNER Forged in Fire Reward $80.0K · tap to claim
+ 43.05m STAT real 431s {"d":812,"cash":74852,"heap":64,"lf":34,"worst":8416,"parts":130,"fin":false,"play":2468,"ws":3,"dig":35,"sold":10}
+ 43.41m CLAIM 1 trophies
+ 43.42m BEST Recruit Miner $126K (waited 30s)
+ 44.01m CLAIM 1 trophies
+ 44.08m STAT real 441s {"d":831,"cash":68443,"heap":65,"lf":34,"worst":8416,"parts":91,"fin":false,"play":2529,"ws":3,"dig":36,"sold":10}
+ 44.34m BANNER Rock Breaker Reward $40.0K · tap to claim
+ 44.61m BUY Raw Storage $442K (waited 72s)
+ 44.66m SIGNALS hot=0[] tour=mini story=false eco=false
+ 44.66m TEXT: ✓ LOWER TIER COMPLETE
+ 44.66m TEXT: 🏗 UPPER TIER STARTED
+ 44.67m BEST Loading Speed $110K (waited 3s)
+ 44.72m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=false
+ 45.11m STAT real 451s {"d":851,"cash":71205,"heap":43,"lf":34,"worst":8416,"parts":105,"fin":false,"play":2591,"ws":3,"dig":36,"sold":10}
+ 45.73m BANNER Feel the Heat Reward $240K · tap to claim
+ 45.95m CLAIM 1 trophies
+ 45.98m BUY Recruit Miner #37 $154K (waited 79s)
+ 46.04m STAT real 460s {"d":866,"cash":156986,"heap":77,"lf":34,"worst":8416,"parts":121,"fin":false,"play":2646,"ws":3,"dig":37,"sold":10}
+ 46.40m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 46.40m TEXT: ✓ UPPER TIER COMPLETE
+ 46.40m BEST Processing Speed $413K (waited 25s)
+ 46.47m SIGNALS hot=0[] tour=mini story=false eco=false
+ 46.47m TEXT: 🏗 CANOPY ROOF STARTED
+ 46.49m BEST Cart Speed $240K (waited 5s)
+ 47.03m STAT real 470s {"d":882,"cash":30678,"heap":82,"lf":35,"worst":8416,"parts":132,"fin":false,"play":2705,"ws":3,"dig":37,"sold":10}
+ 47.88m TEXT: ✓ CANOPY ROOF COMPLETE
+ 47.88m TEXT: 🏗 SEATS & GATES STARTED
+ 47.88m BEST Cart Capacity $320K (waited 83s)
+ 48.05m STAT real 480s {"d":897,"cash":150891,"heap":63,"lf":36,"worst":8416,"parts":110,"fin":false,"play":2764,"ws":3,"dig":37,"sold":10}
+ 48.64m BANNER Treasure Hunter Reward $490K · tap to claim
+ 48.74m CLAIM 1 trophies
+ 48.77m BUY Recruit Miner #38 $188K (waited 53s)
+ 48.82m BEST Cart Speed $372K (waited 3s)
+ 49.03m STAT real 490s {"d":912,"cash":80743,"heap":59,"lf":37,"worst":8416,"parts":133,"fin":false,"play":2821,"ws":3,"dig":38,"sold":10}
+ 49.80m TEXT: ✓ SEATS & GATES COMPLETE
+ 49.80m TEXT: 🏗 PITCH & FLOODLIGHTS STARTED
+ 49.82m BUY Recruit Miner #39 $229K (waited 60s)
+ 49.88m BEST Recruit Miner $280K (waited 4s)
+ 50.26m STAT real 503s {"d":926,"cash":83728,"heap":68,"lf":39,"worst":8416,"parts":106,"fin":false,"play":2868,"ws":3,"dig":40,"sold":10}
+ 51.03m STAT real 510s {"d":938,"cash":475846,"heap":59,"lf":39,"worst":8416,"parts":158,"fin":false,"play":2914,"ws":3,"dig":40,"sold":10}
+ 51.03m TEXT: ✓ PITCH & FLOODLIGHTS COMPLETE
+ 51.03m TEXT: 🏠 STADIUM COMPLETE
+ 51.05m SELL property #11
+ 51.06m BEST Crew Tools $1.18M (waited 71s)
+ 51.12m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 51.12m BEST Raw Storage $708K (waited 4s)
+ 51.18m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 51.19m BEST Processing Speed $640K (waited 4s)
+ 51.24m SIGNALS hot=0[] tour=mini story=false eco=false
+ 51.25m BEST Hellfire Rail $600K (waited 4s)
+ 51.31m BEST Loading Speed $166K (waited 4s)
+ 51.37m BEST Crew Tools $1.89M (waited 4s)
+ 51.43m BEST Cart Capacity $496K (waited 4s)
+ 51.49m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=false
+ 52.04m STAT real 520s {"d":952,"cash":329959,"heap":71,"lf":41,"worst":8416,"parts":158,"fin":false,"play":2968,"ws":3,"dig":40,"sold":11}
+ 52.34m BUY Recruit Miner #41 $341K (waited 55s)
+ 52.42m BUY Recruit Miner #42 $416K (waited 5s)
+ 53.10m STAT real 531s {"d":967,"cash":213471,"heap":52,"lf":41,"worst":8416,"parts":207,"fin":false,"play":3030,"ws":3,"dig":42,"sold":11}
+ 54.05m STAT real 540s {"d":981,"cash":1160669,"heap":60,"lf":43,"worst":8416,"parts":52,"fin":false,"play":3083,"ws":3,"dig":42,"sold":11}
+ 54.05m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=true
+ 54.06m BEST Raw Storage $1.13M (waited 98s)
+ 54.11m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=false
+ 55.09m STAT real 551s {"d":996,"cash":27301,"heap":61,"lf":44,"worst":8416,"parts":115,"fin":false,"play":3145,"ws":3,"dig":42,"sold":11}
+ 55.36m BANNER Dig to Hell Reward $750K · tap to claim
+ 55.39m CLAIM 1 trophies
+ 55.41m BUY Recruit Miner #43 $508K (waited 81s)
+ 55.46m SIGNALS hot=0[] tour=mini story=false eco=false
+ 55.46m BEST Loading Speed $249K (waited 3s)
+ 55.52m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=false
+ 56.15m SIGNALS hot=1[Processing Speed] tour=mini story=false eco=true
+ 56.15m BEST Processing Speed $993K (waited 41s)
+ 56.21m STAT real 562s {"d":1000,"cash":64849,"heap":53,"lf":45,"worst":8416,"parts":125,"fin":false,"play":3166,"ws":3,"dig":43,"sold":11}
+ 56.22m SIGNALS hot=0[] tour=mini story=false eco=false
+ 57.01m STAT real 570s {"d":1000,"cash":64849,"heap":66,"lf":46,"worst":8416,"parts":105,"fin":false,"play":3166,"ws":3,"dig":43,"sold":11}
+ 57.98m BUY Recruit Miner #44 $620K (waited 109s)
+ 58.02m STAT real 580s {"d":1000,"cash":643217,"heap":71,"lf":46,"worst":8416,"parts":110,"fin":false,"play":3166,"ws":3,"dig":44,"sold":11}
+ 58.04m BUY Cart Speed $576K (waited 4s)
+ 59.04m STAT real 590s {"d":1000,"cash":66614,"heap":56,"lf":46,"worst":8416,"parts":147,"fin":false,"play":3166,"ws":3,"dig":44,"sold":11}
+ 59.16m BEST Cart Capacity $768K (waited 67s)
+ 59.20m SIGNALS hot=1[Raw Storage] tour=mini story=false eco=false
+ 60.05m STAT real 600s {"d":1000,"cash":156485,"heap":78,"lf":46,"worst":8416,"parts":120,"fin":false,"play":3166,"ws":3,"dig":44,"sold":11}
+ 60.56m TEXT: ✓ COLONNADE COMPLETE
+ 60.58m BUY Recruit Miner #45 $756K (waited 85s)
+ 61.03m STAT real 610s {"d":1000,"cash":468850,"heap":69,"lf":46,"worst":8416,"parts":65,"fin":true,"play":3166,"ws":3,"dig":45,"sold":11}
+ 61.03m FINISHED

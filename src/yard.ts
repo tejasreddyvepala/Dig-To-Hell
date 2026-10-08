@@ -16,9 +16,8 @@ import { hash, rgb } from './util';
 
 const C = CFG.cart, Y = CFG.yard;
 const FONT_UI = "'Rubik',system-ui,sans-serif";
-const STEEL = '#5b636c', STEEL_D = '#3f464e', STEEL_L = '#8a949e', YELLOW = '#e6a91a';
 const CONTRACTOR = { ...lookFor('contractor', 7), height: 1.04 };
-const HAND = lookFor('hand', 11);
+const HAND = lookFor('hand', 11), HAND2 = lookFor('hand', 23);
 
 /** 0..1 progress of one construction step within the yard build. */
 const step = (a: number, b: number) => Math.max(0, Math.min(1, (SV.buildT - a) / (b - a)));
@@ -97,14 +96,19 @@ function drawIdleYard(L: ReturnType<typeof surfaceLayout>) {
 function drawHeadframe(gy: number, s: number, night: number) {
   const x = toScreen(railX(), 0).x, topY = yOf(-C.headframeM);
   const w = 20 * s;
-  ctx.strokeStyle = '#5b3d22'; ctx.lineWidth = Math.max(3, 2.4 * s); ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(x - w, gy - 2); ctx.lineTo(x - 3 * s, topY); ctx.moveTo(x + w * 0.8, gy - 2); ctx.lineTo(x + 3 * s, topY); ctx.stroke();
-  ctx.lineWidth = Math.max(2, 1.6 * s);
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - w, gy - 2); ctx.lineTo(x - 3 * s, topY); ctx.moveTo(x + w * 0.8, gy - 2); ctx.lineTo(x + 3 * s, topY);
+  ctx.strokeStyle = '#3a2412'; ctx.lineWidth = Math.max(4.5, 3.8 * s); ctx.stroke(); // thicker legs: dark outline…
+  ctx.strokeStyle = '#8a5a30'; ctx.lineWidth = Math.max(3, 2.6 * s); ctx.stroke(); // …then warm timber
+  ctx.strokeStyle = '#d99a14'; ctx.lineWidth = Math.max(2, 1.6 * s); // cross braces painted yellow
   for (let i = 1; i <= 3; i++) { // cross braces
     const y = gy + (topY - gy) * (i / 4), k = 1 - i / 4;
     ctx.beginPath(); ctx.moveTo(x - w * k - 3 * s * (1 - k), y); ctx.lineTo(x + w * 0.8 * k + 3 * s * (1 - k), y); ctx.stroke();
   }
-  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.arc(x, topY, 6 * s, 0, 6.283); ctx.fill();
+  ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.arc(x, topY, 7.5 * s, 0, 6.283); ctx.fill(); // bigger sheave wheel…
+  ctx.strokeStyle = '#7d858f'; ctx.lineWidth = Math.max(1, 0.9 * s); ctx.beginPath(); // …with spokes
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; ctx.moveTo(x, topY); ctx.lineTo(x + Math.cos(a) * 6.5 * s, topY + Math.sin(a) * 6.5 * s); }
+  ctx.stroke();
   ctx.fillStyle = '#9aa3ad'; ctx.beginPath(); ctx.arc(x, topY, 2.4 * s, 0, 6.283); ctx.fill();
   ctx.fillStyle = '#ffd98a'; ctx.beginPath(); ctx.arc(x + 7 * s, topY + 10 * s, 2 * s, 0, 6.283); ctx.fill(); // work lamp
   glow(x + 7 * s, topY + 10 * s, 34 * s, 0.3 * night);
@@ -120,172 +124,387 @@ function drawRoad(L: ReturnType<typeof surfaceLayout>) {
   ctx.fillStyle = 'rgba(255,207,58,.8)'; ctx.fillRect(L.bayX - u * 0.05, y - u * 0.22, u * 0.08, u * 0.44);
 }
 
+const INK_Y = '#1b140e', YEL = '#f0b21c', YEL_D = '#b97f0c', RUSTW = '#c9c2b4', RUSTW_D = '#8d857a';
+/** Outlined filled box. */
+function obox(x: number, y: number, w: number, h: number, col: string, r = 0) {
+  ctx.beginPath(); r ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h);
+  ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.4; ctx.stroke();
+}
+/** A sign board on two short posts: dark plate, bold yellow title, optional level line. */
+function signBoard(cx: number, y: number, u: number, title: string, sub = '') {
+  const w = u * (title.length * 0.13 + 0.3), h = u * (sub ? 0.46 : 0.32);
+  obox(cx - w / 2, y, w, h, '#24272b', 3);
+  ctx.strokeStyle = YEL; ctx.lineWidth = 1.2; ctx.strokeRect(cx - w / 2 + 3, y + 3, w - 6, h - 6);
+  ctx.font = `${Math.round(u * 0.15)}px 'Bungee',Impact,sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f4f1e8';
+  ctx.fillText(title, cx, y + u * 0.2);
+  if (sub) { ctx.font = `700 ${Math.round(u * 0.11)}px ${FONT_UI}`; ctx.fillStyle = YEL; ctx.fillText(sub, cx, y + u * 0.37); }
+}
+/** Steel beam between two points (I-beam look: dark edges, lit top). */
+function beamTo(x0: number, y0: number, x1: number, y1: number, w: number, col: string) {
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = INK_Y; ctx.lineWidth = w + 2; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = Math.max(1, w * 0.25); ctx.beginPath(); ctx.moveTo(x0, y0 - w * 0.25); ctx.lineTo(x1, y1 - w * 0.25); ctx.stroke();
+}
+/** Conveyor belt from (x0,y0) to (x1,y1): frame, rollers, a moving belt and the material riding it. */
+function conveyor(x0: number, y0: number, x1: number, y1: number, u: number, k: number, running: boolean, src: typeof S.raw) {
+  const len = Math.hypot(x1 - x0, y1 - y0) * k, ang = Math.atan2(y1 - y0, x1 - x0), th = u * 0.17;
+  ctx.save(); ctx.translate(x0, y0); ctx.rotate(ang);
+  obox(0, -th / 2, len, th, '#2e3237', th / 2); // belt
+  ctx.fillStyle = '#4a4f55'; ctx.fillRect(th / 2, -th * 0.08, len - th, th * 0.16); // belt surface
+  const pitch = u * 0.26, ph = running ? (SV.spin * u * 0.2) % pitch : 0;
+  for (let x = th / 2; x < len - th / 2; x += pitch) { ctx.beginPath(); ctx.arc(x, th * 0.62, u * 0.07, 0, 6.283); ctx.fillStyle = YEL; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1; ctx.stroke(); }
+  ctx.fillStyle = '#1e2124'; for (let x = ph; x < len; x += pitch * 0.5) ctx.fillRect(x, -th * 0.5, 1.2, th * 0.2); // cleats moving
+  if (running && src.qty > 0.01) for (let x = ph; x < len - u * 0.1; x += u * 0.2) { // rocks riding the belt
+    const i = Math.floor((x - ph) / (u * 0.2));
+    ctx.fillStyle = rgb(rubbleRGB(mixPick(src, hash(i * 1.9))), 0.9 + hash(i) * 0.25);
+    ctx.beginPath(); ctx.ellipse(x, -th * 0.62, u * (0.055 + hash(i * 3.1) * 0.03), u * 0.045, hash(i) * 3, 0, 6.283); ctx.fill();
+  }
+  ctx.restore();
+}
+/** Chunky rock heap (hopper top / gravel piles): shaded pebbles coloured by the material. */
+function heap(cx: number, base: number, w: number, h: number, u: number, src: typeof S.raw, n: number, seed: number) {
+  for (let i = 0; i < n; i++) {
+    const k = hash(seed + i * 3.7), lift = hash(seed + i * 1.3);
+    const px = cx - w / 2 + w * k, py = base - h * Math.sin(Math.PI * k) * (0.25 + 0.75 * lift);
+    const r = u * (0.05 + hash(seed + i * 5.1) * 0.05), c = rubbleRGB(mixPick(src, hash(seed + i * 2.2)));
+    ctx.fillStyle = rgb(c, 0.62); ctx.beginPath(); ctx.ellipse(px + r * 0.15, py + r * 0.2, r * 1.15, r * 0.85, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = rgb(c, 1); ctx.beginPath(); ctx.ellipse(px, py, r * 1.1, r * 0.8, hash(i) * 2, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(255,240,215,.35)'; ctx.beginPath(); ctx.ellipse(px - r * 0.3, py - r * 0.3, r * 0.45, r * 0.25, -0.5, 0, 6.283); ctx.fill();
+  }
+}
+// ---------- upgrade-driven machinery: every Recycling upgrade visibly adds or grows something ----------
+/** Behind the line: raw-storage silos (count + height follow Raw Storage), a dust-collector cyclone (Processing 5+). */
+function yardBack(L: ReturnType<typeof surfaceLayout>, crX: number, running: boolean, night: number) {
+  const { gy, u } = L, lv = S.upg.rawStorage, n = Math.min(3, 1 + Math.floor(lv / 5)), fill = Math.min(1, S.raw.qty / rawCap(S));
+  { // yard dressing behind the bay (silos grow in front of it): site office, fuel tank, spare pallets
+    const ox = L.bayX + u * 4.1, oy = gy - u * 0.15;
+    obox(ox, oy - u * 1.05, u * 1.7, u * 1.05, '#e9e4d8', 3); // portable office
+    ctx.fillStyle = '#2d7fd0'; ctx.fillRect(ox, oy - u * 0.32, u * 1.7, u * 0.08);
+    obox(ox - u * 0.05, oy - u * 1.12, u * 1.8, u * 0.1, '#5d646d');
+    const lit = night > 0.25;
+    for (const wx of [ox + u * 0.15, ox + u * 0.95]) { obox(wx, oy - u * 0.85, u * 0.55, u * 0.35, lit ? '#ffd98a' : '#9fc4d8'); if (lit) glow(wx + u * 0.27, oy - u * 0.68, u * 0.6, 0.35); }
+    obox(ox + u * 0.72, oy - u * 0.62, u * 0.22, u * 0.62, '#7a8592'); // door
+    ctx.font = `${Math.round(u * 0.11)}px 'Bungee',Impact,sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#1f2a33'; ctx.fillText('YARD OFFICE', ox + u * 0.85, oy - u * 0.4);
+    for (const bx of [ox + u * 0.1, ox + u * 1.5]) obox(bx, oy, u * 0.1, u * 0.15, '#3a3f45'); // blocks it stands on
+    const tx = L.bayX + u * 2.7; // fuel tank on a frame
+    beamTo(tx - u * 0.3, gy, tx - u * 0.3, gy - u * 0.4, u * 0.06, '#3a3f45'); beamTo(tx + u * 0.3, gy, tx + u * 0.3, gy - u * 0.4, u * 0.06, '#3a3f45');
+    obox(tx - u * 0.48, gy - u * 0.85, u * 0.96, u * 0.48, '#c0392b', u * 0.24); ctx.font = `${Math.round(u * 0.1)}px 'Bungee',Impact,sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('DIESEL', tx, gy - u * 0.56);
+    for (let i = 0; i < 4; i++) obox(L.bayX + u * (3.25 + (i % 2) * 0.42), gy - u * (0.09 + Math.floor(i / 2) * 0.09), u * 0.4, u * 0.08, '#9a7448'); // empty pallets
+  }
+  for (let i = n - 1; i >= 0; i--) {
+    const h = u * (2 + Math.min(15, lv) * 0.12 - i * 0.25), r = u * 0.55, cx = L.bayX + u * (1.2 + i * 1.25), base = gy - u * 0.9, top = base - h;
+    for (const lx of [cx - r * 0.8, cx + r * 0.8]) beamTo(lx, gy, lx, base, u * 0.08, '#4a5058'); // legs
+    beamTo(cx - r * 0.8, gy - u * 0.1, cx + r * 0.8, base + u * 0.2, u * 0.04, '#4a5058');
+    ctx.beginPath(); ctx.moveTo(cx - r, base); ctx.lineTo(cx - r * 0.18, base + u * 0.55); ctx.lineTo(cx + r * 0.18, base + u * 0.55); ctx.lineTo(cx + r, base); ctx.closePath();
+    ctx.fillStyle = '#8f949b'; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.4; ctx.stroke(); // cone
+    const g = ctx.createLinearGradient(cx - r, 0, cx + r, 0); g.addColorStop(0, '#cfd3d8'); g.addColorStop(0.35, '#eef0f2'); g.addColorStop(1, '#8d939b');
+    ctx.beginPath(); ctx.rect(cx - r, top, r * 2, h); ctx.fillStyle = g; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, top, r, r * 0.22, 0, Math.PI, 0); ctx.fillStyle = '#b5bac1'; ctx.fill(); ctx.stroke(); // dome
+    ctx.strokeStyle = 'rgba(60,66,74,.35)'; ctx.lineWidth = 1; for (let y = top + u * 0.3; y < base; y += u * 0.3) { ctx.beginPath(); ctx.moveTo(cx - r, y); ctx.lineTo(cx + r, y); ctx.stroke(); } // ring seams
+    // level gauge: the raw stock (shared across silos), red when full
+    const gx = cx - r * 0.55, gh = h * 0.7, gy0 = top + h * 0.15;
+    obox(gx - u * 0.05, gy0, u * 0.1, gh, '#2a2d31');
+    ctx.fillStyle = fill > 0.97 ? '#ff5a3a' : '#ffcf3a'; ctx.fillRect(gx - u * 0.03, gy0 + gh * (1 - fill), u * 0.06, gh * fill);
+    ctx.strokeStyle = '#3a3f45'; ctx.lineWidth = Math.max(1, u * 0.025); ctx.beginPath(); // ladder
+    ctx.moveTo(cx + r * 0.5, base); ctx.lineTo(cx + r * 0.5, top); ctx.moveTo(cx + r * 0.75, base); ctx.lineTo(cx + r * 0.75, top);
+    for (let y = base; y > top; y -= u * 0.14) { ctx.moveTo(cx + r * 0.5, y); ctx.lineTo(cx + r * 0.75, y); } ctx.stroke();
+    ctx.font = `${Math.round(u * 0.18)}px 'Bungee',Impact,sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#3a3f45'; ctx.fillText('RAW', cx + r * 0.05, top + h * 0.3);
+    if (i === 0) { ctx.fillStyle = '#ff3b2f'; if (Math.floor(view.t * 1.1) % 2) { ctx.beginPath(); ctx.arc(cx, top - r * 0.25, u * 0.04, 0, 6.283); ctx.fill(); glow(cx, top - r * 0.25, u * 0.3, 0.3); } }
+  }
+  // feed duct from the hopper tower top across to the silos
+  const dY = gy - u * 3.3 - Math.min(10, lv) * u * 0.05;
+  beamTo(L.hopperX + u * 0.95, gy - u * 2.75, L.bayX + u * 1.2, dY, u * 0.14, '#7d838b');
+  if (S.upg.processSpeed >= 9) { // dust-collector cyclone behind the crusher, ducted to its top
+    const cx = crX + u * 0.15, top = gy - u * 3.2;
+    beamTo(crX - u * 0.2, gy - u * 1.3, cx - u * 0.1, top + u * 0.3, u * 0.1, '#8a9098');
+    obox(cx - u * 0.32, top, u * 0.64, u * 0.7, '#9aa0a8', 3);
+    ctx.beginPath(); ctx.moveTo(cx - u * 0.32, top + u * 0.7); ctx.lineTo(cx - u * 0.06, top + u * 1.5); ctx.lineTo(cx + u * 0.06, top + u * 1.5); ctx.lineTo(cx + u * 0.32, top + u * 0.7); ctx.closePath();
+    ctx.fillStyle = '#80868e'; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.4; ctx.stroke();
+    if (running) smoke(cx, top - u * 0.05, u * 0.5, 0.4, night);
+  }
+}
+
+/** In front: crusher motors (one per 2 Processing levels), the QC beacon on the press (Quality 1+), an overhead
+ *  gantry crane moving blocks onto the pallets (Quality 3+), premium trim (Quality 6+), a forklift (Processing 4+). */
+function yardFront(L: ReturnType<typeof surfaceLayout>, crX: number, running: boolean, night: number) {
+  const { gy, u } = L, ps = S.upg.processSpeed, q = S.upg.contractValue;
+  const cw = u * 1.2, cy = gy - u * 0.2 - u * 1.05;
+  const motors = Math.min(4, 1 + Math.floor(ps / 4));
+  for (let i = 0; i < motors; i++) { // electric motors on the crusher's top, fans spinning while it runs
+    const mx = crX - cw * 0.42 + i * u * 0.28, my = cy - u * 0.2;
+    obox(mx, my, u * 0.24, u * 0.2, '#3f7d4a', 3);
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; for (let k = 0; k < 3; k++) ctx.fillRect(mx + u * 0.03, my + u * (0.04 + k * 0.05), u * 0.18, 1.2);
+    ctx.save(); ctx.translate(mx + u * 0.12, my - u * 0.02); ctx.scale(1, 0.35); ctx.rotate(running ? view.t * 18 + i : i);
+    ctx.fillStyle = '#c9cdd4'; for (let k = 0; k < 3; k++) { ctx.rotate(2.094); ctx.fillRect(-u * 0.015, 0, u * 0.03, u * 0.1); } ctx.restore();
+  }
+  // press crown beacon + premium trim
+  const px = L.pressX, top = gy - u * 3.1, w = u * 1.22;
+  if (q >= 1) {
+    const hot = Math.max(0, 1 - SV.pressT / 0.6);
+    obox(px + w * 0.32, top - u * 0.3, u * 0.14, u * 0.18, '#2a2d31', 2);
+    ctx.fillStyle = hot > 0.05 ? '#5dff7a' : '#2f6a3a'; ctx.beginPath(); ctx.arc(px + w * 0.32 + u * 0.07, top - u * 0.34, u * 0.07, Math.PI, 0); ctx.fill();
+    if (hot > 0.05) glow(px + w * 0.32 + u * 0.07, top - u * 0.36, u * 0.6, 0.45 * hot);
+  }
+  if (q >= 8) { ctx.strokeStyle = '#ffd86a'; ctx.lineWidth = Math.max(1.5, u * 0.04); ctx.strokeRect(px - w / 2 + 2, top - u * 0.1, w - 4, u * 0.3); }
+  if (q >= 4) { // overhead gantry crane over the pallets: the hook carries each fresh block to its stack
+    const gx0 = L.stackX - u * 1.55, gx1 = L.stackX + u * 1.55, gyb = gy - u * 2.1;
+    for (const x of [gx0, gx1]) beamTo(x, gy, x, gyb, u * 0.09, YEL);
+    beamTo(gx0 - u * 0.1, gyb, gx1 + u * 0.1, gyb, u * 0.14, YEL);
+    ctx.fillStyle = '#1e1e1e'; for (let x = gx0; x < gx1; x += u * 0.24) ctx.fillRect(x, gyb - u * 0.06, u * 0.1, u * 0.12);
+    const k = (view.t * 0.35) % 1, e = (a: number) => a * a * (3 - 2 * a);
+    const tx = k < 0.5 ? gx0 + u * 0.3 + (gx1 - gx0 - u * 0.6) * e(k * 2) : gx1 - u * 0.3 - (gx1 - gx0 - u * 0.6) * e((k - 0.5) * 2);
+    const drop = u * (0.6 + 0.35 * Math.abs(Math.sin(k * Math.PI * 2)));
+    obox(tx - u * 0.14, gyb + u * 0.05, u * 0.28, u * 0.14, '#3a3f45', 2);
+    ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(tx, gyb + u * 0.19); ctx.lineTo(tx, gyb + drop); ctx.stroke();
+    if (k < 0.5) block(tx, gyb + drop + u * 0.2, u, blockRGB(S.goods.qty > 0 ? S.goods : S.raw));
+  }
+  if (ps >= 6) { // forklift shuttling between the press and the truck bay
+    const k = (Math.sin(view.t * 0.5) + 1) / 2, fx = L.stackX - u * 0.4 + (L.bayX - L.stackX + u * 0.2) * k, dir = Math.cos(view.t * 0.5) > 0 ? 1 : -1, fy = L.roadY - u * 0.02;
+    ctx.save(); ctx.translate(fx, fy); ctx.scale(dir, 1);
+    obox(-u * 0.32, -u * 0.38, u * 0.55, u * 0.3, YEL, 3); // body
+    obox(-u * 0.22, -u * 0.72, u * 0.28, u * 0.34, 'rgba(160,200,230,.35)', 2); // cage
+    obox(-u * 0.42, -u * 0.36, u * 0.12, u * 0.22, '#3a3f45'); // counterweight
+    beamTo(u * 0.26, 0, u * 0.26, -u * 0.8, u * 0.05, '#3a3f45'); // mast
+    beamTo(u * 0.26, -u * 0.08, u * 0.52, -u * 0.08, u * 0.04, '#2b2e32'); // forks
+    if (dir > 0) block(u * 0.4, -u * 0.12, u, blockRGB(S.goods.qty > 0 ? S.goods : S.raw));
+    for (const wx of [-u * 0.2, u * 0.14]) { ctx.beginPath(); ctx.arc(wx, -u * 0.06, u * 0.08, 0, 6.283); ctx.fillStyle = '#1e1e1e'; ctx.fill(); }
+    if (night > 0.2) glow(u * 0.3, -u * 0.5, u * 0.5, 0.3);
+    ctx.restore();
+  }
+}
+
+/** Smoke plume: puffs rise, drift downwind, grow and fade (procedural from time; no particles). */
+function smoke(x: number, y: number, u: number, amt: number, night: number) {
+  const N = 9;
+  for (let i = 0; i < N; i++) {
+    const k = (view.t * 0.22 + i / N) % 1, r = u * (0.16 + k * 0.75), a = (1 - k) * 0.5 * amt;
+    const sx = x + k * k * u * 3.2 + Math.sin(view.t * 0.8 + i) * u * 0.08, sy = y - k * u * 2.4;
+    const c = night > 0.4 ? 90 : 205 - k * 25;
+    ctx.fillStyle = `rgba(${c | 0},${c | 0},${(c + 6) | 0},${a.toFixed(3)})`; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.283); ctx.fill();
+  }
+}
+
+function lampPost(x: number, gy: number, h: number, u: number, night: number) {
+  beamTo(x, gy, x, gy - h, u * 0.06, '#3a3f45');
+  beamTo(x, gy - h, x + u * 0.22, gy - h, u * 0.04, '#3a3f45');
+  obox(x + u * 0.15, gy - h, u * 0.16, u * 0.1, '#2b2e32', 2);
+  ctx.fillStyle = '#ffe2a0'; ctx.fillRect(x + u * 0.17, gy - h + u * 0.09, u * 0.12, u * 0.04);
+  glow(x + u * 0.23, gy - h + u * 0.12, u * 0.9, 0.12 + 0.3 * night);
+  if (night > 0.2) { // after dusk: a soft cone down to a warm pool on the concrete
+    const a = Math.min(1, (night - 0.2) * 2), lx = x + u * 0.23, ly = gy - h + u * 0.14;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createLinearGradient(lx, ly, lx, gy); g.addColorStop(0, `rgba(255,214,140,${(0.22 * a).toFixed(3)})`); g.addColorStop(1, 'rgba(255,214,140,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(lx - u * 0.08, ly); ctx.lineTo(lx + u * 0.08, ly); ctx.lineTo(lx + u * 0.95, gy); ctx.lineTo(lx - u * 0.95, gy); ctx.closePath(); ctx.fill();
+    const pg = ctx.createRadialGradient(lx, gy, 0, lx, gy, u * 1.1); pg.addColorStop(0, `rgba(255,200,120,${(0.3 * a).toFixed(3)})`); pg.addColorStop(1, 'rgba(255,200,120,0)');
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.ellipse(lx, gy, u * 1.1, u * 0.22, 0, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+}
+function hazardBarrier(x: number, gy: number, u: number) {
+  obox(x, gy - u * 0.28, u * 0.42, u * 0.28, '#f0b21c', 2);
+  ctx.save(); ctx.beginPath(); ctx.rect(x, gy - u * 0.28, u * 0.42, u * 0.28); ctx.clip();
+  ctx.fillStyle = '#1e1e1e'; for (let i = -1; i < 5; i++) { ctx.beginPath(); ctx.moveTo(x + i * u * 0.12, gy); ctx.lineTo(x + i * u * 0.12 + u * 0.06, gy); ctx.lineTo(x + i * u * 0.12 + u * 0.16, gy - u * 0.28); ctx.lineTo(x + i * u * 0.12 + u * 0.1, gy - u * 0.28); ctx.fill(); }
+  ctx.restore();
+}
+
+/** The Recycling Yard production line (Yard reference): RECYCLING hopper on a steel frame → belt → CRUSHER →
+ *  inclined belt → hydraulic PRESS → pallet stacks → truck bay. Every moving part is driven by the real state:
+ *  the hopper heap = raw stock, belts/crusher run only while there is raw material, the press stamps on each THUMP
+ *  (SV.pressT), pallets = finished blocks. Gameplay positions (dump point, press, stack, bay) are unchanged. */
 function drawYard(L: ReturnType<typeof surfaceLayout>, night: number) {
   const { gy, u } = L;
   const pt = tierOf(S.upg.processSpeed, Y.processTiers), st = tierOf(S.upg.rawStorage, Y.storageTiers), vt = tierOf(S.upg.contractValue, Y.valueTiers);
   const s1 = step(0, 0.25), s2 = step(0.2, 0.45), s3 = step(0.4, 0.7), s4 = step(0.65, 0.9), s5 = step(0.88, 1);
-  // concrete pad under the whole line
-  ctx.fillStyle = '#8b8780'; ctx.fillRect(L.right + 2, gy - 3, (L.stackX - L.right + u * 0.9) * s1, 5);
+  const running = S.raw.qty > 0.01 && SV.buildT >= 1;
+  const crX = L.hopperX + u * 1.55, x1 = L.bayX + u * 0.6;
 
-  // ---- HOPPER (cart dumps straight in) ----
-  if (s2 > 0) {
-    const hw = u * (st >= 1 ? 0.72 : 0.62), top = L.hopperTop, bot = gy - u * 0.68;
-    const h = (bot - top) * s2;
-    ctx.save(); ctx.beginPath(); ctx.rect(L.hopperX - hw - 6, bot - h - 4, hw * 2 + 12, h + 8); ctx.clip();
-    ctx.fillStyle = STEEL_D; ctx.fillRect(L.hopperX - u * 0.06 - hw * 0.5, bot - 2, u * 0.12, gy - bot); // legs
-    ctx.fillRect(L.hopperX + hw * 0.5 - u * 0.06, bot - 2, u * 0.12, gy - bot);
-    ctx.fillStyle = STEEL;
-    ctx.beginPath(); ctx.moveTo(L.hopperX - hw, top); ctx.lineTo(L.hopperX + hw, top); ctx.lineTo(L.hopperX + hw * 0.32, bot); ctx.lineTo(L.hopperX - hw * 0.32, bot); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = STEEL_L; ctx.fillRect(L.hopperX - hw - 2, top - 3, hw * 2 + 4, 4);
-    if (st >= 1) { ctx.fillStyle = 'rgba(0,0,0,.2)'; for (let i = -2; i <= 2; i++) ctx.fillRect(L.hopperX + i * hw * 0.32 - 1, top + 4, 2, (bot - top) * 0.8); }
-    // raw material heaped in the mouth (rises with fill, coloured by what came up)
-    const fill = Math.min(1, S.raw.qty / rawCap(S));
-    if (S.raw.qty > 0.5) {
-      const n = Math.round(4 + fill * 22);
-      for (let i = 0; i < n; i++) {
-        const k = hash(i * 3.7 + 1), px = L.hopperX - hw * 0.85 + hw * 1.7 * k;
-        const py = top + 4 - fill * u * 0.32 * Math.sin(Math.PI * k) * (0.6 + 0.4 * hash(i * 1.3));
-        ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(i * 5.1))), 0.8 + hash(i * 2.2) * 0.4);
-        ctx.beginPath(); ctx.ellipse(px, py, u * 0.06, u * 0.045, hash(i) * 3, 0, 6.283); ctx.fill();
-      }
+  // ---- background: timber shed / gantry behind the line (muted, it frames the machines) ----
+  if (s1 > 0) {
+    ctx.globalAlpha = s1;
+    const bx0 = L.right + u * 0.1, top = gy - u * 3.4;
+    ctx.fillStyle = '#3b2e24'; ctx.fillRect(bx0, top + u * 0.3, x1 - bx0, gy - top - u * 0.3); // back wall
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; for (let x = bx0; x < x1; x += u * 0.18) ctx.fillRect(x, top + u * 0.3, 1.2, gy - top); // planks
+    for (let x = bx0; x <= x1 + 1; x += u * 0.95) beamTo(x, gy, x, top + u * 0.2, u * 0.09, '#5a4330'); // posts
+    beamTo(bx0 - u * 0.1, top + u * 0.25, x1 + u * 0.1, top + u * 0.25, u * 0.1, '#5a4330'); // ring beam
+    ctx.beginPath(); ctx.moveTo(bx0 - u * 0.25, top + u * 0.22); ctx.lineTo(x1 + u * 0.25, top + u * 0.22); ctx.lineTo(x1, top - u * 0.18); ctx.lineTo(bx0, top - u * 0.18); ctx.closePath();
+    ctx.fillStyle = '#4a3a2c'; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.4; ctx.stroke(); // roof
+    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.fillRect(bx0, top - u * 0.18, x1 - bx0, u * 0.06);
+    // stacked spare blocks against the back wall (set dressing)
+    for (let i = 0; i < 6; i++) block(L.pressX + u * 0.4 + (i % 3) * u * 0.36, gy - u * 0.04 - Math.floor(i / 3) * u * 0.2, u, [118, 112, 104], hash(i));
+    // tall steel tower behind the hopper: legs, cross bracing, two platforms with railings, zig-zag stairs, an
+    // operator cabin with a lit window on top, lamps — the yard reads as heavy industry from far away
+    const tx0 = L.hopperX - u * 0.35, tx1 = L.hopperX + u * 0.95, tTop = gy - u * 3.7;
+    for (const x of [tx0, tx1]) beamTo(x, gy, x, tTop, u * 0.1, '#3a3f45');
+    for (let i = 0; i < 4; i++) { const ya = gy - i * u * 0.9, yb = ya - u * 0.9; beamTo(tx0, ya, tx1, yb, u * 0.04, '#4a5058'); beamTo(tx1, ya, tx0, yb, u * 0.04, '#4a5058'); }
+    for (const py of [gy - u * 1.85, gy - u * 2.75]) {
+      obox(tx0 - u * 0.15, py, tx1 - tx0 + u * 0.3, u * 0.07, '#5a6068');
+      ctx.strokeStyle = YEL; ctx.lineWidth = Math.max(1.2, u * 0.025); ctx.beginPath(); ctx.moveTo(tx0 - u * 0.15, py - u * 0.3); ctx.lineTo(tx1 + u * 0.15, py - u * 0.3);
+      for (let x = tx0 - u * 0.15; x <= tx1 + u * 0.16; x += u * 0.35) { ctx.moveTo(x, py); ctx.lineTo(x, py - u * 0.3); } ctx.stroke();
     }
-    // cut-away window on the hopper body: the fill level is readable at a glance
-    if (s2 >= 1) {
-      const wx = L.hopperX - hw * 0.2, wy0 = top + (bot - top) * 0.18, wh = (bot - top) * 0.62, ww = hw * 0.4;
-      ctx.fillStyle = 'rgba(20,20,22,.85)'; ctx.fillRect(wx, wy0, ww, wh);
-      const lv = wh * fill;
-      ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, 0.5)), 0.95); ctx.fillRect(wx, wy0 + wh - lv, ww, lv);
-      ctx.fillStyle = 'rgba(255,255,255,.18)'; for (let i = 1; i < 4; i++) ctx.fillRect(wx, wy0 + (wh * i) / 4, ww * 0.35, 1);
-      ctx.strokeStyle = STEEL_L; ctx.lineWidth = 1.5; ctx.strokeRect(wx, wy0, ww, wh);
-    }
-    ctx.restore();
-    if (st >= 2) { // overflow bunker
-      ctx.fillStyle = '#7d786f'; ctx.fillRect(L.hopperX - hw - u * 0.55, gy - u * 0.45, u * 0.5, u * 0.45);
-      ctx.fillStyle = '#6a655d'; ctx.fillRect(L.hopperX - hw - u * 0.55, gy - u * 0.47, u * 0.5, u * 0.05);
-    }
-    if (s2 >= 1) {
-      const full = S.raw.qty >= rawCap(S) - 0.5;
-      pileLabel(L.hopperX, top - u * 0.42 - fill * u * 0.3, Math.floor(S.raw.qty), Math.round(12 + u * 0.08), full);
-      ctx.font = `600 ${Math.round(9 + u * 0.05)}px ${FONT_UI}`; ctx.textAlign = 'center';
-      ctx.fillStyle = full ? '#ffb38a' : 'rgba(255,255,255,.8)';
-      ctx.fillText(full ? `RAW FULL (${rawCap(S)})` : `raw / ${rawCap(S)}`, L.hopperX, top - u * 0.18 - fill * u * 0.3);
-    }
-  }
-
-  // ---- CRUSHER drum(s) under the hopper ----
-  if (s3 > 0) {
-    ctx.globalAlpha = s3;
-    const drums = pt >= 1 ? 2 : 1;
-    for (let d = 0; d < drums; d++) {
-      const cx = L.hopperX + (d - (drums - 1) / 2) * u * 0.5, cy = gy - u * 0.42, r = u * 0.26;
-      ctx.fillStyle = STEEL_D; ctx.beginPath(); ctx.arc(cx, cy, r * 1.15, 0, 6.283); ctx.fill();
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(SV.spin * (d % 2 ? -1 : 1));
-      ctx.fillStyle = STEEL_L;
-      for (let i = 0; i < 8; i++) { ctx.rotate(Math.PI / 4); ctx.fillRect(r * 0.55, -r * 0.12, r * 0.45, r * 0.24); }
-      ctx.fillStyle = STEEL; ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0, 6.283); ctx.fill();
-      ctx.restore();
-    }
-    // ---- AUGER: inclined screw conveyor from the crusher up to the press ----
-    const ax0 = L.hopperX + u * 0.38, ay0 = gy - u * 0.3, ax1 = L.pressX - u * 0.5, ay1 = gy - u * 1.45;
-    const len = Math.hypot(ax1 - ax0, ay1 - ay0), ang = Math.atan2(ay1 - ay0, ax1 - ax0), tw = u * 0.34;
-    ctx.save(); ctx.translate(ax0, ay0); ctx.rotate(ang);
-    ctx.fillStyle = STEEL_D; ctx.beginPath(); ctx.roundRect(0, -tw / 2, len * s3, tw, tw / 2); ctx.fill();
-    ctx.save(); ctx.beginPath(); ctx.roundRect(0, -tw / 2 + 2, len * s3, tw - 4, tw / 2); ctx.clip();
-    ctx.strokeStyle = '#b6bec7'; ctx.lineWidth = Math.max(1.5, u * 0.035);
-    const pitch = u * 0.16, ph = (SV.spin * u * 0.18) % pitch;
-    for (let x = -pitch + ph; x < len; x += pitch) { ctx.beginPath(); ctx.moveTo(x, -tw / 2); ctx.lineTo(x + pitch * 0.55, tw / 2); ctx.stroke(); }
-    ctx.restore();
-    ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(0, -tw / 2 + 2, len * s3, 2);
-    // crushed material riding up the screw (only while there is something to process)
-    if (S.raw.qty > 0.01 && s3 >= 1) {
-      const sp = (SV.spin * u * 0.18) % (u * 0.32);
-      for (let x = sp; x < len - u * 0.1; x += u * 0.32) {
-        ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(Math.floor((x - sp) / (u * 0.32)) * 1.9))), 0.95);
-        ctx.beginPath(); ctx.ellipse(x, -tw * 0.05, u * 0.055, u * 0.04, 0, 0, 6.283); ctx.fill();
-      }
-    }
-    ctx.restore();
-    // material dropping from the hopper into the crusher
-    if (S.raw.qty > 0.01 && s3 >= 1) {
-      for (let i = 0; i < 3; i++) {
-        const k = (view.t * 2.2 + i / 3) % 1;
-        ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(i * 4.1))), 0.9);
-        ctx.fillRect(L.hopperX - u * 0.04 + (i - 1) * u * 0.05, gy - u * 0.68 + k * u * 0.2, u * 0.06, u * 0.06);
-      }
-    }
-    ctx.fillStyle = STEEL_D; // auger supports
-    ctx.fillRect(ax0 + (ax1 - ax0) * 0.55 - 2, ay0 + (ay1 - ay0) * 0.55, 4, gy - (ay0 + (ay1 - ay0) * 0.55));
+    ctx.strokeStyle = '#2e3237'; ctx.lineWidth = Math.max(1.2, u * 0.03); ctx.beginPath(); // zig-zag stairs
+    ctx.moveTo(tx1 + u * 0.1, gy); ctx.lineTo(tx0 + u * 0.1, gy - u * 1.85); ctx.lineTo(tx1 - u * 0.1, gy - u * 2.75); ctx.stroke();
+    obox(tx0 + u * 0.05, tTop - u * 0.75, tx1 - tx0 - u * 0.1, u * 0.75, '#5d4a38', 2); // cabin
+    obox(tx0 - u * 0.05, tTop - u * 0.85, tx1 - tx0 + u * 0.1, u * 0.12, '#3b2e24');
+    ctx.fillStyle = night > 0.2 ? '#ffd890' : '#9fc4d8'; ctx.fillRect(tx0 + u * 0.2, tTop - u * 0.58, (tx1 - tx0) * 0.55, u * 0.3);
+    glow(tx0 + (tx1 - tx0) * 0.45, tTop - u * 0.45, u * 0.7, 0.1 + 0.3 * night);
+    for (const [lx, ly] of [[tx0 - u * 0.1, gy - u * 2.2], [tx1 + u * 0.1, gy - u * 3.1]] as const) { ctx.fillStyle = '#ffe2a0'; ctx.beginPath(); ctx.arc(lx, ly, u * 0.05, 0, 6.283); ctx.fill(); glow(lx, ly, u * 0.6, 0.12 + 0.3 * night); }
+    // smokestack through the shed roof: brick, white bands, an aircraft light; the plume thickens while the line runs
+    const chX = L.pressX + u * 1.25, chTop = gy - u * 5.2, chW = u * 0.42;
+    ctx.beginPath(); ctx.moveTo(chX - chW / 2, top); ctx.lineTo(chX - chW * 0.38, chTop); ctx.lineTo(chX + chW * 0.38, chTop); ctx.lineTo(chX + chW / 2, top); ctx.closePath();
+    ctx.fillStyle = '#8d4b3a'; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(chX + chW * 0.08, chTop, chW * 0.32, top - chTop);
+    for (const k of [0.12, 0.3]) { ctx.fillStyle = '#ece6da'; ctx.fillRect(chX - chW * 0.42, chTop + (top - chTop) * k, chW * 0.84, u * 0.1); }
+    obox(chX - chW * 0.48, chTop - u * 0.1, chW * 0.96, u * 0.12, '#5e3328');
+    if (Math.floor(view.t * 1.2) % 2 === 0) { ctx.fillStyle = '#ff3b2f'; ctx.beginPath(); ctx.arc(chX, chTop - u * 0.14, u * 0.04, 0, 6.283); ctx.fill(); glow(chX, chTop - u * 0.14, u * 0.35, 0.35); }
+    smoke(chX, chTop - u * 0.1, u, running ? 1 : 0.35, night);
+    obox(L.right + 2, gy - u * 0.05, (x1 - L.right) * s1, u * 0.09, '#8d8880');
     ctx.globalAlpha = 1;
   }
 
-  // ---- PRESS: frame, hydraulic ram, mould; a block slides out after each THUMP ----
-  if (s4 > 0) {
-    const px = L.pressX, w = u * (pt >= 2 ? 1.15 : 1.0), top = gy - u * 2.5, base = gy - u * 0.35;
-    ctx.save(); ctx.beginPath(); ctx.rect(px - w, gy - (gy - top + 10) * s4, w * 2, gy - top + 10); ctx.clip();
-    ctx.fillStyle = YELLOW; ctx.fillRect(px - w / 2, top, u * 0.14, gy - top); ctx.fillRect(px + w / 2 - u * 0.14, top, u * 0.14, gy - top);
-    ctx.fillRect(px - w / 2, top, w, u * 0.2);
-    ctx.fillStyle = '#c98f12'; ctx.fillRect(px - w / 2, top + u * 0.2, w, u * 0.04);
-    // ram: anticipation drop, THUMP at the press event, then rise
-    const period = Y.pressBatch / Math.max(0.1, processRate(S));
-    const working = S.raw.qty > 0.01;
-    let f = SV.pressT < 0.06 ? 1 : Math.max(0, 1 - (SV.pressT - 0.06) / 0.35);
-    if (working && SV.pressT > period - 0.2) f = Math.max(f, Math.min(1, (SV.pressT - (period - 0.2)) / 0.2));
-    const ramTop = top + u * 0.24, ramBot = base - u * 0.32, ry = ramTop + (ramBot - ramTop - u * 0.3) * f;
-    ctx.fillStyle = STEEL_L; ctx.fillRect(px - u * 0.07, ramTop, u * 0.14, ry - ramTop + u * 0.05);
-    ctx.fillStyle = STEEL; ctx.fillRect(px - w * 0.36, ry, w * 0.72, u * 0.3);
-    // mould + the material being pressed
-    ctx.fillStyle = STEEL_D; ctx.fillRect(px - w * 0.42, base - u * 0.06, w * 0.84, u * 0.4);
-    if (working || SV.pressT < 0.6) { ctx.fillStyle = rgb(blockRGB(S.goods.qty > 0 ? S.goods : S.raw), 1); ctx.fillRect(px - w * 0.3, base - u * 0.12, w * 0.6, u * 0.12); }
+  if (s1 >= 1) yardBack(L, crX, running, night);
+
+  // ---- HOPPER on a yellow steel frame, RECYCLING sign above; heap = raw stock ----
+  if (s2 > 0) {
+    ctx.globalAlpha = s2;
+    const hw = u * (st >= 1 ? 0.86 : 0.76), top = L.hopperTop, bot = Math.max(top + u * 0.5, gy - u * 0.42), hx = L.hopperX; // mouth at the cart's dump height
+    for (const lx of [hx - hw * 0.55, hx + hw * 0.55]) beamTo(lx, gy, lx, bot - u * 0.1, u * 0.1, YEL); // legs
+    beamTo(hx - hw * 0.55, gy - u * 0.4, hx + hw * 0.55, bot + u * 0.05, u * 0.06, YEL_D); // cross brace
+    beamTo(hx - hw * 0.6, bot + u * 0.02, hx + hw * 0.6, bot + u * 0.02, u * 0.08, YEL);
+    ctx.beginPath(); ctx.moveTo(hx - hw, top); ctx.lineTo(hx + hw, top); ctx.lineTo(hx + hw * 0.34, bot); ctx.lineTo(hx - hw * 0.34, bot); ctx.closePath();
+    ctx.fillStyle = RUSTW; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.save(); ctx.clip();
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(hx - hw, top, hw * 0.55, bot - top); // shadow side
+    ctx.fillStyle = 'rgba(120,70,30,.28)'; for (let i = 0; i < 7; i++) ctx.fillRect(hx - hw + hash(i * 3.3) * hw * 2, top + hash(i * 5.1) * (bot - top), u * 0.04, u * (0.1 + hash(i) * 0.25)); // rust streaks
+    ctx.strokeStyle = RUSTW_D; ctx.lineWidth = 1; for (let i = 1; i < 4; i++) { const yy = top + (bot - top) * i / 4; ctx.beginPath(); ctx.moveTo(hx - hw, yy); ctx.lineTo(hx + hw, yy); ctx.stroke(); }
+    ctx.fillStyle = '#5a554d'; for (let i = 0; i < 9; i++) { ctx.beginPath(); ctx.arc(hx - hw * 0.8 + i * hw * 0.2, top + u * 0.07, 1.1, 0, 6.283); ctx.fill(); } // rivets
     ctx.restore();
-    // block sliding from the press to the stack
-    if (SV.pressT < 0.55 && s4 >= 1) {
-      const k = SV.pressT / 0.55, bx = px + (L.stackX - px - u * 0.4) * k;
-      block(bx, gy - u * 0.12, u, blockRGB(S.goods));
-    }
-    // short roller bed between press and stack
-    ctx.fillStyle = STEEL_D; ctx.fillRect(px + w / 2, gy - u * 0.04, L.stackX - px - w / 2 - u * 0.3, u * 0.05);
-    // contract value tiers: painted sign -> contract board -> weigh station -> company livery
-    if (s5 > 0) {
-      ctx.globalAlpha = s5;
-      const sx = px, sy = top - u * 0.42;
-      ctx.fillStyle = vt >= 3 ? '#1f5b4a' : vt >= 1 ? '#2f3a2f' : '#a4793f';
-      ctx.fillRect(sx - u * 0.75, sy, u * 1.5, u * 0.34);
-      ctx.font = `${Math.round(u * 0.17)}px 'Bungee',Impact,sans-serif`; ctx.textAlign = 'center';
-      ctx.fillStyle = vt >= 1 ? '#ffe08a' : '#2b1a0c';
-      ctx.fillText(vt >= 1 ? 'RECYCLING ✓' : 'RECYCLING', sx, sy + u * 0.24);
-      if (vt >= 2) { // weigh station by the bay
-        ctx.fillStyle = '#6f7780'; ctx.fillRect(L.bayX - u * 0.35, L.roadY - u * 0.26, u * 0.3, u * 0.08);
-        ctx.fillStyle = '#c9d2dc'; ctx.fillRect(L.bayX - u * 0.25, L.roadY - u * 0.62, u * 0.1, u * 0.36);
-      }
-      ctx.globalAlpha = 1;
-    }
+    obox(hx - hw - 2, top - 3, hw * 2 + 4, 5, RUSTW_D); // rim
+    const fill = Math.min(1, S.raw.qty / rawCap(S));
+    if (S.raw.qty > 0.5) heap(hx, top + 2, hw * 1.85, u * (0.15 + 0.55 * fill), u, S.raw, Math.round(8 + fill * 34), 5);
+    // RECYCLING sign on its frame above the hopper
+    const sy = top - u * 1.05 - u * 0.55 * fill;
+    beamTo(hx - hw * 0.7, top - 2, hx - hw * 0.7, sy + u * 0.3, u * 0.05, '#3a3f45'); beamTo(hx + hw * 0.7, top - 2, hx + hw * 0.7, sy + u * 0.3, u * 0.05, '#3a3f45');
+    signBoard(hx, sy, u, vt >= 1 ? 'RECYCLING ♻' : 'RECYCLING');
+    // stock readout (functional): count + capacity, red when full
+    const full = S.raw.qty >= rawCap(S) - 0.5;
+    pileLabel(hx, sy - u * 0.12, Math.floor(S.raw.qty), Math.round(12 + u * 0.08), full);
+    ctx.font = `600 ${Math.round(9 + u * 0.05)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = full ? '#ffb38a' : 'rgba(255,255,255,.85)';
+    ctx.fillText(full ? `RAW FULL (${rawCap(S)})` : `raw / ${rawCap(S)}`, hx, sy + u * 0.62);
+    if (st >= 2) { obox(hx - hw - u * 0.6, gy - u * 0.5, u * 0.5, u * 0.5, '#7d786f'); heap(hx - hw - u * 0.35, gy - u * 0.5, u * 0.45, u * 0.12, u, S.raw, 6, 9); } // overflow bunker
+    ctx.globalAlpha = 1;
   }
 
-  // ---- OUTPUT: finished blocks stacked on pallets ----
-  if (s5 > 0) {
-    const n = Math.min(24, Math.ceil(S.goods.qty / 2)), cols = 4, bw = u * 0.36, bh = u * 0.21;
-    const x0 = L.stackX - (cols * bw) / 2;
-    ctx.fillStyle = '#8a6a44'; ctx.fillRect(x0 - 2, gy - u * 0.06, cols * bw + 4, u * 0.06); // pallet
-    for (let i = 0; i < n; i++) {
-      const c = i % cols, r = Math.floor(i / cols);
-      block(x0 + c * bw + bw / 2, gy - u * 0.06 - r * bh, u, blockRGB(S.goods), hash(i));
+  // ---- CRUSHER: fed by a belt from the hopper; flywheel, shake, gravel + dust when running ----
+  if (s3 > 0) {
+    ctx.globalAlpha = s3;
+    const sh = running ? Math.sin(view.t * 60) * u * 0.008 : 0, cw = u * (pt >= 1 ? 1.2 : 1.06), ch = u * 1.05, cy = gy - u * 0.2 - ch;
+    conveyor(L.hopperX + u * 0.25, gy - u * 0.32, crX - cw * 0.35, cy + u * 0.04, u, s3, running, S.raw); // inclined belt from the hopper outlet up into the crusher
+    ctx.save(); ctx.translate(sh, 0);
+    for (const lx of [crX - cw * 0.4, crX + cw * 0.4]) beamTo(lx, gy, lx, cy + ch, u * 0.09, '#3a3f45'); // legs
+    obox(crX - cw / 2, cy, cw, ch, '#3d4248', 3); // housing
+    obox(crX - cw / 2, cy, cw, ch * 0.32, YEL, 3); // yellow top
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 0; i < 4; i++) ctx.fillRect(crX - cw * 0.35, cy + ch * (0.48 + i * 0.1), cw * 0.42, ch * 0.04); // vents
+    // flywheel (spins while running), bigger on the upgraded crusher
+    const fx = crX + cw * 0.28, fy = cy + ch * 0.62, fr = u * (pt >= 1 ? 0.2 : 0.16);
+    ctx.beginPath(); ctx.arc(fx, fy, fr, 0, 6.283); ctx.fillStyle = YEL; ctx.fill(); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.save(); ctx.translate(fx, fy); ctx.rotate(SV.spin * 2); ctx.strokeStyle = INK_Y; ctx.lineWidth = 1.6;
+    for (let i = 0; i < 3; i++) { ctx.rotate(Math.PI * 2 / 3); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(fr * 0.85, 0); ctx.stroke(); }
+    ctx.restore();
+    ctx.restore();
+    signBoard(crX, cy - u * 0.56, u, 'CRUSHER', `Lv ${S.upg.processSpeed + 1}`);
+    // crushed gravel falling out of the bottom + a small pile, dust and a warm work-glow while running
+    const outX = crX - cw * 0.05, outY = cy + ch;
+    if (running) {
+      for (let i = 0; i < 6; i++) { const k = (view.t * 1.8 + i / 6) % 1; ctx.fillStyle = rgb(rubbleRGB(mixPick(S.raw, hash(i * 4.1))), 0.95); ctx.fillRect(outX + (hash(i) - 0.5) * u * 0.18, outY + k * (gy - outY - u * 0.05), u * 0.045, u * 0.045); }
+      for (let i = 0; i < 3; i++) { const k = (view.t * 0.6 + i / 3) % 1; ctx.fillStyle = `rgba(210,190,160,${(0.25 * (1 - k)).toFixed(3)})`; ctx.beginPath(); ctx.arc(crX + (i - 1) * u * 0.25, cy - k * u * 0.5, u * (0.12 + k * 0.2), 0, 6.283); ctx.fill(); }
+      glow(outX, gy - u * 0.2, u * 0.7, 0.22);
     }
-    const lab = gy - u * 0.06 - Math.ceil(Math.max(1, n) / cols) * bh - u * 0.18;
+    heap(outX, gy - u * 0.05, u * 0.42, u * 0.12, u, S.raw.qty > 0.01 ? S.raw : S.goods, 9, 21);
+    // control panel up on the tower platform, overlooking the hopper (its lights blink while the line runs)
+    const pX = L.hopperX + u * 0.72, pY = gy - u * 2.75;
+    obox(pX - u * 0.12, pY - u * 0.5, u * 0.26, u * 0.5, '#3a3f45', 2);
+    ctx.fillStyle = '#20252b'; ctx.fillRect(pX - u * 0.09, pY - u * 0.46, u * 0.2, u * 0.14);
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = ['#4be36a', '#ffd23a', '#ff5a3a'][i]; ctx.globalAlpha = s3 * (running && Math.sin(view.t * (3 + i) + i) > -0.3 ? 1 : 0.35); ctx.fillRect(pX - u * 0.07 + i * u * 0.065, pY - u * 0.28, u * 0.04, u * 0.04); }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- inclined belt up to the PRESS; the press frame, ram, glowing mould ----
+  if (s4 > 0) {
+    ctx.globalAlpha = s4;
+    const px = L.pressX, w = u * (pt >= 2 ? 1.22 : 1.08), top = gy - u * 3.1, base = gy - u * 0.35;
+    conveyor(crX + u * 0.35, gy - u * 0.62, px - w * 0.42, gy - u * 1.75, u, s4, running, S.raw);
+    // columns + crown + hazard-striped base
+    obox(px - w / 2, top, u * 0.2, gy - top, YEL); obox(px + w / 2 - u * 0.2, top, u * 0.2, gy - top, YEL);
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(px - w / 2 + u * 0.13, top, u * 0.07, gy - top); ctx.fillRect(px + w / 2 - u * 0.07, top, u * 0.07, gy - top);
+    obox(px - w / 2 - u * 0.06, top - u * 0.12, w + u * 0.12, u * 0.34, YEL, 2);
+    obox(px - w / 2, base - u * 0.02, w, u * 0.4, '#3a3f45');
+    ctx.save(); ctx.beginPath(); ctx.rect(px - w / 2, base + u * 0.18, w, u * 0.2); ctx.clip();
+    ctx.fillStyle = YEL; ctx.fillRect(px - w / 2, base + u * 0.18, w, u * 0.2);
+    ctx.fillStyle = '#1e1e1e'; for (let i = -2; i < 10; i++) { ctx.beginPath(); ctx.moveTo(px - w / 2 + i * u * 0.14, base + u * 0.38); ctx.lineTo(px - w / 2 + i * u * 0.14 + u * 0.07, base + u * 0.38); ctx.lineTo(px - w / 2 + i * u * 0.14 + u * 0.17, base + u * 0.18); ctx.lineTo(px - w / 2 + i * u * 0.14 + u * 0.1, base + u * 0.18); ctx.fill(); }
+    ctx.restore();
+    // hydraulic cylinder + ram (anticipation drop, THUMP, rise)
+    const period = Y.pressBatch / Math.max(0.1, processRate(S));
+    let f = SV.pressT < 0.06 ? 1 : Math.max(0, 1 - (SV.pressT - 0.06) / 0.35);
+    if (running && SV.pressT > period - 0.2) f = Math.max(f, Math.min(1, (SV.pressT - (period - 0.2)) / 0.2));
+    const cylTop = top + u * 0.22, ramBot = base - u * 0.32, ry = cylTop + u * 0.5 + (ramBot - cylTop - u * 0.8) * f;
+    obox(px - u * 0.16, cylTop, u * 0.32, u * 0.55, '#2e3237', 3);
+    ctx.fillStyle = '#c8d0d8'; ctx.fillRect(px - u * 0.07, cylTop + u * 0.55, u * 0.14, ry - cylTop - u * 0.55); ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(px - u * 0.05, cylTop + u * 0.55, u * 0.03, ry - cylTop - u * 0.55);
+    obox(px - w * 0.38, ry, w * 0.76, u * 0.28, '#4a4f55', 2); // ram head
+    // mould: glows orange-hot for a moment after each stamp
+    const hot = Math.max(0, 1 - SV.pressT / 0.5);
+    obox(px - w * 0.4, base - u * 0.16, w * 0.8, u * 0.16, '#2a2d31');
+    if (hot > 0.01) { ctx.fillStyle = `rgba(255,150,40,${(0.85 * hot).toFixed(3)})`; ctx.fillRect(px - w * 0.36, base - u * 0.14, w * 0.72, u * 0.08); glow(px, base - u * 0.1, u * 0.8, 0.45 * hot); }
+    if (hot > 0.01) { // stamp: a burst of steam out of both sides of the mould and a fan of sparks
+      const k = 1 - hot;
+      for (let i = 0; i < 6; i++) {
+        const side = i % 2 ? 1 : -1, r = u * (0.12 + k * 0.32) * (0.7 + hash(i) * 0.5);
+        ctx.fillStyle = `rgba(235,235,232,${(0.55 * hot).toFixed(3)})`; ctx.beginPath();
+        ctx.arc(px + side * (w * 0.42 + k * u * (0.5 + hash(i + 7) * 0.5)), base - u * 0.12 - k * u * (0.3 + hash(i + 3) * 0.6), r, 0, 6.283); ctx.fill();
+      }
+      if (hot > 0.45) { ctx.strokeStyle = `rgba(255,${190 + (hash(SV.pressT) * 50) | 0},90,${hot.toFixed(3)})`; ctx.lineWidth = 1.5; ctx.beginPath();
+        for (let i = 0; i < 9; i++) { const a = -Math.PI * (0.1 + 0.8 * hash(i * 1.7)), d = u * (0.2 + k * 1.4) * (0.6 + hash(i) * 0.6), sx = px + Math.cos(a) * d, sy = base - u * 0.12 + Math.sin(a) * d * 0.6 + k * k * u * 0.8; ctx.moveTo(sx, sy); ctx.lineTo(sx - Math.cos(a) * u * 0.1, sy - Math.sin(a) * u * 0.06); }
+        ctx.stroke(); }
+    }
+    if (running || SV.pressT < 0.6) { ctx.fillStyle = rgb(blockRGB(S.goods.qty > 0 ? S.goods : S.raw), 1); ctx.fillRect(px - w * 0.28, base - u * 0.26, w * 0.56, u * 0.1); }
+    signBoard(px, top - u * 0.62, u, 'PRESS', `Lv ${S.upg.contractValue + 1}`);
+    // block sliding out to the pallets
+    if (SV.pressT < 0.55 && s4 >= 1) { const k = SV.pressT / 0.55; block(px + (L.stackX - px - u * 0.4) * k, gy - u * 0.12, u, blockRGB(S.goods)); }
+    obox(px + w / 2, gy - u * 0.08, L.stackX - px - w / 2 - u * 0.3, u * 0.06, '#3a3f45'); // roller bed
+    // operator platform on the press with a railing
+    const plx = px + w / 2, ply = gy - u * 1.15;
+    obox(plx, ply, u * 0.62, u * 0.07, '#5a6068'); beamTo(plx + u * 0.6, ply, plx + u * 0.6, gy, u * 0.05, '#3a3f45');
+    ctx.strokeStyle = YEL; ctx.lineWidth = Math.max(1.2, u * 0.03); ctx.beginPath(); ctx.moveTo(plx + u * 0.04, ply - u * 0.32); ctx.lineTo(plx + u * 0.6, ply - u * 0.32); ctx.moveTo(plx + u * 0.6, ply); ctx.lineTo(plx + u * 0.6, ply - u * 0.32); ctx.stroke();
+    if (vt >= 2) { obox(L.bayX - u * 0.35, L.roadY - u * 0.26, u * 0.3, u * 0.08, '#6f7780'); obox(L.bayX - u * 0.25, L.roadY - u * 0.62, u * 0.1, u * 0.36, '#c9d2dc'); } // weigh station
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- OUTPUT: finished blocks on pallets (count = blocks waiting for the truck) ----
+  if (s5 > 0) {
+    const n = Math.min(32, Math.ceil(S.goods.qty / 2)), cols = 4, bw = u * 0.36, bh = u * 0.21;
+    for (let pI = 0; pI < 2; pI++) {
+      const x0 = L.stackX - cols * bw + pI * (cols * bw + u * 0.06) - u * 0.03, m = Math.max(0, Math.min(16, n - pI * 16));
+      obox(x0 - 2, gy - u * 0.08, cols * bw + 4, u * 0.08, '#9a7448'); // pallet
+      ctx.fillStyle = '#6e5232'; for (let i = 0; i < 3; i++) ctx.fillRect(x0 + i * (cols * bw) / 2 - 1, gy - u * 0.03, u * 0.06, u * 0.03);
+      for (let i = 0; i < m; i++) block(x0 + (i % cols) * bw + bw / 2, gy - u * 0.08 - Math.floor(i / cols) * bh, u, blockRGB(S.goods), hash(i + pI * 20));
+      if (m >= 8) { ctx.strokeStyle = 'rgba(40,60,90,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + cols * bw * 0.5, gy - u * 0.08); ctx.lineTo(x0 + cols * bw * 0.5, gy - u * 0.08 - Math.ceil(m / cols) * bh); ctx.stroke(); } // strapping band
+    }
+    const lab = gy - u * 0.08 - Math.ceil(Math.max(1, Math.min(16, n)) / cols) * bh - u * 0.2;
     pileLabel(L.stackX, lab, Math.floor(S.goods.qty), Math.round(12 + u * 0.08), false);
-    ctx.font = `600 ${Math.round(9 + u * 0.05)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.8)';
+    ctx.font = `600 ${Math.round(9 + u * 0.05)}px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.85)';
     ctx.fillText('blocks', L.stackX, lab + u * 0.2);
   }
 
-  // ---- yard hand (scale reference), lights ----
+  if (s5 >= 1) yardFront(L, crX, running, night);
+
+  // ---- people, lamps, barriers ----
   if (SV.buildT >= 1) {
-    const busy = S.raw.qty > 0.01;
-    drawRig(L.pressX - u * 0.9, gy, u / RIG_H, 1, HAND, busy ? { k: 'gesture', t: 0, a: (Math.sin(view.t * 3) + 1) / 4 } : { k: 'stand', t: 0 });
-    for (const lx of [L.hopperX - u * 0.1, L.stackX + u * 0.5]) {
-      ctx.fillStyle = STEEL_D; ctx.fillRect(lx - 1.5, gy - u * 2.3, 3, u * 2.3);
-      ctx.fillStyle = '#ffd98a'; ctx.fillRect(lx - u * 0.12, gy - u * 2.36, u * 0.24, u * 0.07);
-      glow(lx, gy - u * 2.2, u * 1.05, 0.32 * night);
-    }
-    glow(L.pressX, gy - u * 1.2, u * 0.9, 0.14 * night);
+    const pX = L.hopperX + u * 0.72;
+    drawRig(pX - u * 0.3, gy - u * 2.75, u / RIG_H, 1, HAND, running ? { k: 'gesture', t: 0, a: (Math.sin(view.t * 3) + 1) / 4 } : { k: 'stand', t: 0 });
+    const w = u * (pt >= 2 ? 1.22 : 1.08);
+    drawRig(L.pressX + w / 2 + u * 0.3, gy - u * 1.15, u / RIG_H, -1, HAND2, running ? { k: 'gesture', t: 0, a: (Math.sin(view.t * 2.2 + 1) + 1) / 3 } : { k: 'stand', t: 0 });
+    hazardBarrier(L.hopperX - u * 0.95, gy, u); hazardBarrier(L.stackX + u * 0.75, gy, u);
+    lampPost(L.hopperX + u * 0.9, gy, u * 2.6, u, night); lampPost(L.stackX + u * 0.95, gy, u * 2.5, u, night);
   }
 }
 

@@ -13,7 +13,7 @@ import { hash } from './util';
 export const PAL = {
   earth: { base: '#7a5236', light: '#a0744b', shadow: '#53361f', deep: '#2b1b10' },
   rock: { base: '#5e534a', light: '#857565', shadow: '#3c332c', deep: '#1f1915' },
-  wood: { base: '#8c5d34', light: '#b8834f', shadow: '#5b391c', dark: '#3a2412' },
+  wood: { base: '#9b6536', light: '#c99055', shadow: '#653f1f', dark: '#3c2512' }, // warm, bright mine timber
   metal: { base: '#6f7781', light: '#b2bbc5', shadow: '#454c55' },
   yellow: { base: '#f0b32c', light: '#ffd76a', shadow: '#b47d14' }, // industrial accents
   orange: { base: '#e5732a', light: '#ff9a52', shadow: '#a84d16' }, // construction
