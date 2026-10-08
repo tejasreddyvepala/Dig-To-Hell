@@ -70,6 +70,7 @@ V2-2. Fossil Excavation · V2-3. Active mining events (Critical Vein, Cave-In, S
 - Step 1 port `e4d758d` · Step 2 dig feel `fc51a70` · Step 2.5 polish `72800ed` · design update `6ea5c2b` · 3A+3B `b4a2c08` · 3C `ce168ca` · 3C.5 `4bfadeb` (hash commits `3c30846`, `1278c76`, `3cf1c7a`, `81d4023`) · reset confirm `2011020`
 - V2 design consolidation `719166f`
 - V2-1 implementation: `97fd236` · ladder/car visual fix `dcaab27` · truck redesign `1836a66`/`750afcb` · Track Strength + overload storyline `5c9d1c5` · retention + auto-construction `86a9dca` · toast/swipe fix `4136d95` · economy rebuild `943d59e` · construction-worker positioning `4588020`
+- Release v1.0.0 (deep mine to 1,000 m, Hell finale, release-readiness fixes, CrazyGames kit): `7bccda7` on branch `release/v1.0.0`
 - Visual passes (art direction, reference: `Dig to Hell_ Visual Reference Sheet.png`; captures in `playtest-captures/art-pass-N/`): Pass 1/20 global art language `692fc13` · Pass 2/20 mine rock walls + shaft framing `bd4cb74`
 
 ### History in brief (details in git history and older Spec revisions)
