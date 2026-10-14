@@ -65,7 +65,9 @@ SV.contractorGone = S.yard ? 1 : 0;
 if (S.flags.sold && !S.yard) say('Here. Build a Recycling Yard and press it into blocks.', true);
 
 // ---- input ----
-const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+const TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } })();
+const HIT_PAD = TOUCH ? 10 : 0; // fingers: a slightly larger tap area around the cart (it's ~40 px on a landscape phone)
+const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.x - HIT_PAD && x <= r.x + r.w + HIT_PAD && y >= r.y - HIT_PAD && y <= r.y + r.h + HIT_PAD;
 
 canvas.addEventListener('pointerdown', (e) => {
   unlockAudio();

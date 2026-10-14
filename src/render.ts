@@ -1400,7 +1400,7 @@ function drawOverlays() {
     ctx.fillStyle = '#fff'; ctx.fillText(label, cx, ly + 1);
     ctx.globalAlpha = 1;
   }
-  if (view.site === 'mine' && !view.tween && S.tut >= 1) drawDigRate(W);
+  if (view.site === 'mine' && !view.tween && S.tut >= 3) drawDigRate(W); // after the first cart leaves: the opening shows one thing, the cart objective
   if (view.site === 'mine' && !view.tween && S.tut >= 6) { // what lies below: the next layer, always one goal ahead
     const next = MATERIALS.find((m) => m.from > S.depth);
     const txt = S.depth >= MAX_DEPTH ? '🔥 THE GATES OF HELL · 1,000 m' : next ? `▼ ${next.name.toUpperCase()} in ${Math.ceil(next.from - S.depth)} m` : `▼ THE GATES OF HELL in ${Math.ceil(MAX_DEPTH - S.depth)} m`;

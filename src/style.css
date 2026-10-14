@@ -80,7 +80,11 @@ section{border-bottom:1px solid var(--line);padding-bottom:6px}
 #introText .l.big{font:400 30px 'Bungee',Impact,sans-serif;color:#ffcf3a;letter-spacing:.02em;text-shadow:0 .08em 0 #6b4505,0 0 14px rgba(0,0,0,.7)}
 #introBtn{pointer-events:auto;font:400 20px 'Bungee',Impact,sans-serif;background:var(--hat);color:#2a2100;border:0;border-radius:10px;padding:14px 26px;cursor:pointer;box-shadow:0 6px 0 #b08a12}
 #introBtn:focus-visible{outline:3px solid #fff;outline-offset:3px}
-@media (max-height:500px){#intro{top:34%}} /* short (landscape phone) screens: lines sit below the objective/hint */
+/* short (landscape phone) screens: lines sit below the objective/hint; the opening sits just under the tabs, clear of the tap rings */
+@media (max-height:500px){#intro{top:34%}}
+@media (max-height:500px),(max-width:760px) and (orientation:portrait){#intro.opening{top:70px;gap:6px} #intro.opening #introText .l.big{font-size:20px} #intro.opening #introText .l{font-size:15px} #intro.opening #introBtn{padding:9px 20px;font-size:17px}}
+/* landscape phones: a slimmer side panel (portrait phones stack it under the world) */
+@media (orientation:landscape) and (max-height:500px){#panel{width:clamp(220px,34vw,300px);font-size:13px}.cash{font-size:28px}}
 /* sound settings */
 #setBtn:focus-visible{outline:3px solid #fff;outline-offset:2px}
 #settings{position:absolute;left:12px;top:64px;z-index:5;display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink)}
@@ -90,7 +94,7 @@ section{border-bottom:1px solid var(--line);padding-bottom:6px}
 .status{color:var(--muted);font-size:.9em;padding:0 .4em .6em}
 .dbg{background:#3a2f2f;border:1px dashed #8a5a5a;color:#f0c9c9;font:inherit;font-size:12px;border-radius:6px;padding:6px 8px;margin:0 6px 6px 0;cursor:pointer}
 .reset{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;margin:18px 6px 0;cursor:pointer;text-decoration:underline}
-@media (max-width:760px){
+@media (max-width:760px) and (orientation:portrait){ /* portrait phones: panel under the world. Landscape phones keep the side panel (stacking left a ~200 px tall world) */
   #app{flex-direction:column}
   #stage{flex:none;height:56%}
   #panel{width:100%;flex:1;border-left:0;border-top:1px solid var(--line)}
@@ -146,7 +150,7 @@ section{border-bottom:1px solid var(--line);padding-bottom:6px}
 /* locked site tabs: visible from the start, intriguing but unavailable */
 #hint.muted{opacity:0;transition:opacity .2s}
 /* first-minute objective ("FILL THE CART n/20"): gold, with a progress fill — not the red 'look here' pulse */
-#hint.goal{animation:none;border-color:#ffcf3a;color:#fff3c4;background:linear-gradient(90deg,#8a5410 calc(var(--p)*100%),rgba(25,22,18,.92) calc(var(--p)*100%));box-shadow:0 0 0 2px rgba(255,207,58,.18),0 4px 14px rgba(0,0,0,.45)}
+#hint.goal{white-space:normal;max-width:calc(100% - 24px);text-align:center;line-height:1.35;animation:none;border-color:#ffcf3a;color:#fff3c4;background:linear-gradient(90deg,#8a5410 calc(var(--p)*100%),rgba(25,22,18,.92) calc(var(--p)*100%));box-shadow:0 0 0 2px rgba(255,207,58,.18),0 4px 14px rgba(0,0,0,.45)}
 /* toasts that drop from a site tab */
 #toasts{position:absolute;inset:0;pointer-events:none;z-index:6}
 .toast{position:absolute;transform:translate(-50%,-12px);opacity:0;min-width:150px;max-width:min(300px,86vw);padding:8px 12px;border-radius:10px;background:rgba(24,22,19,.94);border:1px solid rgba(255,255,255,.14);box-shadow:0 6px 16px rgba(0,0,0,.35);text-align:center;transition:transform .25s ease-out,opacity .25s ease-out}

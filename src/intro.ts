@@ -2,7 +2,7 @@
 //   0 LAND    "YOU BOUGHT THIS LAND FOR $1." + "Something valuable is buried down there." [START DIGGING] (shown at
 //             once; START, a tap on the rock or Space all start AND strike)
 //   1 DIG     first break -> "NICE! KEEP DIGGING." · objective "FILL THE CART n/50" (ready to send from 20)
-//   2 CART    the cart loads ("CART READY! TAP IT TO SEND") and leaves -> "UP IT GOES!" -> YARD unlocks with "!" + "FOLLOW THE CART"
+//   2 CART    the cart loads ("CART READY ▲ TAP IT TO SEND · OR KEEP DIGGING TO FILL IT") and leaves -> "UP IT GOES!" -> YARD unlocks with "!" + "FOLLOW THE CART"
 //   3 YARD    the contractor: "Raw rubble isn't worth much." / "But processed material is." -> seed money -> build yard
 //   4 RECYCLE first block -> "Now this is useful." -> truck leaves -> BUILD unlocks with "!" + "FOLLOW THE TRUCK"
 //   5 BUILD   the empty lot: "BUILD SOMETHING." -> first stage started
@@ -67,6 +67,7 @@ export function updateIntro(dt: number) {
     if (lineT >= cur.secs) cur = null;
   }
   box.hidden = !(cur || S.tut === 0);
+  box.classList.toggle('opening', S.tut === 0);
   if (cur) {
     const html = `<div class="${cur.big ? 'l big' : 'l'}">${cur.s}</div>${cur.sub ? `<div class="l">${cur.sub}</div>` : ''}`;
     if (text.dataset.k !== html) { text.innerHTML = html; text.dataset.k = html; }
@@ -82,7 +83,9 @@ export function updateIntro(dt: number) {
   if ((S.tut === 1 || S.tut === 2) && !S.flags.dispatched && view.site === 'mine' && !view.tween) {
     const n = cartGoalShown = Math.max(cartGoalShown, Math.min(need, Math.floor(S.rubble.qty + S.cart.load.qty))); // never counts backwards
     goal = n / need;
-    h = n >= ready && S.tut === 2 ? `CART READY! ${touch ? 'TAP' : 'CLICK'} IT TO SEND ▲  ${n}/${need}` : `⛏ FILL THE CART  ${n}/${need}`;
+    // what the cart really does (cart.ts): it keeps loading while rubble keeps coming, leaves when full, when tapped,
+    // or ~3 s after the rubble stops once it holds the sample
+    h = n >= ready && S.tut === 2 ? `CART READY ▲ ${touch ? 'TAP' : 'CLICK'} IT TO SEND · OR KEEP DIGGING TO FILL IT  ${n}/${need}` : `⛏ FILL THE CART  ${n}/${need}`;
   }
   else if (S.tut === 3 && view.site !== 'yard') h = 'FOLLOW THE CART ▲  (YARD)';
   else if (S.tut === 5 && view.site !== 'build' && !S.flags.seenBuild && !S.build.material.qty && S.truck.state !== 'PARKED') h = 'FOLLOW THE TRUCK ▶  (BUILD)';

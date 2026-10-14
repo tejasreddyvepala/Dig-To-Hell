@@ -23,6 +23,7 @@ const CASES = [
   { name: 'phone-portrait', vp: { width: 390, height: 844 }, mobile: true, start: 'tap' },
   { name: 'phone-landscape', vp: { width: 844, height: 390 }, mobile: true, start: 'button' },
   { name: 'small-desktop', vp: { width: 800, height: 600 }, mobile: false, start: 'tap' },
+  { name: 'phone-landscape-small', vp: { width: 667, height: 375 }, mobile: true, start: 'tap' },
 ];
 
 async function run(browser, c) {
