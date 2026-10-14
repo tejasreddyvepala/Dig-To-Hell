@@ -281,7 +281,7 @@ export function presentSurface(events: SurfaceEvent[], dt: number) {
   const L = surfaceLayout(), s = faceScale();
   const near = surfaceVol();
   for (const e of events) {
-    if (e.type === 'firstSaleStart') { say("Raw rubble isn't worth much."); setTimeout(() => say('But processed material is.'), 1600); }
+    if (e.type === 'firstSaleStart') { say('Nice haul! Press it into blocks…'); setTimeout(() => say('…and blocks build houses. Houses pay!'), 1800); }
     else if (e.type === 'contractorSold') {
       if (Math.random() < Math.min(0.9, (e.qty ?? 0) * 0.6)) arc(L.hopperX + rnd(-10, 10), L.gy - 10, L.stackX + L.u * 0.6 + rnd(-8, 8), L.roadY - L.u * 0.7, rnd(0.35, 0.45), rubbleCol(S.raw), rnd(2, 3) * s);
     } else if (e.type === 'firstSaleDone') {

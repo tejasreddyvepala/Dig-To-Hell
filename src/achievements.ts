@@ -180,7 +180,7 @@ function closePage() {
 }
 function updateBadge() {
   const fresh = claimable().length; // rewards waiting to be claimed
-  const b = $('achBadge'); b.textContent = String(fresh); b.hidden = fresh === 0;
+  const b = $('achBadge'); b.textContent = String(fresh); b.hidden = fresh === 0 || S.tut < 4; // quiet until the Yard is built (as the banners)
 }
 
 // ---- unlock banner queue ----
@@ -189,6 +189,7 @@ function updateBadge() {
 const queue: Ach[] = [];
 let showing = false, lastEnd = -1e9;
 const BANNER_GAP = 10_000;
+const TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } })();
 const TIER_RANK: Record<string, number> = { bronze: 0, silver: 1, gold: 2 };
 function showNext() {
   if (!queue.length) { showing = false; return; }
@@ -199,8 +200,8 @@ function showNext() {
   el.className = 'achpop';
   el.classList.add(TIER[a.id]);
   el.innerHTML = `<span class="popmedal">${medal(a, true)}${Array.from({ length: 10 }, (_, i) => `<i class="spark" style="--a:${(i * 36).toFixed(0)}deg;--dl:${(0.25 + (i % 3) * 0.05).toFixed(2)}s"></i>`).join('')}</span>` +
-    `<span class="poptx"><span class="popk">Achievement unlocked · ${TIER[a.id]}</span><b>${a.name}</b><span>${more ? `+${more} more ${more === 1 ? 'trophy' : 'trophies'} · rewards ${money(batch.reduce((t, x) => t + rewardOf(x.id), 0))}` : `Reward ${money(rewardOf(a.id))}`} · tap to claim</span></span>`;
-  el.onclick = () => { openPage(); };
+    `<span class="poptx"><span class="popk">Achievement unlocked · ${TIER[a.id]}</span><b>${a.name}</b><span>${more ? `+${more} more ${more === 1 ? 'trophy' : 'trophies'} · rewards ${money(batch.reduce((t, x) => t + rewardOf(x.id), 0))}` : `Reward ${money(rewardOf(a.id))}`} · ${TOUCH ? 'claim in 🏆 Trophies' : 'tap to claim'}</span></span>`;
+  if (TOUCH) el.classList.add('notap'); else el.onclick = () => { openPage(); }; // touch: taps on the dig face must never open the trophy page
   $('achPops').appendChild(el);
   playSting();
   ($('achBtn')).classList.remove('bump'); void ($('achBtn')).offsetWidth; $('achBtn').classList.add('bump');
@@ -209,7 +210,7 @@ function showNext() {
 }
 
 /** Check every goal (call a few times a second). The first call after boot unlocks silently what a save already met. */
-let booted = false;
+let booted = false, badgeGate = false;
 export function checkAchievements() {
   build();
   let changed = false;
@@ -219,7 +220,10 @@ export function checkAchievements() {
     if (cur >= goal) { got[a.id] = Date.now(); changed = true; if (booted) queue.push(a); else seen = Math.max(seen, got[a.id]); }
   }
   booted = true;
+  if (S.tut >= 4 !== badgeGate) { badgeGate = S.tut >= 4; updateBadge(); }
   if (changed) { persist(); updateBadge(); if (!$('achPage').hidden) renderGrid(); }
-  if (queue.length && !showing && performance.now() - lastEnd >= BANNER_GAP) showNext();
+  // banners wait until the Recycling Yard is built (S.tut ≥ 4): the opening has one job at a time (fill the cart, follow
+  // it, build the yard) and nothing pops over it
+  if (queue.length && !showing && S.tut >= 4 && performance.now() - lastEnd >= BANNER_GAP) showNext();
 }
 export function initAchievements() { build(); updateBadge(); renderGrid(); }

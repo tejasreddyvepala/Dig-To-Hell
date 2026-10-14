@@ -35,6 +35,7 @@ import { fmt, hash, rgb, rgba, rnd } from './util';
 
 const FONT_DISPLAY = "'Bungee',Impact,sans-serif";
 const FONT_UI = "'Rubik',system-ui,sans-serif";
+const TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } })(); // 'Tap' vs 'Click' wording
 const M = CFG.miner;
 const IMPACT_AT = (M.windupMs + M.downswingMs) / 1000;
 
@@ -1382,10 +1383,21 @@ function drawOverlays() {
     ctx.font = `500 15px ${FONT_UI}`; ctx.fillStyle = '#fff'; ctx.fillText(b.sub, W / 2, by + 26);
     ctx.globalAlpha = 1;
   }
-  if (S.clicks < 3 && !view.hideDigHint && S.tut >= 1 && view.site === 'mine' && !view.tween) {
-    ctx.textAlign = 'center'; ctx.font = `700 18px ${FONT_UI}`; ctx.fillStyle = '#fff';
-    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
-    ctx.fillText('Click the rock to dig', W / 2, faceY() + 90);
+  if (S.clicks < 3 && !view.hideDigHint && view.site === 'mine' && !view.tween) {
+    // the first interaction, made obvious: pulsing tap rings where a strike lands + a readable label on a plate
+    const cx = shaftCX(), cy = faceY() + 7.5 * faceScale();
+    for (let i = 0; i < 2; i++) {
+      const k = (t * 0.9 + i * 0.5) % 1;
+      ctx.strokeStyle = `rgba(255,207,58,${(0.85 * (1 - k)).toFixed(3)})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, 10 + 34 * k, 0, 6.283); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,207,58,.9)'; ctx.beginPath(); ctx.arc(cx, cy, 5 + Math.sin(t * 6), 0, 6.283); ctx.fill();
+    const label = `${TOUCH ? 'Tap' : 'Click'} the rock to dig`;
+    ctx.textAlign = 'center'; ctx.font = `700 ${W < 600 ? 16 : 18}px ${FONT_UI}`;
+    const tw = ctx.measureText(label).width + 24, ly = cy + 62;
+    ctx.globalAlpha = 0.8 + 0.2 * Math.sin(t * 4);
+    ctx.fillStyle = 'rgba(12,9,6,.78)'; ctx.beginPath(); ctx.roundRect(cx - tw / 2, ly - 20, tw, 30, 10); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(label, cx, ly + 1);
     ctx.globalAlpha = 1;
   }
   if (view.site === 'mine' && !view.tween && S.tut >= 1) drawDigRate(W);

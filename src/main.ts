@@ -69,7 +69,7 @@ const inRect = (x: number, y: number, r: typeof view.cartRect) => !!r && x >= r.
 
 canvas.addEventListener('pointerdown', (e) => {
   unlockAudio();
-  if (S.tut === 0) { startDigging(); return; }
+  if (S.tut === 0) startDigging(); // the first tap on the rock starts the game AND lands a strike
   if (view.site !== 'mine' || view.tween) return; // the surface sites are watched, not clicked
   const r = canvas.getBoundingClientRect();
   const v = toVirtual(e.clientX - r.left, e.clientY - r.top); // world input goes through the camera zoom
@@ -97,7 +97,7 @@ addEventListener('keydown', (e) => {
   unlockAudio();
   if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat && document.activeElement === document.body && !isModalOpen()) {
     e.preventDefault();
-    if (S.tut === 0) { startDigging(); return; }
+    if (S.tut === 0) startDigging();
     if (view.site === 'mine' && !inputBlocked()) minerKeyStrike();
   }
 });
@@ -105,7 +105,7 @@ addEventListener('keydown', (e) => {
 // ---- panel, nav, intro, settings ----
 buildPanel();
 initNav();
-initIntro(() => updatePanel());
+initIntro(() => { updatePanel(); if (view.site === 'mine' && !inputBlocked()) minerKeyStrike(); }); // START also swings the pick
 initAchievements();
 initAnalytics();
 setToastQuiet(finaleRunning);
@@ -283,14 +283,22 @@ function frame(now: number) {
 let manualClock = false, manualNow = 0; // dev-only: frame-stepped capture (trailer recording)
 let booting = true; // the loading screen is up: nothing moves underneath it
 requestAnimationFrame(frame);
-// the loading screen (key art) stays at least BOOT_MIN_MS from page start; the world is frozen until it lifts
-const BOOT_MIN_MS = 2500;
-setTimeout(() => {
+// the loading screen (key art) lifts as soon as the game is ready: the canvas fonts are loaded (so the first frame
+// doesn't flash fallback text) and a frame has been drawn. BOOT_MIN_MS stops a flash of the art on fast loads;
+// BOOT_MAX_MS stops a slow font fetch from holding the player back. The world is frozen until it lifts.
+const BOOT_MIN_MS = 400, BOOT_MAX_MS = 1200;
+function liftBoot() {
+  if (!booting) return;
   booting = false; last = performance.now();
   const boot = document.getElementById('boot'); if (boot) { boot.classList.add('out'); setTimeout(() => boot.remove(), 550); }
   loadingDone();
   if (S.tut > 0 && !S.flags.finished) gameplayStart();
-}, Math.max(0, BOOT_MIN_MS - performance.now()));
+}
+const fontsReady = (() => {
+  try { return Promise.all(['400 20px Bungee', '400 14px Rubik', '500 14px Rubik', '700 14px Rubik'].map((f) => document.fonts.load(f))); } catch { return Promise.resolve(); }
+})();
+Promise.race([fontsReady.catch(() => undefined), new Promise((r) => setTimeout(r, Math.max(0, BOOT_MAX_MS - performance.now())))])
+  .then(() => requestAnimationFrame(() => setTimeout(liftBoot, Math.max(0, BOOT_MIN_MS - performance.now()))));
 (document.getElementById('ver') as HTMLElement).textContent = `v${__VERSION__}`;
 
 // dev-only hooks for automated smoke tests (stripped from production builds)
